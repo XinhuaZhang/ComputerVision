@@ -15,6 +15,7 @@ import           Data.Array.Accelerate.Math.FFT        as A
 import           Data.Array.Unboxed                    as AU
 import           Data.Complex                          as C
 import           Data.List                             as L
+import           Data.Set                              as Set
 import           GHC.Float
 import           Prelude                               as P
 
@@ -26,9 +27,9 @@ data PolarSeparableFilterName
 
 data PolarSeparableFilterParams = PolarSeparableFilterParams
   { getRadius      :: Int
-  , getScale       :: [Double]
-  , getRadialFreq  :: [Int]
-  , getAngularFreq :: [Int]
+  , getScale       :: Set Double
+  , getRadialFreq  :: Set Int
+  , getAngularFreq :: Set Int
   , getName        :: PolarSeparableFilterName
   } deriving (Show)
 
@@ -36,6 +37,8 @@ data PolarSeparableFilter a = PolarSeparableFilter
   { getParams :: PolarSeparableFilterParams
   , getFilter :: a
   }
+  
+
 
 instance Filter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) where
   type Input (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) = Acc (A.Array DIM2 Double)
@@ -52,14 +55,14 @@ instance Filter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) w
       filterEleList =
         [ pixelList
            (IM.makeFilter size size (getFilterFunc params s rf af) :: ComplexImage)
-        | rf <- rs
-        , af <- as
-        , s <- scale ]
+        | rf <- Set.toList rs
+        , af <- Set.toList as
+        , s <- Set.toList scale ]
       len = P.length filterEleList
       filterArr =
         (centre25D HWD >-> fft25D' A.Forward size size len HWD) .
         use . A.fromList (Z :. size :. size :. len) . P.concat . L.transpose $
-        filterEleList
+         filterEleList
   displayFilter (PolarSeparableFilter _ imgAcc) = undefined
   applyFilter
     :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
@@ -74,7 +77,7 @@ instance Filter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) w
         A.replicate (lift (Z :. All :. All :. len)) .
         A.fft2D' A.Forward size size . centre2D . A.map (\x -> lift $ x C.:+ 0) $
         imgAcc
-        
+
 instance Filter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) where
   type Input (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) = Acc (A.Array DIM2 Float)
   type Output (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) = Acc (A.Array DIM3 (A.Complex Float))
@@ -90,9 +93,9 @@ instance Filter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) wh
       filterEleList =
         [ pixelList
            (IM.makeFilter size size (getFilterFunc params s rf af) :: ComplexImage)
-        | rf <- rs
-        , af <- as
-        , s <- scale ]
+        | rf <- Set.toList rs
+        , af <- Set.toList as
+        , s <- Set.toList scale ]
       len = P.length filterEleList
       filterArr =
         (centre25D HWD >-> fft25D' A.Forward size size len HWD) .
@@ -168,10 +171,31 @@ pinwheels scale rf af x y
 
 getFilterFunc :: PolarSeparableFilterParams
               -> (Double  -> Int -> Int -> PixelOp (C.Complex Double))
-getFilterFunc PolarSeparableFilterParams {getName = Fans} = fans 
-getFilterFunc PolarSeparableFilterParams {getName = Bullseye} = bullseye 
-getFilterFunc PolarSeparableFilterParams {getName = Pinwheels} = pinwheels 
+getFilterFunc PolarSeparableFilterParams {getName = Fans}      = fans
+getFilterFunc PolarSeparableFilterParams {getName = Bullseye}  = bullseye
+getFilterFunc PolarSeparableFilterParams {getName = Pinwheels} = pinwheels
 
 getFilterNum :: PolarSeparableFilterParams -> Int
 getFilterNum (PolarSeparableFilterParams _ scale rs as _) =
-  (P.product . P.map P.length $ [rs, as]) * P.length scale
+  (P.product . P.map Set.size $ [rs, as]) * Set.size scale
+
+{- HWD format -}
+slice2D :: AU.Array (Int, Int, Int) a -> Int -> AU.Array (Int, Int) a
+slice2D arr featureIdx =
+  array
+    arrRange
+    [ (idx, (\(j, i) -> arr AU.! (j, i, featureIdx)) idx)
+    | idx <- range arrRange ]
+  where
+    ((0, 0, 0), (ny, nx, nf)) = bounds arr
+    arrRange = ((0, 0), (ny, nx))
+    
+{- slice the outmost dimension -}
+slice1D :: AU.Array (Int,Int,Int) a -> [[a]]
+slice1D arr =
+  [ [ arr AU.! (j, i, k)
+    | k <- [0 .. nf] ]
+  | (j, i) <- range twoDRange ]
+  where
+    ((0, 0, 0), (ny, nx, nf)) = bounds arr
+    twoDRange = ((0, 0), (ny, nx))
