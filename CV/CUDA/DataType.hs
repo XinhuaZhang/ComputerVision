@@ -10,7 +10,7 @@ import           Prelude                            as P
 data GPUDataType
   = GPUFloat
   | GPUDouble
-  deriving (Show)
+  deriving (Show, Read)
 
 data ComputeMode
   = GPU GPUDataType

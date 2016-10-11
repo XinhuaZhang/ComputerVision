@@ -19,3 +19,6 @@ cabal.sandbox.config
 cabal.project.local
 TAGS
 *~
+/Application/KDTree/run
+/Application/KDTree/train
+/Application/KDTree/predict

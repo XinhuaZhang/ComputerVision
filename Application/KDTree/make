@@ -1,0 +1,9 @@
+#/bin/bash
+
+export OMP_NUM_THREADS=64
+FLAG="--make -O2 -rtsopts -j4 -threaded " 
+LIBS="-lgomp -lstdc++ -lblas"
+OBJPATH="../../Classifier/LibSVM/"
+
+ghc $FLAG $LIBS -i../../ $OBJPATH/svm.o Train.hs -o train
+ghc $FLAG $LIBS -i../../ $OBJPATH/svm.o Predict.hs -o predict

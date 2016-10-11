@@ -1,11 +1,16 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE InstanceSigs      #-}
 {-# LANGUAGE TypeFamilies      #-}
+
 module Application.KDTree.KDTree
   ( buildTreeConduit
   , similarity
+  , pointAsList
   ) where
 
+import           Control.DeepSeq
+import           Control.Monad.IO.Class
+import           Control.Parallel
 import           CV.Feature.PolarSeparable
 import           CV.Utility.Parallel
 import           Data.Conduit
@@ -14,8 +19,7 @@ import           Data.KdTree.Static        as KDT
 import           Data.Vector.Unboxed       as VU
 import           Prelude                   as P
 
-pointAsList
-  :: PolarSeparableFeaturePoint -> [Double]
+pointAsList :: PolarSeparableFeaturePoint -> [Double]
 pointAsList = VU.toList . feature
 
 buildTreeConduit
@@ -29,7 +33,6 @@ buildTreeConduit parallelParams = do
       buildTreeConduit parallelParams
     else return ()
 
-
 similarity
   :: KdTree Double PolarSeparableFeaturePoint
   -> KdTree Double PolarSeparableFeaturePoint
@@ -37,7 +40,7 @@ similarity
   -> Double
 similarity treeX treeY radius
   | P.or . P.map ((== 0) . size) $ [treeX, treeY] = error "KdTree is empty."
-  | otherwise = ((klDivergence xx yx) + (klDivergence xy yy)) / 2
+  | otherwise = ((klDivergence xx yx) + (klDivergence xy yy)) / (-2) -- KL-divergence is always non-negative
   where
     xs = KDT.toList treeX
     ys = KDT.toList treeY
@@ -51,12 +54,12 @@ probability
   -> [PolarSeparableFeaturePoint]
   -> Double
   -> [Double]
-probability tree xs radius =
-  P.map
-    (\x ->
-        fromIntegral (P.length . inRadius tree radius $ x) /
-        fromIntegral (size tree))
-    xs
+probability tree xs radius
+  | s == 0 = error "Found zero point."
+  | otherwise = P.map (\x -> (fromIntegral x) / (fromIntegral s)) num
+  where
+    num = P.map (P.length . inRadius tree radius) xs
+    s = P.sum $!! num
 
 klDivergence :: [Double] -> [Double] -> Double
 klDivergence xs ys =
