@@ -38,8 +38,6 @@ data PolarSeparableFilter a = PolarSeparableFilter
   , getFilter :: a
   }
   
-
-
 instance Filter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) where
   type Input (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) = Acc (A.Array DIM2 Double)
   type Output (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) = Acc (A.Array DIM3 (A.Complex Double))
