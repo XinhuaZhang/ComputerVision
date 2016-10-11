@@ -17,13 +17,13 @@ import           Data.Array.Unboxed                 as AU
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.Vector.Unboxed                as VU
+import           GHC.Float
 import           Prelude                            as P
-import GHC.Float
 
 data PolarSeparableFeaturePoint = PolarSeparableFeaturePoint
-  { x      :: Int
-  , y      :: Int
-  , feture :: VU.Vector Double
+  { x       :: Int
+  , y       :: Int
+  , feature :: VU.Vector Double
   } deriving (Show)
 
 instance NFData PolarSeparableFeaturePoint where
