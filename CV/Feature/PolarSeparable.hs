@@ -37,8 +37,9 @@ magnitudeConduitFloat
   :: ParallelParams
   -> [Context]
   -> PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
+  -> Int
   -> Conduit (AU.Array (Int, Int, Int) Float) IO [PolarSeparableFeaturePoint]
-magnitudeConduitFloat parallelParams ctx filter = do
+magnitudeConduitFloat parallelParams ctx filter factor = do
   xs <- CL.take (batchSize parallelParams)
   if P.length xs > 0
     then do
@@ -62,7 +63,7 @@ magnitudeConduitFloat parallelParams ctx filter = do
                     nyNew
                     nx
                     ny >->
-                  downsample25D 4) .
+                  downsample25D factor) .
                P.map fromIArray)
               ys :: [[AU.Array (Int, Int, Int) Float]]
           (lb, (sizeX, sizeY, nfNew)) = bounds . P.head . P.head $ zs
@@ -92,7 +93,7 @@ magnitudeConduitFloat parallelParams ctx filter = do
                slice1D)
               arrList
       sourceList result
-      magnitudeConduitFloat parallelParams ctx filter
+      magnitudeConduitFloat parallelParams ctx filter factor
     else return ()
 
 
@@ -100,8 +101,9 @@ magnitudeConduitDouble
   :: ParallelParams
   -> [Context]
   -> PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
+  -> Int
   -> Conduit (AU.Array (Int, Int, Int) Double) IO [PolarSeparableFeaturePoint]
-magnitudeConduitDouble parallelParams ctx filter = do
+magnitudeConduitDouble parallelParams ctx filter factor = do
   xs <- CL.take (batchSize parallelParams)
   if P.length xs > 0
     then do
@@ -125,7 +127,7 @@ magnitudeConduitDouble parallelParams ctx filter = do
                     nyNew
                     nx
                     ny >->
-                  downsample25D 4) .
+                  downsample25D factor) .
                P.map fromIArray)
               ys :: [[AU.Array (Int, Int, Int) Double]]
           (lb, (sizeX, sizeY, nfNew)) = bounds . P.head . P.head $ zs
@@ -151,5 +153,5 @@ magnitudeConduitDouble parallelParams ctx filter = do
                slice1D)
               arrList
       sourceList result
-      magnitudeConduitDouble parallelParams ctx filter
+      magnitudeConduitDouble parallelParams ctx filter factor
     else return ()

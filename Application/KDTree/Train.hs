@@ -49,22 +49,32 @@ main = do
         , eps = 0.001
         , nu = 0.5
         }
+      downsampleFactor = 8
   ctx <- initializeGPUCtx (Option $ gpuId params)
   print params
-  trees <- case (gpuDataType params) of
-             GPUFloat ->
-               let filters =
-                     makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
-               in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2FloatArrayConduit =$=
-                  magnitudeConduitFloat parallelParams ctx filters =$=
-                  buildTreeConduit parallelParams =$=
-                  libSVMTrainSink (labelFile params) parallelParams trainParams (radius params)
-             GPUDouble ->
-               let filters =
-                     makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
-               in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2DoubleArrayConduit =$=
-                  magnitudeConduitDouble parallelParams ctx filters =$=
-                  buildTreeConduit parallelParams =$=
-                  libSVMTrainSink (labelFile params) parallelParams trainParams (radius params)
+  trees <-
+    case (gpuDataType params) of
+      GPUFloat ->
+        let filters =
+              makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
+        in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2FloatArrayConduit =$=
+           magnitudeConduitFloat parallelParams ctx filters downsampleFactor =$=
+           buildTreeConduit parallelParams =$=
+           libSVMTrainSink
+             (labelFile params)
+             parallelParams
+             trainParams
+             (radius params)
+      GPUDouble ->
+        let filters =
+              makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
+        in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2DoubleArrayConduit =$=
+           magnitudeConduitDouble parallelParams ctx filters downsampleFactor =$=
+           buildTreeConduit parallelParams =$=
+           libSVMTrainSink
+             (labelFile params)
+             parallelParams
+             trainParams
+             (radius params)
   writeFile "featurePoints.dat" (show . P.map KDT.toList $ trees)
   destoryGPUCtx ctx

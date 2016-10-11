@@ -49,6 +49,7 @@ main = do
         , eps = 0.001
         , nu = 0.5
         }
+      downsampleFactor = 8
   ctx <- initializeGPUCtx (Option $ gpuId params)
   print params
   strs <- readFile "featurePoints.dat"
@@ -63,7 +64,7 @@ main = do
       let filters =
             makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
       in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2FloatArrayConduit =$=
-         magnitudeConduitFloat parallelParams ctx filters =$=
+         magnitudeConduitFloat parallelParams ctx filters downsampleFactor =$=
          buildTreeConduit parallelParams =$=
          libSVMPredictConduit parallelParams trees (radius params) =$=
          mergeSource (labelSource $ labelFile params) =$
@@ -75,7 +76,7 @@ main = do
       let filters =
             makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
       in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2DoubleArrayConduit =$=
-         magnitudeConduitDouble parallelParams ctx filters =$=
+         magnitudeConduitDouble parallelParams ctx filters downsampleFactor =$=
          buildTreeConduit parallelParams =$=
          libSVMPredictConduit parallelParams trees (radius params) =$=
          mergeSource (labelSource $ labelFile params) =$
