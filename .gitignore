@@ -22,3 +22,7 @@ TAGS
 /Application/KDTree/run
 /Application/KDTree/train
 /Application/KDTree/predict
+model_*
+/Application/KDTree/#run#
+/Application/KDTree/.#run
+*.dat

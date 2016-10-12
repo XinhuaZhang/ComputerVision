@@ -20,19 +20,23 @@ data Flag
   | GPUId [Int]
   | GPUDataType String
   | Radius Double
+  | DownsampleFactor Int
+  | TreeFile String
   deriving (Show)
 
 data Params = Params
-  { inputFile   :: String
-  , labelFile   :: String
-  , c           :: Double
-  , numThread   :: Int
-  , modelName   :: String
-  , findC       :: Bool
-  , batchSize   :: Int
-  , gpuId       :: [Int]
-  , gpuDataType :: GPUDataType
-  , radius      :: Double
+  { inputFile        :: String
+  , labelFile        :: String
+  , c                :: Double
+  , numThread        :: Int
+  , modelName        :: String
+  , findC            :: Bool
+  , batchSize        :: Int
+  , gpuId            :: [Int]
+  , gpuDataType      :: GPUDataType
+  , radius           :: Double
+  , downsampleFactor :: Int
+  , treeFile         :: String
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -74,11 +78,17 @@ options =
       "Set GPU ID"
   , Option ['m'] ["modelName"] (ReqArg ModelName "NAME") "SVM model name."
   , Option ['g'] ["gpuDataType"] (ReqArg GPUDataType "NAME") "GPU datatype."
-  ,  Option
-       ['r']
-       ["radius"]
-       (ReqArg (\x -> Radius $ readDouble x) "Double")
-       "Set the kdtree bolb radius (Default 10)"
+  , Option
+      ['r']
+      ["radius"]
+      (ReqArg (\x -> Radius $ readDouble x) "Double")
+      "Set the kdtree bolb radius (Default 10)"
+  , Option
+      ['f']
+      ["downsampleFactor"]
+      (ReqArg (\x -> DownsampleFactor $ readInt x) "INT")
+      "Set the DownsampleFactor (Default 1)"
+  , Option ['z'] ["treeFile"] (ReqArg TreeFile "FILE") "Tree data file."
   ]
 
 readInt :: String -> Int
@@ -118,6 +128,8 @@ parseFlag flags = go flags defaultFlag
       , gpuId = [0]
       , gpuDataType = GPUFloat
       , radius = 10
+      , downsampleFactor = 1
+      , treeFile = "featurePoints.dat"
       }
     go [] params = params
     go (x:xs) params =
@@ -181,6 +193,18 @@ parseFlag flags = go flags defaultFlag
             xs
             (params
              { radius = v
+             })
+        DownsampleFactor v ->
+          go
+            xs
+            (params
+             { downsampleFactor = v
+             })
+        TreeFile str ->
+          go
+            xs
+            (params
+             { treeFile = str
              })
 
 parseArgs :: [String] -> IO Params

@@ -5,6 +5,7 @@
 module CV.Feature.PolarSeparable where
 
 import           Control.DeepSeq
+import           Control.Monad.IO.Class
 import           CV.CUDA.ArrayUtil
 import           CV.CUDA.Context
 import           CV.CUDA.DataType
@@ -51,21 +52,36 @@ magnitudeConduitFloat parallelParams ctx filter factor = do
           nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
           ys = P.map (\x -> P.map (slice2D x) [0 .. nfOld]) xs
           zs =
-            P.map
-              (P.map toIArray .
-               multiGPUStream
-                 ctx
-                 (applyFilter filter >-> A.map A.magnitude >->
-                  crop25D
-                    (div (nx - nxNew) 2)
-                    (div (ny - nyNew) 2)
-                    nxNew
-                    nyNew
-                    nx
-                    ny >->
-                  downsample25D factor) .
-               P.map fromIArray)
-              ys :: [[AU.Array (Int, Int, Int) Float]]
+            if factor == 1
+              then P.map
+                     (P.map toIArray .
+                      multiGPUStream
+                        ctx
+                        (applyFilter filter >-> A.map A.magnitude >->
+                         crop25D
+                           (div (nx - nxNew) 2)
+                           (div (ny - nyNew) 2)
+                           nxNew
+                           nyNew
+                           nx
+                           ny) .
+                      P.map fromIArray)
+                     ys :: [[AU.Array (Int, Int, Int) Float]]
+              else P.map
+                     (P.map toIArray .
+                      multiGPUStream
+                        ctx
+                        (applyFilter filter >-> A.map A.magnitude >->
+                         crop25D
+                           (div (nx - nxNew) 2)
+                           (div (ny - nyNew) 2)
+                           nxNew
+                           nyNew
+                           nx
+                           ny >->
+                         downsample25D factor) .
+                      P.map fromIArray)
+                     ys :: [[AU.Array (Int, Int, Int) Float]]
           (lb, (sizeX, sizeY, nfNew)) = bounds . P.head . P.head $ zs
           arrList =
             P.map
@@ -92,7 +108,8 @@ magnitudeConduitFloat parallelParams ctx filter factor = do
                  (range ((0, 0), (sizeX, sizeY))) .
                slice1D)
               arrList
-      sourceList result
+      sourceList $!! result
+      liftIO $ performGCCtx ctx
       magnitudeConduitFloat parallelParams ctx filter factor
     else return ()
 
@@ -115,21 +132,36 @@ magnitudeConduitDouble parallelParams ctx filter factor = do
           nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
           ys = P.map (\x -> P.map (slice2D x) [0 .. nfOld]) xs
           zs =
-            P.map
-              (P.map toIArray .
-               multiGPUStream
-                 ctx
-                 (applyFilter filter >-> A.map A.magnitude >->
-                  crop25D
-                    (div (nx - nxNew) 2)
-                    (div (ny - nyNew) 2)
-                    nxNew
-                    nyNew
-                    nx
-                    ny >->
-                  downsample25D factor) .
-               P.map fromIArray)
-              ys :: [[AU.Array (Int, Int, Int) Double]]
+            if factor == 1
+              then P.map
+                     (P.map toIArray .
+                      multiGPUStream
+                        ctx
+                        (applyFilter filter >-> A.map A.magnitude >->
+                         crop25D
+                           (div (nx - nxNew) 2)
+                           (div (ny - nyNew) 2)
+                           nxNew
+                           nyNew
+                           nx
+                           ny) .
+                      P.map fromIArray)
+                     ys :: [[AU.Array (Int, Int, Int) Double]]
+              else P.map
+                     (P.map toIArray .
+                      multiGPUStream
+                        ctx
+                        (applyFilter filter >-> A.map A.magnitude >->
+                         crop25D
+                           (div (nx - nxNew) 2)
+                           (div (ny - nyNew) 2)
+                           nxNew
+                           nyNew
+                           nx
+                           ny >->
+                         downsample25D factor) .
+                      P.map fromIArray)
+                     ys :: [[AU.Array (Int, Int, Int) Double]]
           (lb, (sizeX, sizeY, nfNew)) = bounds . P.head . P.head $ zs
           arrList =
             P.map
@@ -152,6 +184,7 @@ magnitudeConduitDouble parallelParams ctx filter factor = do
                  (range ((0, 0), (sizeX, sizeY))) .
                slice1D)
               arrList
-      sourceList result
+      sourceList $!! result
+      liftIO $ performGCCtx ctx
       magnitudeConduitDouble parallelParams ctx filter factor
     else return ()

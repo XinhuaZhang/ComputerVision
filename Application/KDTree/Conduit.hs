@@ -2,6 +2,7 @@ module Application.KDTree.Conduit where
 
 import           Application.KDTree.KDTree
 import           Classifier.LibSVM
+import           Control.DeepSeq
 import           Control.Monad             as M
 import           Control.Monad.IO.Class    (liftIO)
 import qualified Control.Monad.Parallel    as MP
@@ -15,6 +16,7 @@ import           Data.KdTree.Static        as KDT
 import           Foreign
 import           GHC.Float
 import           Prelude                   as P
+import           Text.Printf               (printf)
 
 grayImage2FloatArrayConduit :: Conduit GrayImage IO (AU.Array (Int, Int, Int) Float)
 grayImage2FloatArrayConduit =
@@ -43,7 +45,7 @@ libSVMTrainSink labelPath parallelParams trainParams radius = do
   label <- liftIO $ readLabelFile labelPath
   trees <- consume
   let kernel =
-        parMapChunk parallelParams rdeepseq (\(x, y) -> similarity x y radius) $
+        parMapChunk parallelParams rpar (\(x, y) -> similarity x y radius) $!!
         [ (x, y)
         | x <- trees
         , y <- trees ]
@@ -59,7 +61,7 @@ libSVMTrainSink labelPath parallelParams trainParams radius = do
       where
         (as, bs) = P.splitAt len xs
 
-testSink :: Sink (KdTree Double PolarSeparableFeaturePoint) IO ()
+testSink :: Sink (KdTree Double PolarSeparableFeaturePoint) IO [KdTree Double PolarSeparableFeaturePoint]
 testSink = do
   xs <- CL.take 2
   if P.length xs > 0
@@ -69,7 +71,31 @@ testSink = do
           tree2 = P.last xs
       liftIO $ print . size $ tree2
       liftIO $ print . similarity tree1 tree2 $ 10
-    else return ()
+      return []
+    else return []
+  ys <- consume
+  let trees = xs P.++ ys
+      kernel =
+        parMap rdeepseq (\(x, y) -> similarity x y 10) $!!
+        [ (x, y)
+        | x <- trees
+        , y <- trees ]
+  kernelPtr <-
+    liftIO $
+    MP.sequence $
+    P.zipWith getPreComputedKernelFeatureVecPtr [1 ..] $ sp (P.length trees) kernel
+  liftIO $
+    P.mapM_
+      (\xs -> do
+         P.mapM_ (printf "%0.2f ") xs
+         putStrLn "") $
+    sp (P.length trees) kernel
+  return []
+  where
+    sp _len [] = []
+    sp len xs = as : sp len bs
+      where
+        (as, bs) = P.splitAt len xs
 
 
 libSVMPredictConduit

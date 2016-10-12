@@ -29,7 +29,7 @@ buildTreeConduit parallelParams = do
   xs <- CL.take (batchSize parallelParams)
   if P.length xs > 0
     then do
-      sourceList $ parMapChunk parallelParams rdeepseq (build pointAsList) xs
+      sourceList $ parMapChunk parallelParams rpar (build pointAsList) xs
       buildTreeConduit parallelParams
     else return ()
 
@@ -40,22 +40,35 @@ similarity
   -> Double
 similarity treeX treeY radius
   | P.or . P.map ((== 0) . size) $ [treeX, treeY] = error "KdTree is empty."
-  | otherwise = ((klDivergence xx yx) + (klDivergence xy yy)) / (-2) -- KL-divergence is always non-negative
+  | otherwise =  ((klDivergence xx yx) + (klDivergence yy xy)) / (-2) -- KL-divergence is always non-negative
   where
     xs = KDT.toList treeX
     ys = KDT.toList treeY
-    xx = probability treeX xs radius
-    xy = probability treeX ys radius
-    yx = probability treeY xs radius
-    yy = probability treeY ys radius
+    xx = probabilityP treeX xs radius
+    xy = probabilityQ treeX ys radius
+    yx = probabilityQ treeY xs radius
+    yy = probabilityP treeY ys radius
 
-probability
+probabilityP
   :: KdTree Double PolarSeparableFeaturePoint
   -> [PolarSeparableFeaturePoint]
   -> Double
   -> [Double]
-probability tree xs radius
-  | s == 0 = error "Found zero point."
+probabilityP tree xs radius
+  | s == (P.length xs) * (KDT.size tree) =
+    error "Radius is too large. Found every point."
+  | otherwise = P.map (\x -> (fromIntegral x) / (fromIntegral s)) num
+  where
+    num = P.map (P.length . inRadius tree radius) xs
+    s = P.sum $!! num
+    
+probabilityQ
+  :: KdTree Double PolarSeparableFeaturePoint
+  -> [PolarSeparableFeaturePoint]
+  -> Double
+  -> [Double]
+probabilityQ tree xs radius
+  | s == 0 = cycle [0]
   | otherwise = P.map (\x -> (fromIntegral x) / (fromIntegral s)) num
   where
     num = P.map (P.length . inRadius tree radius) xs
@@ -64,5 +77,6 @@ probability tree xs radius
 klDivergence :: [Double] -> [Double] -> Double
 klDivergence xs ys =
   P.sum .
-  P.map (\(x, y) -> x * log (x / y)) . P.filter (\(x, y) -> x /= 0 && y /= 0) $
+  P.map (\(x, y) -> x * log (x / ((x + y) * 0.5))) .
+  P.filter (\(x, y) -> x /= 0) $
   P.zip xs ys
