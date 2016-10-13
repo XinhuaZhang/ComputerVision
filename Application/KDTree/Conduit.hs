@@ -66,36 +66,41 @@ testSink = do
   xs <- CL.take 2
   if P.length xs > 0
     then do
-      let point1 = P.head . KDT.toList . P.head $ xs
+      let point1 = P.head . KDT.toList $ tree1
+          point2 = P.last . KDT.toList $ tree2
           tree1 = P.head xs
           tree2 = P.last xs
       liftIO $ print . size $ tree2
-      liftIO $ print . similarity tree1 tree2 $ 10
+      liftIO $ print . P.length $ inRadius tree2 1 point1 
+      liftIO $ print point1
+      liftIO $ print point2
+      liftIO $ print $ sqrt $ dist  point1 point2
+      liftIO $ print . similarity tree1 tree2 $ 1
       return []
     else return []
-  ys <- consume
-  let trees = xs P.++ ys
-      kernel =
-        parMap rdeepseq (\(x, y) -> similarity x y 10) $!!
-        [ (x, y)
-        | x <- trees
-        , y <- trees ]
-  kernelPtr <-
-    liftIO $
-    MP.sequence $
-    P.zipWith getPreComputedKernelFeatureVecPtr [1 ..] $ sp (P.length trees) kernel
-  liftIO $
-    P.mapM_
-      (\xs -> do
-         P.mapM_ (printf "%0.2f ") xs
-         putStrLn "") $
-    sp (P.length trees) kernel
-  return []
-  where
-    sp _len [] = []
-    sp len xs = as : sp len bs
-      where
-        (as, bs) = P.splitAt len xs
+  -- ys <- consume
+  -- let trees = xs P.++ ys
+  --     kernel =
+  --       parMap rdeepseq (\(x, y) -> similarity x y 10) $!!
+  --       [ (x, y)
+  --       | x <- trees
+  --       , y <- trees ]
+  -- kernelPtr <-
+  --   liftIO $
+  --   MP.sequence $
+  --   P.zipWith getPreComputedKernelFeatureVecPtr [1 ..] $ sp (P.length trees) kernel
+  -- liftIO $
+  --   P.mapM_
+  --     (\xs -> do
+  --        P.mapM_ (printf "%0.2f ") xs
+  --        putStrLn "") $
+  --   sp (P.length trees) kernel
+  -- return []
+  -- where
+  --   sp _len [] = []
+  --   sp len xs = as : sp len bs
+  --     where
+  --       (as, bs) = P.splitAt len xs
 
 
 libSVMPredictConduit

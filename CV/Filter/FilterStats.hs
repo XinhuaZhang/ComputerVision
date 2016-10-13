@@ -38,11 +38,11 @@ rotate3D arr = backpermute (swap1 (A.shape arr)) swap2 arr
     swap1 :: Exp DIM3 -> Exp DIM3
     swap1 ix =
       let Z :. m :. k :. l = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
-      in lift $ Z :. k :. l :. m
+      in lift $ Z :. l :. m :. k
     swap2 :: Exp DIM3 -> Exp DIM3
     swap2 ix =
       let Z :. m :. k :. l = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
-      in lift $ Z :. l :. m :. k
+      in lift $ Z :. k :. l :. m
 
 filterSum
   :: (Elt a, IsFloating a)

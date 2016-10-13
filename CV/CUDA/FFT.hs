@@ -14,7 +14,6 @@ module CV.CUDA.FFT
   ( ArrayFormat(..)
   , fft25D'
   , centre25D
-  , crop25D
   , coveriance25D
   , concatComplex
   , gaussianNormalize
@@ -95,32 +94,6 @@ centre25D HWD arr =
     (\ix ->
         let Z :. y :. x :. _ = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
         in lift (((-1) ** A.fromIntegral (y + x)) :+ A.constant 0) * arr ! ix)
-
-crop25D
-  :: (Elt a)
-  => Int
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> Int
-  -> Acc (A.Array DIM3 a)
-  -> Acc (A.Array DIM3 a)
-crop25D x0 y0 x y nx ny arr
-  | x0 < 0 || x0 > (nx - x) || y0 < 0 || y0 > (ny - y) =
-    error $ "AccCropping out of boundary!\n" P.++ show (x0, y0, x, y) P.++
-    " vs " P.++
-    show (nx, ny)
-  | otherwise =
-    let (Z :. len :. _ :. _) =
-          unlift $ A.shape arr :: Z :. Exp Int :. Exp Int :. Exp Int
-    in backpermute
-         (lift $ Z :. len :. y :. x)
-         (\ix ->
-             let Z :. k :. j :. i =
-                   unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
-             in lift $ Z :. k :. (j + constant y0) :. (i + constant x0))
-         arr
 
 coveriance25D :: Acc (A.Array DIM3 Double) -> Acc (A.Array DIM2 Double)
 coveriance25D arr =

@@ -6,6 +6,7 @@ module Application.KDTree.KDTree
   ( buildTreeConduit
   , similarity
   , pointAsList
+  , dist
   ) where
 
 import           Control.DeepSeq
@@ -29,7 +30,7 @@ buildTreeConduit parallelParams = do
   xs <- CL.take (batchSize parallelParams)
   if P.length xs > 0
     then do
-      sourceList $ parMapChunk parallelParams rpar (build pointAsList) xs
+      sourceList $ parMapChunk parallelParams rpar (buildWithDist pointAsList dist) xs
       buildTreeConduit parallelParams
     else return ()
 
@@ -80,3 +81,9 @@ klDivergence xs ys =
   P.map (\(x, y) -> x * log (x / ((x + y) * 0.5))) .
   P.filter (\(x, y) -> x /= 0) $
   P.zip xs ys
+
+dist :: PolarSeparableFeaturePoint -> PolarSeparableFeaturePoint -> Double
+dist xs ys =
+  (VU.sum $ VU.map (^ 2) $ VU.zipWith (-) (feature xs) (feature ys)) 
+  -- /
+  -- (P.fromIntegral $ VU.length . feature $ xs)^2

@@ -8,6 +8,7 @@ import           CV.CUDA.Context
 import           CV.CUDA.DataType
 import           CV.Feature.PolarSeparable
 import           CV.Filter
+import           CV.Filter.FilterStats
 import           CV.Filter.PolarSeparableFilter
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
@@ -17,6 +18,7 @@ import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.KdTree.Static                 as KDT
 import qualified Data.Set                           as S
+import           GHC.Float
 import           Prelude                            as P
 import           System.Environment
 
@@ -53,6 +55,12 @@ main = do
   print params
   strs <- readFile (treeFile params)
   labels <- readLabelFile (labelFile params)
+  filterStats <-
+    readFilterStats $
+    "../FilterStatistics/" P.++ "N" P.++ (show $ getFilterNum filterParams) P.++
+    "S" P.++
+    (show $ S.toList $ getScale filterParams) P.++
+    "MeanVar.data"
   let trees =
         parMapChunk parallelParams rdeepseq (build pointAsList) $
         (read strs :: [[PolarSeparableFeaturePoint]])
@@ -62,12 +70,28 @@ main = do
     GPUFloat ->
       let filters =
             makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
+          meanArr =
+            A.replicate
+              (A.lift $
+               Z :. (getRadius filterParams * 2) :. (getRadius filterParams * 2) :.
+               All) .
+            A.use . A.fromList (Z :. P.length (mean filterStats)) . P.map double2Float $
+            (mean filterStats)
+          varArr =
+            A.replicate
+              (A.lift $
+               Z :. (getRadius filterParams * 2) :. (getRadius filterParams * 2) :.
+               All) .
+            A.use . A.fromList (Z :. P.length (var filterStats)) . P.map double2Float $
+            (var filterStats)
       in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2FloatArrayConduit =$=
          magnitudeConduitFloat
            parallelParams
            ctx
            filters
-           (downsampleFactor params) =$=
+           (downsampleFactor params)
+           meanArr
+           varArr =$=
          buildTreeConduit parallelParams =$=
          libSVMPredictConduit parallelParams trees (radius params) =$=
          mergeSource (labelSource $ labelFile params) =$

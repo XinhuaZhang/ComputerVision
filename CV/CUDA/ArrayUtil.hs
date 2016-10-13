@@ -4,6 +4,7 @@ module CV.CUDA.ArrayUtil where
 import           Data.Array.Accelerate as A
 import           Prelude               as P
 
+-- HWD 
 crop25D
   :: (Elt a)
   => Int

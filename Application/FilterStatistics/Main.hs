@@ -41,9 +41,9 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  if P.null (outputFile params) 
-     then error "use -o to specify output file."
-     else return ()
+  if P.null (outputFile params)
+    then error "use -o to specify output file."
+    else return ()
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
@@ -53,8 +53,8 @@ main = do
         PolarSeparableFilterParams
         { getRadius = 128
         , getScale = S.fromDistinctAscList [8]
-        , getRadialFreq = S.fromDistinctAscList [1 .. 8]
-        , getAngularFreq = S.fromDistinctAscList [1 .. 8]
+        , getRadialFreq = S.fromDistinctAscList [0 .. 7]
+        , getAngularFreq = S.fromDistinctAscList [0 .. 7]
         , getName = Pinwheels
         }
   ctx <- initializeGPUCtx (Option $ gpuId params)
@@ -63,9 +63,21 @@ main = do
       let filters =
             F.makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
       in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2FloatArrayConduit =$=
-         sink parallelParams ctx (outputFile params) filters
+         sink
+           parallelParams
+           ctx
+           ("N" P.++ (show $ getFilterNum filterParams) P.++ "S" P.++
+            (show $ S.toList $ getScale filterParams) P.++
+            (outputFile params))
+           filters
     GPUDouble ->
       let filters =
             F.makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
       in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2DoubleArrayConduit =$=
-         sink parallelParams ctx ("N" P.++ (show $ getFilterNum filterParams) P.++ "S" P.++ (show $ getScale filterParams) P.++ (outputFile params)) filters
+         sink
+           parallelParams
+           ctx
+           ("N" P.++ (show $ getFilterNum filterParams) P.++ "S" P.++
+            (show $ S.toList $ getScale filterParams) P.++
+            (outputFile params))
+           filters

@@ -11,6 +11,7 @@ import           CV.CUDA.Context
 import           CV.CUDA.DataType
 import           CV.Feature
 import           CV.Filter
+import           CV.Filter.FilterStats
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel
 import           Data.Array.Accelerate              as A
@@ -38,9 +39,9 @@ magnitudeConduitFloat
   :: ParallelParams
   -> [Context]
   -> PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
-  -> Int
+  -> Int -> Acc (A.Array DIM3 Float) -> Acc (A.Array DIM3 Float)
   -> Conduit (AU.Array (Int, Int, Int) Float) IO [PolarSeparableFeaturePoint]
-magnitudeConduitFloat parallelParams ctx filter factor = do
+magnitudeConduitFloat parallelParams ctx filter factor meanArr varArr = do
   xs <- CL.take (batchSize parallelParams)
   if P.length xs > 0
     then do
@@ -58,6 +59,7 @@ magnitudeConduitFloat parallelParams ctx filter factor = do
                       multiGPUStream
                         ctx
                         (applyFilter filter >-> A.map A.magnitude >->
+                         A.zipWith3 (\m v x -> (x-m) / v) meanArr varArr >->
                          crop25D
                            (div (nx - nxNew) 2)
                            (div (ny - nyNew) 2)
@@ -72,6 +74,7 @@ magnitudeConduitFloat parallelParams ctx filter factor = do
                       multiGPUStream
                         ctx
                         (applyFilter filter >-> A.map A.magnitude >->
+                         A.zipWith3 (\m v x -> (x - m ) / v) meanArr varArr >->
                          crop25D
                            (div (nx - nxNew) 2)
                            (div (ny - nyNew) 2)
@@ -110,7 +113,7 @@ magnitudeConduitFloat parallelParams ctx filter factor = do
               arrList
       sourceList $!! result
       liftIO $ performGCCtx ctx
-      magnitudeConduitFloat parallelParams ctx filter factor
+      magnitudeConduitFloat parallelParams ctx filter factor meanArr varArr
     else return ()
 
 
