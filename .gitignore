@@ -26,3 +26,5 @@ model_*
 /Application/KDTree/#run#
 /Application/KDTree/.#run
 *.dat
+/Application/FilterStatistics/main
+*.data

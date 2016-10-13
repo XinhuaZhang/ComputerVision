@@ -53,8 +53,8 @@ main = do
         PolarSeparableFilterParams
         { getRadius = 128
         , getScale = S.fromDistinctAscList [8]
-        , getRadialFreq = S.fromDistinctAscList [0 .. 7]
-        , getAngularFreq = S.fromDistinctAscList [0 .. 7]
+        , getRadialFreq = S.fromDistinctAscList [1 .. 8]
+        , getAngularFreq = S.fromDistinctAscList [1 .. 8]
         , getName = Pinwheels
         }
   ctx <- initializeGPUCtx (Option $ gpuId params)
@@ -68,4 +68,4 @@ main = do
       let filters =
             F.makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
       in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2DoubleArrayConduit =$=
-         sink parallelParams ctx (outputFile params) filters
+         sink parallelParams ctx ("N" P.++ (show $ getFilterNum filterParams) P.++ "S" P.++ (show $ getScale filterParams) P.++ (outputFile params)) filters
