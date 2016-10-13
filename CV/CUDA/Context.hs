@@ -5,6 +5,7 @@ import           Data.Array.Accelerate       as A
 import           Data.Array.Accelerate.CUDA  as A
 import           Foreign.CUDA.Driver         as CUDA
 import           Prelude                     as P
+import Control.DeepSeq
 
 data GPUDevice
   = ALL

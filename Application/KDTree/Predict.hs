@@ -102,12 +102,28 @@ main = do
     GPUDouble ->
       let filters =
             makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
+          meanArr =
+            A.replicate
+              (A.lift $
+               Z :. (getRadius filterParams * 2) :. (getRadius filterParams * 2) :.
+               All) .
+            A.use . A.fromList (Z :. P.length (mean filterStats)) $
+            (mean filterStats)
+          varArr =
+            A.replicate
+              (A.lift $
+               Z :. (getRadius filterParams * 2) :. (getRadius filterParams * 2) :.
+               All) .
+            A.use . A.fromList (Z :. P.length (var filterStats)) $
+            (var filterStats)
       in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2DoubleArrayConduit =$=
          magnitudeConduitDouble
            parallelParams
            ctx
            filters
-           (downsampleFactor params) =$=
+           (downsampleFactor params)
+           meanArr
+           varArr =$=
          buildTreeConduit parallelParams =$=
          libSVMPredictConduit parallelParams trees (radius params) =$=
          mergeSource (labelSource $ labelFile params) =$

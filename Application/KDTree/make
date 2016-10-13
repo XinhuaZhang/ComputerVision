@@ -6,4 +6,4 @@ LIBS="-lgomp -lstdc++ -lblas"
 OBJPATH="../../Classifier/LibSVM/"
 
 ghc $FLAG $LIBS -i../../ $OBJPATH/svm.o Train.hs -o train
-ghc $FLAG $LIBS -i../../ $OBJPATH/svm.o Predict.hs -o predict
+#ghc $FLAG $LIBS -i../../ $OBJPATH/svm.o Predict.hs -o predict

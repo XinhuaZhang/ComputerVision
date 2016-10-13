@@ -28,7 +28,8 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  let parallelParams =
+  let sampleRate = 11
+      parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
         , Parallel.batchSize = Parser.batchSize params
@@ -58,7 +59,6 @@ main = do
     "S" P.++
     (show $ S.toList $ getScale filterParams) P.++
     "MeanVar.data"
-  --filterStats <- readFilterStats "../FilterStatistics/MeanVar.data"
   print params
   trees <-
     case (gpuDataType params) of
@@ -90,27 +90,46 @@ main = do
              meanArr
              varArr =$=
            buildTreeConduit parallelParams =$=
-           testSink
-      -- libSVMTrainSink
-      --   (labelFile params)
-      --   parallelParams
-      --   trainParams
-      --   (radius params)
+           libSVMTrainSink
+             (labelFile params)
+             parallelParams
+             trainParams
+             (radius params)
+             sampleRate
       --testSink
       GPUDouble ->
         let filters =
               makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
+            meanArr =
+              A.replicate
+                (A.lift $
+                 Z :. (getRadius filterParams * 2) :.
+                 (getRadius filterParams * 2) :.
+                 All) .
+              A.use . A.fromList (Z :. P.length (mean filterStats)) $
+              (mean filterStats)
+            varArr =
+              A.replicate
+                (A.lift $
+                 Z :. (getRadius filterParams * 2) :.
+                 (getRadius filterParams * 2) :.
+                 All) .
+              A.use . A.fromList (Z :. P.length (var filterStats)) $
+              (var filterStats)
         in imagePathSource (inputFile params) $$ grayImageConduit =$= grayImage2DoubleArrayConduit =$=
            magnitudeConduitDouble
              parallelParams
              ctx
              filters
-             (downsampleFactor params) =$=
+             (downsampleFactor params)
+             meanArr
+             varArr =$=
            buildTreeConduit parallelParams =$=
            libSVMTrainSink
              (labelFile params)
              parallelParams
              trainParams
              (radius params)
+             sampleRate
   writeFile (treeFile params) (show . P.map KDT.toList $ trees)
   destoryGPUCtx ctx

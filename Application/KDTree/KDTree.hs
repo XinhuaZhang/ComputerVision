@@ -14,6 +14,7 @@ import           Control.Monad.IO.Class
 import           Control.Parallel
 import           CV.Feature.PolarSeparable
 import           CV.Utility.Parallel
+import           Data.Array                as IA
 import           Data.Conduit
 import           Data.Conduit.List         as CL
 import           Data.KdTree.Static        as KDT
@@ -30,21 +31,34 @@ buildTreeConduit parallelParams = do
   xs <- CL.take (batchSize parallelParams)
   if P.length xs > 0
     then do
-      sourceList $ parMapChunk parallelParams rpar (buildWithDist pointAsList dist) xs
+      sourceList $ parMapChunk parallelParams rdeepseq ( buildWithDist pointAsList dist) xs
       buildTreeConduit parallelParams
     else return ()
 
 similarity
-  :: KdTree Double PolarSeparableFeaturePoint
-  -> KdTree Double PolarSeparableFeaturePoint
+  :: (KdTree Double PolarSeparableFeaturePoint, Array (Int,Int) PolarSeparableFeaturePoint)
+  -> (KdTree Double PolarSeparableFeaturePoint, Array (Int,Int) PolarSeparableFeaturePoint)
   -> Double
+  -> Int
   -> Double
-similarity treeX treeY radius
+similarity (treeX, arrX) (treeY, arrY) radius sampleRate
   | P.or . P.map ((== 0) . size) $ [treeX, treeY] = error "KdTree is empty."
-  | otherwise =  ((klDivergence xx yx) + (klDivergence yy xy)) / (-2) -- KL-divergence is always non-negative
+  | otherwise = ((klDivergence xx yx) + (klDivergence yy xy)) / (-2) -- KL-divergence is always non-negative
   where
-    xs = KDT.toList treeX
-    ys = KDT.toList treeY
+    (_, (nyX, nxX)) = bounds arrX
+    intervalxX = div nxX sampleRate
+    intervalyX = div nyX sampleRate
+    xs =
+      [ arrX IA.! (i * intervalyX, j * intervalxX)
+      | i <- [1 .. sampleRate - 1]
+      , j <- [1 .. sampleRate - 1] ]
+    (_, (nyY, nxY)) = bounds arrY
+    intervalxY = div nxY sampleRate
+    intervalyY = div nyY sampleRate
+    ys =
+      [ arrY IA.! (i * intervalyY, j * intervalxY)
+      | i <- [1 .. sampleRate - 1]
+      , j <- [1 .. sampleRate - 1] ]
     xx = probabilityP treeX xs radius
     xy = probabilityQ treeX ys radius
     yx = probabilityQ treeY xs radius
@@ -62,7 +76,7 @@ probabilityP tree xs radius
   where
     num = P.map (P.length . inRadius tree radius) xs
     s = P.sum $!! num
-    
+
 probabilityQ
   :: KdTree Double PolarSeparableFeaturePoint
   -> [PolarSeparableFeaturePoint]
@@ -84,6 +98,6 @@ klDivergence xs ys =
 
 dist :: PolarSeparableFeaturePoint -> PolarSeparableFeaturePoint -> Double
 dist xs ys =
-  (VU.sum $ VU.map (^ 2) $ VU.zipWith (-) (feature xs) (feature ys)) 
+  (VU.sum $ VU.map (^ 2) $ VU.zipWith (-) (feature xs) (feature ys))
   -- /
   -- (P.fromIntegral $ VU.length . feature $ xs)^2
