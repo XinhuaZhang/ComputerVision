@@ -28,3 +28,4 @@ model_*
 *.dat
 /Application/FilterStatistics/main
 *.data
+/Application/FilterStatistics/run
