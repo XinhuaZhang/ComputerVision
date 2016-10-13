@@ -3,17 +3,24 @@
 {-# LANGUAGE TypeFamilies      #-}
 module CV.Filter.PolarSeparableFilter where
 
+import           Control.DeepSeq
+import           Control.Monad.IO.Class                (liftIO)
+import           CV.CUDA.Context
 import           CV.CUDA.FFT
 import           CV.Filter
+import           CV.Filter.FilterStats                 as FS
 import           CV.Filter.GaussianFilter
 import           CV.Image                              as IM
 import           CV.Utility.Coordinates
+import           CV.Utility.Parallel
 import           Data.Array.Accelerate                 as A
 import           Data.Array.Accelerate.Data.Complex    as A
 import           Data.Array.Accelerate.Math.DFT.Centre as A
 import           Data.Array.Accelerate.Math.FFT        as A
 import           Data.Array.Unboxed                    as AU
 import           Data.Complex                          as C
+import           Data.Conduit
+import           Data.Conduit.List                     as CL
 import           Data.List                             as L
 import           Data.Set                              as Set
 import           GHC.Float
@@ -37,7 +44,7 @@ data PolarSeparableFilter a = PolarSeparableFilter
   { getParams :: PolarSeparableFilterParams
   , getFilter :: a
   }
-  
+
 instance Filter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) where
   type Input (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) = Acc (A.Array DIM2 Double)
   type Output (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) = Acc (A.Array DIM3 (A.Complex Double))
@@ -117,6 +124,70 @@ instance Filter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) wh
         A.fft2D' A.Forward size size . centre2D . A.map (\x -> lift $ x C.:+ 0) $
         imgAcc
 
+instance CUDAStatistics (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) where
+  type GPUDataType (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) = Float
+  sink parallelParams ctx filePath filter = go 0 (P.cycle [0]) (P.cycle [0])
+    where
+      go n s1 s2 = do
+        xs <- CL.take (batchSize parallelParams)
+        if P.length xs > 0
+          then let (_, (_, _, nf)) = bounds . P.head $ xs
+                   ys = P.map (\x -> P.map (slice2D x) [0 .. nf]) xs
+                   zs1 =
+                     P.map
+                       (P.concatMap A.toList .
+                        multiGPUStream
+                          ctx
+                          (applyFilter filter >-> FS.rotate3D >-> filterSum) .
+                        P.map fromIArray)
+                       ys
+                   zs2 =
+                     P.map
+                       (P.concatMap A.toList .
+                        multiGPUStream
+                          ctx
+                          (applyFilter filter >-> FS.rotate3D >-> filterSumSquare) .
+                        P.map fromIArray)
+                       ys
+                   listSum = L.foldl' (L.zipWith (+))
+               in go (n + P.length xs) (listSum s1 zs1) (listSum s2 zs2)
+          else let mean = P.map float2Double $ sampleMean s1 n
+                   var = P.map float2Double $ sampleVar s1 s2 n
+               in liftIO $ writeFilterStats filePath (FilterStats mean var [])
+               
+
+instance CUDAStatistics (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) where
+  type GPUDataType (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) = Double
+  sink parallelParams ctx filePath filter = go 0 (P.cycle [0]) (P.cycle [0])
+    where
+      go n s1 s2 = do
+        xs <- CL.take (batchSize parallelParams)
+        if P.length xs > 0
+          then let (_, (_, _, nf)) = bounds . P.head $ xs
+                   ys = P.map (\x -> P.map (slice2D x) [0 .. nf]) xs
+                   zs1 =
+                     P.map
+                       (P.concatMap A.toList .
+                        multiGPUStream
+                          ctx
+                          (applyFilter filter >-> FS.rotate3D >-> filterSum) .
+                        P.map fromIArray)
+                       ys
+                   zs2 =
+                     P.map
+                       (P.concatMap A.toList .
+                        multiGPUStream
+                          ctx
+                          (applyFilter filter >-> FS.rotate3D >-> filterSumSquare) .
+                        P.map fromIArray)
+                       ys
+                   listSum = L.foldl' (L.zipWith (+))
+               in go (n + P.length xs) (listSum s1 zs1) (listSum s2 zs2)
+          else let mean = sampleMean s1 n
+                   var = sampleVar s1 s2 n
+               in liftIO $ writeFilterStats filePath (FilterStats mean var [])
+
+
 
 {- e^jx -}
 ejx
@@ -187,7 +258,7 @@ slice2D arr featureIdx =
   where
     ((0, 0, 0), (ny, nx, nf)) = bounds arr
     arrRange = ((0, 0), (ny, nx))
-    
+
 {- slice the outmost dimension -}
 slice1D :: AU.Array (Int,Int,Int) a -> [[a]]
 slice1D arr =
