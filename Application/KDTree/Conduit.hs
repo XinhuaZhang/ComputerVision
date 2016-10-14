@@ -12,6 +12,7 @@ import           CV.Image
 import           CV.Utility.Parallel
 import           Data.Array                      as IA
 import           Data.Array.Unboxed              as AU
+import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.List               as CL
 import           Foreign
@@ -38,7 +39,7 @@ grayImage2DoubleArrayConduit =
 featurePointSink :: FilePath -> Sink [PolarSeparableFeaturePoint] IO ()
 featurePointSink treeFilePath = do
   trees <- consume
-  liftIO $ writeFile treeFilePath $ show trees
+  liftIO $ encodeFile treeFilePath trees
 
 libSVMTrainSink
   :: FilePath
@@ -76,7 +77,7 @@ libSVMTrainSink labelPath parallelParams trainParams radius sampleRate treeFileP
     MP.sequence $
     P.zipWith getPreComputedKernelFeatureVecPtr [1 ..] $ sp (P.length trees) kernel
   liftIO $ oneVsRestTrain trainParams label kernelPtr
-  liftIO $ writeFile treeFilePath  (show . P.map KDT.toList $ trees)
+  liftIO $ encodeFile treeFilePath (P.map KDT.toList trees)
   where
     sp _len [] = []
     sp len xs = as : sp len bs

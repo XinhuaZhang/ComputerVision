@@ -3,6 +3,7 @@ module Main where
 import           Application.KDTree.ArgsParser      as Parser
 import           Application.KDTree.Conduit
 import           Application.KDTree.KDTree
+import           Application.KDTree.KdTreeStatic    as KDT
 import           Classifier.LibSVM                  as SVM
 import           CV.CUDA.Context
 import           CV.CUDA.DataType
@@ -14,9 +15,9 @@ import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
 import           Data.Array.Accelerate              as A
 import           Data.Array.Accelerate.Data.Complex as A
+import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
-import           Application.KDTree.KdTreeStatic                 as KDT
 import qualified Data.Set                           as S
 import           GHC.Float
 import           Prelude                            as P
@@ -54,7 +55,7 @@ main = do
         }
   ctx <- initializeGPUCtx (Option $ gpuId params)
   print params
-  strs <- readFile (treeFile params)
+  points <- decodeFile (treeFile params) :: IO [[PolarSeparableFeaturePoint]]
   labels <- readLabelFile (labelFile params)
   filterStats <-
     readFilterStats $
@@ -63,8 +64,7 @@ main = do
     (show $ S.toList $ getScale filterParams) P.++
     "MeanVar.data"
   let trees =
-        parMapChunk parallelParams rdeepseq (build pointAsList) $
-        (read strs :: [[PolarSeparableFeaturePoint]])
+        parMapChunk parallelParams rdeepseq (build pointAsList) $ points
       (labelMin, labelMax) =
         (P.round $ P.minimum labels, P.round $ P.maximum labels)
   case gpuDataType params of

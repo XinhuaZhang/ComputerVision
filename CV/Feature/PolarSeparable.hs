@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE InstanceSigs      #-}
 {-# LANGUAGE TypeFamilies      #-}
@@ -19,13 +20,12 @@ import           Data.Array.Accelerate.CUDA         as A
 import           Data.Array.Accelerate.Data.Complex as A
 import           Data.Array.Unboxed                 as AU
 import           Data.Binary
-import           Data.Binary.Get
-import           Data.Binary.Put
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.Set                           as S
 import           Data.Vector.Unboxed                as VU
 import           GHC.Float
+import           GHC.Generics
 import           Prelude                            as P
 
 
@@ -33,11 +33,22 @@ data PolarSeparableFeaturePoint = PolarSeparableFeaturePoint
   { x       :: Int
   , y       :: Int
   , feature :: [Double]
-  } deriving (Show, Read)
+  } deriving (Generic, Show, Read)
 
 instance NFData PolarSeparableFeaturePoint where
   rnf (PolarSeparableFeaturePoint x y feature) = rnf x `seq` rnf y `seq` rnf feature
-  
+
+instance Binary PolarSeparableFeaturePoint where
+  put (PolarSeparableFeaturePoint x y feature) = do
+    put x
+    put y
+    put feature
+  get = do
+    x <- get
+    y <- get
+    feature <- get
+    return (PolarSeparableFeaturePoint x y feature)
+
 magnitudeConduitFloat
   :: ParallelParams
   -> [Context]

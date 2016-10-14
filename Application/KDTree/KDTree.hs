@@ -17,6 +17,7 @@ import           Control.Parallel
 import           CV.Feature.PolarSeparable
 import           CV.Utility.Parallel
 import           Data.Array                      as IA
+import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.List               as CL
 import           Prelude                         as P
@@ -103,3 +104,10 @@ dist xs ys =
   -- (P.fromIntegral $ VU.length . feature $ xs)^2
 
 
+writeKdTree :: KdTree Double PolarSeparableFeaturePoint -> Put
+writeKdTree = put . KDT.toList
+
+readKdTree :: Get (KdTree Double PolarSeparableFeaturePoint)
+readKdTree = do
+  ps <- get :: Get [PolarSeparableFeaturePoint]
+  return $ build pointAsList ps

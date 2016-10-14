@@ -46,6 +46,7 @@ module Application.KDTree.KdMapStatic
 import           Control.DeepSeq
 import           Control.DeepSeq.Generics (genericRnf)
 import           Control.Parallel
+import           Data.Binary
 import           GHC.Generics
 
 import           Control.Applicative      hiding (empty)
@@ -103,6 +104,29 @@ data TreeNode a p v = TreeNode { _treeLeft  :: TreeNode a p v
                       Empty
   deriving (Generic, Show, Read)
 instance (NFData a, NFData p, NFData v) => NFData (TreeNode a p v) where rnf = genericRnf
+instance (Binary a, Binary p, Binary v) =>
+         Binary (TreeNode a p v) where
+  put Empty = putWord8 (0 :: Word8)
+  put (TreeNode left point value right) = do
+    putWord8 (1 :: Word8)
+    put left
+    put point
+    put value
+    put right
+  get = do
+    t <- getWord8
+    case t of
+      0 -> return Empty
+      1 -> do
+        left <- get
+        point <- get
+        value <- get
+        right <- get
+        return (TreeNode left point value right)
+
+
+
+
 
 mapTreeNode :: (v1 -> v2) -> TreeNode a p v1 -> TreeNode a p v2
 mapTreeNode _ Empty = Empty
@@ -495,7 +519,7 @@ inRadiusCount (KdMap pointAsList distSqr t _) radius query =
     go _ Empty = 0
     go (queryAxisValue:qvs) (TreeNode left (k, v) nodeAxisVal right) =
       let onTheLeft = queryAxisValue <= nodeAxisVal
-          accAfterOnside = 
+          accAfterOnside =
             if onTheLeft
               then go qvs left
               else go qvs right
