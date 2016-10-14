@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeOperators     #-}
 module CV.Feature.PolarSeparable where
 
-import           Control.DeepSeq as DS
+import           Control.DeepSeq                    as DS
 import           Control.Monad.IO.Class
 import           CV.CUDA.ArrayUtil
 import           CV.CUDA.Context
@@ -18,6 +18,9 @@ import           Data.Array.Accelerate              as A
 import           Data.Array.Accelerate.CUDA         as A
 import           Data.Array.Accelerate.Data.Complex as A
 import           Data.Array.Unboxed                 as AU
+import           Data.Binary
+import           Data.Binary.Get
+import           Data.Binary.Put
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.Set                           as S
@@ -30,11 +33,11 @@ data PolarSeparableFeaturePoint = PolarSeparableFeaturePoint
   { x       :: Int
   , y       :: Int
   , feature :: VU.Vector Double
-  } deriving (Show,Read)
+  } deriving (Show, Read)
 
 instance NFData PolarSeparableFeaturePoint where
   rnf (PolarSeparableFeaturePoint x y feature) = rnf x `seq` rnf y `seq` rnf feature
-
+  
 magnitudeConduitFloat
   :: ParallelParams
   -> [Context]
@@ -206,4 +209,8 @@ magnitudeConduitDouble parallelParams ctx filter factor meanArr varArr = do
       liftIO $ performGCCtx ctx
       magnitudeConduitDouble parallelParams ctx filter factor meanArr varArr
     else return ()
+
+
+
+
 

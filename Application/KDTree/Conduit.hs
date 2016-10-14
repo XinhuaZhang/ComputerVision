@@ -1,23 +1,23 @@
 module Application.KDTree.Conduit where
 
 import           Application.KDTree.KDTree
+import           Application.KDTree.KdTreeStatic as KDT
 import           Classifier.LibSVM
 import           Control.DeepSeq
-import           Control.Monad             as M
-import           Control.Monad.IO.Class    (liftIO)
-import qualified Control.Monad.Parallel    as MP
+import           Control.Monad                   as M
+import           Control.Monad.IO.Class          (liftIO)
+import qualified Control.Monad.Parallel          as MP
 import           CV.Feature.PolarSeparable
 import           CV.Image
 import           CV.Utility.Parallel
-import           Data.Array                as IA
-import           Data.Array.Unboxed        as AU
+import           Data.Array                      as IA
+import           Data.Array.Unboxed              as AU
 import           Data.Conduit
-import           Data.Conduit.List         as CL
-import           Data.KdTree.Static        as KDT
+import           Data.Conduit.List               as CL
 import           Foreign
 import           GHC.Float
-import           Prelude                   as P
-import           Text.Printf               (printf)
+import           Prelude                         as P
+import           Text.Printf                     (printf)
 
 grayImage2FloatArrayConduit :: Conduit GrayImage IO (AU.Array (Int, Int, Int) Float)
 grayImage2FloatArrayConduit =
@@ -35,18 +35,22 @@ grayImage2DoubleArrayConduit =
         let (nx, ny) = dimensions img
         in yield . AU.listArray ((0, 0, 0), (nx - 1, ny - 1, 0)) . pixelList $ img)
 
+featurePointSink :: FilePath -> Sink [PolarSeparableFeaturePoint] IO ()
+featurePointSink treeFilePath = do
+  trees <- consume
+  liftIO $ writeFile treeFilePath $ show trees
 
 libSVMTrainSink
   :: FilePath
   -> ParallelParams
   -> TrainParams
   -> Double
-   -> Int
-  -> Sink (KdTree Double PolarSeparableFeaturePoint) IO [KdTree Double PolarSeparableFeaturePoint]
-libSVMTrainSink labelPath parallelParams trainParams radius sampleRate = do
+   -> Int -> FilePath
+  -> Sink (KdTree Double PolarSeparableFeaturePoint) IO ()
+libSVMTrainSink labelPath parallelParams trainParams radius sampleRate treeFilePath = do
   label <- liftIO $ readLabelFile labelPath
   trees <- consume
-  let treeIdx = 
+  let treeIdx =
         P.map (\(PolarSeparableFeaturePoint i j _) -> (i, j)) . KDT.toList . P.head $
         trees
       lb = (\(xs, ys) -> ((P.minimum xs), (P.minimum ys))) . P.unzip $ treeIdx
@@ -72,14 +76,66 @@ libSVMTrainSink labelPath parallelParams trainParams radius sampleRate = do
     MP.sequence $
     P.zipWith getPreComputedKernelFeatureVecPtr [1 ..] $ sp (P.length trees) kernel
   liftIO $ oneVsRestTrain trainParams label kernelPtr
-  return trees
+  liftIO $ writeFile treeFilePath  (show . P.map KDT.toList $ trees)
   where
     sp _len [] = []
     sp len xs = as : sp len bs
       where
         (as, bs) = P.splitAt len xs
 
-testSink :: Sink (KdTree Double PolarSeparableFeaturePoint) IO [KdTree Double PolarSeparableFeaturePoint]
+libSVMPredictConduit
+  :: ParallelParams
+  -> [KdTree Double PolarSeparableFeaturePoint]
+  -> Double
+  -> Int
+  -> Conduit (KdTree Double PolarSeparableFeaturePoint) IO (Ptr C'svm_node)
+libSVMPredictConduit parallelParams trees1 radius sampleRate = do
+  trees2 <- CL.take (batchSize parallelParams)
+  if P.length trees2 > 0
+    then do
+      let treeIdx1 =
+            P.map (\(PolarSeparableFeaturePoint i j _) -> (i, j)) .
+            KDT.toList . P.head $
+            trees1
+          lb1 = (\(xs, ys) -> ((P.minimum xs), (P.minimum ys))) . P.unzip $ treeIdx1
+          ub1 = (\(xs, ys) -> ((P.maximum xs), (P.maximum ys))) . P.unzip $ treeIdx1
+          arr1 =
+            parMapChunk
+              parallelParams
+              rseq
+              (IA.array (lb2, ub2) .
+               P.map (\p@(PolarSeparableFeaturePoint i j _) -> ((i, j), p)) .
+               KDT.toList)
+              trees1
+          treeArrPair1 = P.zip trees1 arr1
+          treeIdx2 =
+            P.map (\(PolarSeparableFeaturePoint i j _) -> (i, j)) .
+            KDT.toList . P.head $
+            trees2
+          lb2 = (\(xs, ys) -> ((P.minimum xs), (P.minimum ys))) . P.unzip $ treeIdx2
+          ub2 = (\(xs, ys) -> ((P.maximum xs), (P.maximum ys))) . P.unzip $ treeIdx2
+          arr2 =
+            parMapChunk
+              parallelParams
+              rseq
+              (IA.array (lb2, ub2) .
+               P.map (\p@(PolarSeparableFeaturePoint i j _) -> ((i, j), p)) .
+               KDT.toList)
+              trees2
+          treeArrPair2 = P.zip trees2 arr2
+          feature =
+            parMapChunk
+              parallelParams
+              rdeepseq
+              (\x -> P.map (\y -> similarity x y radius sampleRate) treeArrPair1)
+              treeArrPair2
+      ptrs <- liftIO $ MP.mapM (getPreComputedKernelFeatureVecPtr (-1)) feature
+      sourceList ptrs
+      libSVMPredictConduit parallelParams trees1 radius sampleRate
+    else return ()
+
+
+testSink :: Sink (KdTree Double PolarSeparableFeaturePoint) IO ()
 testSink = do
   xs <- CL.take 2
   if P.length xs > 0
@@ -90,10 +146,12 @@ testSink = do
           treeSize2 = P.floor . sqrt . P.fromIntegral$ KDT.size tree2
           arr1 = IA.array ((0,0),(treeSize1 - 1,treeSize1 - 1)) . P.map (\p@(PolarSeparableFeaturePoint i j _) -> ((i,j),p)) . KDT.toList $ tree1
           arr2 = IA.array ((0,0),(treeSize2 - 1,treeSize2 - 1)) . P.map (\p@(PolarSeparableFeaturePoint i j _) -> ((i,j),p)) . KDT.toList $ tree2
+          hehe1 = P.replicate 1 (tree1,arr1)
+          hehe2 = P.replicate 1 (tree2,arr2)
       liftIO $ print . size $ tree2
-      liftIO $ print $ similarity (tree1,arr1) (tree2,arr2) 1 11
-      return []
-    else return []
+      liftIO $ P.mapM_  print $ P.zipWith (\x y -> similarity x y 1 11) hehe1 hehe2
+      return ()
+    else return ()
   -- ys <- consume
   -- let trees = xs P.++ ys
   --     kernel =
@@ -117,40 +175,3 @@ testSink = do
   --   sp len xs = as : sp len bs
   --     where
   --       (as, bs) = P.splitAt len xs
-
-
-libSVMPredictConduit
-  :: ParallelParams
-  -> [KdTree Double PolarSeparableFeaturePoint]
-  -> Double
-  -> Int
-  -> Conduit (KdTree Double PolarSeparableFeaturePoint) IO (Ptr C'svm_node)
-libSVMPredictConduit parallelParams trees radius sampleRate = do
-  trees <- CL.take (batchSize parallelParams)
-  if P.length trees > 0
-    then do
-      let treeIdx =
-            P.map (\(PolarSeparableFeaturePoint i j _) -> (i, j)) .
-            KDT.toList . P.head $
-            trees
-          lb = (\(xs, ys) -> ((P.minimum xs), (P.minimum ys))) . P.unzip $ treeIdx
-          ub = (\(xs, ys) -> ((P.maximum xs), (P.maximum ys))) . P.unzip $ treeIdx
-          arr =
-            parMapChunk
-              parallelParams
-              rseq
-              (IA.array (lb, ub) .
-               P.map (\p@(PolarSeparableFeaturePoint i j _) -> ((i, j), p)) .
-               KDT.toList)
-              trees
-          treeArrPair = P.zip trees arr
-          feature =
-            parMapChunk
-              parallelParams
-              rdeepseq
-              (\x -> P.map (\y -> similarity x y radius sampleRate) treeArrPair)
-              treeArrPair
-      ptrs <- liftIO $ MP.mapM (getPreComputedKernelFeatureVecPtr (-1)) feature
-      sourceList ptrs
-      libSVMPredictConduit parallelParams trees radius sampleRate
-    else return ()

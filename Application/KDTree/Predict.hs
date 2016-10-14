@@ -16,7 +16,7 @@ import           Data.Array.Accelerate              as A
 import           Data.Array.Accelerate.Data.Complex as A
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
-import           Data.KdTree.Static                 as KDT
+import           Application.KDTree.KdTreeStatic                 as KDT
 import qualified Data.Set                           as S
 import           GHC.Float
 import           Prelude                            as P
@@ -28,7 +28,8 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  let parallelParams =
+  let sampleRate = 11
+      parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
         , Parallel.batchSize = Parser.batchSize params
@@ -93,7 +94,7 @@ main = do
            meanArr
            varArr =$=
          buildTreeConduit parallelParams =$=
-         libSVMPredictConduit parallelParams trees (radius params) =$=
+         libSVMPredictConduit parallelParams trees (radius params) sampleRate =$=
          mergeSource (labelSource $ labelFile params) =$
          oneVsRestPredict
            (Parser.modelName params)
@@ -125,7 +126,7 @@ main = do
            meanArr
            varArr =$=
          buildTreeConduit parallelParams =$=
-         libSVMPredictConduit parallelParams trees (radius params) =$=
+         libSVMPredictConduit parallelParams trees (radius params) sampleRate =$=
          mergeSource (labelSource $ labelFile params) =$
          oneVsRestPredict
            (Parser.modelName params)

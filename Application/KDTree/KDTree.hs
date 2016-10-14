@@ -9,17 +9,18 @@ module Application.KDTree.KDTree
   , dist
   ) where
 
+
+import           Application.KDTree.KdTreeStatic as KDT
 import           Control.DeepSeq
 import           Control.Monad.IO.Class
 import           Control.Parallel
 import           CV.Feature.PolarSeparable
 import           CV.Utility.Parallel
-import           Data.Array                as IA
+import           Data.Array                      as IA
 import           Data.Conduit
-import           Data.Conduit.List         as CL
-import           Data.KdTree.Static        as KDT
-import           Data.Vector.Unboxed       as VU
-import           Prelude                   as P
+import           Data.Conduit.List               as CL
+import           Data.Vector.Unboxed             as VU
+import           Prelude                         as P
 
 pointAsList :: PolarSeparableFeaturePoint -> [Double]
 pointAsList = VU.toList . feature
@@ -31,7 +32,7 @@ buildTreeConduit parallelParams = do
   xs <- CL.take (batchSize parallelParams)
   if P.length xs > 0
     then do
-      sourceList $ parMapChunk parallelParams rdeepseq ( buildWithDist pointAsList dist) xs
+      sourceList $ parMapChunk parallelParams rdeepseq ( KDT.buildWithDist pointAsList dist) xs
       buildTreeConduit parallelParams
     else return ()
 
@@ -42,7 +43,7 @@ similarity
   -> Int
   -> Double
 similarity (treeX, arrX) (treeY, arrY) radius sampleRate
-  | P.or . P.map ((== 0) . size) $ [treeX, treeY] = error "KdTree is empty."
+  | P.or . P.map ((== 0) . KDT.size) $ [treeX, treeY] = error "KdTree is empty."
   | otherwise = ((klDivergence xx yx) + (klDivergence yy xy)) / (-2) -- KL-divergence is always non-negative
   where
     (_, (nyX, nxX)) = bounds arrX
@@ -74,7 +75,7 @@ probabilityP tree xs radius
     error "Radius is too large. Found every point."
   | otherwise = P.map (\x -> (fromIntegral x) / (fromIntegral s)) num
   where
-    num = P.map (P.length . inRadius tree radius) xs
+    num = P.map (KDT.inRadiusCount tree radius) xs
     s = P.sum $!! num
 
 probabilityQ
@@ -86,7 +87,7 @@ probabilityQ tree xs radius
   | s == 0 = cycle [0]
   | otherwise = P.map (\x -> (fromIntegral x) / (fromIntegral s)) num
   where
-    num = P.map (P.length . inRadius tree radius) xs
+    num = P.map (KDT.inRadiusCount tree radius) xs
     s = P.sum $!! num
 
 klDivergence :: [Double] -> [Double] -> Double
@@ -101,3 +102,5 @@ dist xs ys =
   (VU.sum $ VU.map (^ 2) $ VU.zipWith (-) (feature xs) (feature ys))
   -- /
   -- (P.fromIntegral $ VU.length . feature $ xs)^2
+
+
