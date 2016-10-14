@@ -32,7 +32,7 @@ import           Prelude                            as P
 data PolarSeparableFeaturePoint = PolarSeparableFeaturePoint
   { x       :: Int
   , y       :: Int
-  , feature :: VU.Vector Double
+  , feature :: [Double]
   } deriving (Show, Read)
 
 instance NFData PolarSeparableFeaturePoint where
@@ -114,10 +114,7 @@ magnitudeConduitFloat parallelParams ctx filter factor meanArr varArr = do
               rdeepseq
               (P.zipWith
                  (\(x, y) z ->
-                     PolarSeparableFeaturePoint
-                       x
-                       y
-                       (VU.fromList . P.map float2Double $ z))
+                     PolarSeparableFeaturePoint x y (P.map float2Double z))
                  (range ((0, 0), (sizeX, sizeY))) .
                slice1D)
               arrList
@@ -143,7 +140,12 @@ magnitudeConduitDouble parallelParams ctx filter factor meanArr varArr = do
           scale = getScale . getParams $ filter
           nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4)
           nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
-          ys = parMapChunk parallelParams rdeepseq (\x -> P.map (slice2D x) [0 .. nfOld]) xs
+          ys =
+            parMapChunk
+              parallelParams
+              rdeepseq
+              (\x -> P.map (slice2D x) [0 .. nfOld])
+              xs
           zs =
             if factor == 1
               then P.map
@@ -151,7 +153,7 @@ magnitudeConduitDouble parallelParams ctx filter factor meanArr varArr = do
                       multiGPUStream
                         ctx
                         (applyFilter filter >-> A.map A.magnitude >->
-                         A.zipWith3 (\m v x -> (x-m) / v) meanArr varArr >->
+                         A.zipWith3 (\m v x -> (x - m) / v) meanArr varArr >->
                          crop25D
                            (div (nx - nxNew) 2)
                            (div (ny - nyNew) 2)
@@ -166,7 +168,7 @@ magnitudeConduitDouble parallelParams ctx filter factor meanArr varArr = do
                       multiGPUStream
                         ctx
                         (applyFilter filter >-> A.map A.magnitude >->
-                         A.zipWith3 (\m v x -> (x - m ) / v) meanArr varArr >->
+                         A.zipWith3 (\m v x -> (x - m) / v) meanArr varArr >->
                          crop25D
                            (div (nx - nxNew) 2)
                            (div (ny - nyNew) 2)
@@ -191,17 +193,13 @@ magnitudeConduitDouble parallelParams ctx filter factor meanArr varArr = do
                      AU.assocs $
                      arr)
                  [0,1 ..]) $!!
-              zs :: [AU.Array (Int, Int, Int) Double]
+            zs :: [AU.Array (Int, Int, Int) Double]
           result =
             parMapChunk
               parallelParams
               rdeepseq
               (P.zipWith
-                 (\(x, y) z ->
-                     PolarSeparableFeaturePoint
-                       x
-                       y
-                       (VU.fromList z))
+                 (\(x, y) z -> PolarSeparableFeaturePoint x y z)
                  (range ((0, 0), (sizeX, sizeY))) .
                slice1D)
               arrList
@@ -209,8 +207,3 @@ magnitudeConduitDouble parallelParams ctx filter factor meanArr varArr = do
       liftIO $ performGCCtx ctx
       magnitudeConduitDouble parallelParams ctx filter factor meanArr varArr
     else return ()
-
-
-
-
-

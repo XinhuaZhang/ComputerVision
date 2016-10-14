@@ -19,11 +19,10 @@ import           CV.Utility.Parallel
 import           Data.Array                      as IA
 import           Data.Conduit
 import           Data.Conduit.List               as CL
-import           Data.Vector.Unboxed             as VU
 import           Prelude                         as P
 
 pointAsList :: PolarSeparableFeaturePoint -> [Double]
-pointAsList = VU.toList . feature
+pointAsList = feature
 
 buildTreeConduit
   :: ParallelParams
@@ -32,7 +31,7 @@ buildTreeConduit parallelParams = do
   xs <- CL.take (batchSize parallelParams)
   if P.length xs > 0
     then do
-      sourceList $ parMapChunk parallelParams rdeepseq ( KDT.buildWithDist pointAsList dist) xs
+      sourceList $ parMapChunk parallelParams rdeepseq (KDT.build pointAsList) xs
       buildTreeConduit parallelParams
     else return ()
 
@@ -99,7 +98,7 @@ klDivergence xs ys =
 
 dist :: PolarSeparableFeaturePoint -> PolarSeparableFeaturePoint -> Double
 dist xs ys =
-  (VU.sum $ VU.map (^ 2) $ VU.zipWith (-) (feature xs) (feature ys))
+  (P.sum $ P.map (^ 2) $ P.zipWith (-) (feature xs) (feature ys))
   -- /
   -- (P.fromIntegral $ VU.length . feature $ xs)^2
 
