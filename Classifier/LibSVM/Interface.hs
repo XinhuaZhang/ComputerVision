@@ -335,6 +335,6 @@ getPreComputedKernelFeatureVecPtr idx xs =
                        C'svm_node (P.fromIntegral i)
                                   (realToFrac x))
                     (V.generate (P.length xs)
-                                id)
+                                (\i -> i + 1))
                     (V.fromList $ xs)
         max = P.maximum xs
