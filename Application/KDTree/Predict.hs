@@ -43,16 +43,6 @@ main = do
         , getAngularFreq = S.fromDistinctAscList [0 .. 3]
         , getName = Pinwheels
         }
-      trainParams =
-        TrainParams
-        { svmType = C_SVC
-        , kernelType = PRECOMPUTED
-        , SVM.modelName = Parser.modelName params
-        , numFeature = getFilterNum filterParams
-        , SVM.c = Parser.c params
-        , eps = 0.001
-        , nu = 0.5
-        }
   ctx <- initializeGPUCtx (Option $ gpuId params)
   print params
   points <- decodeFile (treeFile params) :: IO [[PolarSeparableFeaturePoint]]

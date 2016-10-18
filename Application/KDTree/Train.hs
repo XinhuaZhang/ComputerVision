@@ -38,8 +38,8 @@ main = do
         PolarSeparableFilterParams
         { getRadius = 128
         , getScale = S.fromDistinctAscList [8]
-        , getRadialFreq = S.fromDistinctAscList [0 .. 7]
-        , getAngularFreq = S.fromDistinctAscList [0 .. 7]
+        , getRadialFreq = S.fromDistinctAscList [0 .. 3]
+        , getAngularFreq = S.fromDistinctAscList [0 .. 3]
         , getName = Pinwheels
         }
       trainParams =
@@ -85,16 +85,16 @@ main = do
            filters
            (downsampleFactor params)
            meanArr
-           varArr =$= featurePointSink (treeFile params)
-         -- buildTreeConduit parallelParams =$=
-         -- libSVMTrainSink
-         --   (labelFile params)
-         --   parallelParams
-         --   trainParams
-         --   (radius params)
-         --   sampleRate
-         --   (treeFile params)
-    -- testSink
+           varArr =$=  -- testConduit parallelParams =$= featurePointSink (treeFile params)
+         buildTreeConduit parallelParams =$=
+         libSVMTrainSink
+           (labelFile params)
+           parallelParams
+           trainParams
+           (radius params)
+           sampleRate
+           (treeFile params)
+         -- testSink
     GPUDouble ->
       let filters =
             makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))

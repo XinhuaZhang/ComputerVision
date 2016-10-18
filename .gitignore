@@ -30,3 +30,4 @@ model_*
 *.data
 /Application/FilterStatistics/run
 /Application/KDTree/model.out
+downsample*
