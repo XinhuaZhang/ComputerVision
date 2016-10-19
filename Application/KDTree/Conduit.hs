@@ -7,6 +7,7 @@ import           Control.DeepSeq
 import           Control.Monad                   as M
 import           Control.Monad.IO.Class          (liftIO)
 import qualified Control.Monad.Parallel          as MP
+import           Control.Parallel.Strategies
 import           CV.Feature.PolarSeparable
 import           CV.Image
 import           CV.Utility.Parallel
@@ -19,6 +20,12 @@ import           Foreign
 import           GHC.Float
 import           Prelude                         as P
 import           Text.Printf                     (printf)
+
+testConduit :: (NFData a) => ParallelParams -> Conduit a IO a
+testConduit parallelParams = do xs <- CL.take (batchSize parallelParams)
+                                if P.length xs > 0
+                                   then sourceList $!! xs
+                                   else return ()
 
 grayImage2FloatArrayConduit :: Conduit GrayImage IO (AU.Array (Int, Int, Int) Float)
 grayImage2FloatArrayConduit =
@@ -68,7 +75,10 @@ libSVMTrainSink labelPath parallelParams trainParams radius sampleRate treeFileP
         parMapChunk
           parallelParams
           rdeepseq
-          (\(x, y) -> similarity x y radius sampleRate) $!!
+          (\(x, y) -> similarity x y radius sampleRate) $
+        (\xs ->
+            withStrategy
+              (parListChunk (div (P.length xs) (batchSize parallelParams)) rdeepseq) xs) $
         [ (x, y)
         | x <- treeArrPair
         , y <- treeArrPair ]
@@ -77,7 +87,7 @@ libSVMTrainSink labelPath parallelParams trainParams radius sampleRate treeFileP
     MP.sequence $
     P.zipWith getPreComputedKernelFeatureVecPtr [1 ..] $ sp (P.length trees) kernel
   liftIO $ oneVsRestTrain trainParams label kernelPtr
-  liftIO $ encodeFile treeFilePath (P.map KDT.toList trees)
+  liftIO $ writeKdTree treeFilePath trees
   where
     sp _len [] = []
     sp len xs = as : sp len bs
@@ -90,29 +100,29 @@ libSVMPredictConduit
   -> Double
   -> Int
   -> Conduit (KdTree Double PolarSeparableFeaturePoint) IO (Ptr C'svm_node)
-libSVMPredictConduit parallelParams trees1 radius sampleRate = do
-  trees2 <- CL.take (batchSize parallelParams)
-  if P.length trees2 > 0
+libSVMPredictConduit parallelParams trainTrees radius sampleRate = do
+  testTrees <- CL.take (batchSize parallelParams)
+  if P.length testTrees > 0
     then do
       let treeIdx1 =
             P.map (\(PolarSeparableFeaturePoint i j _) -> (i, j)) .
             KDT.toList . P.head $
-            trees1
+            trainTrees
           lb1 = (\(xs, ys) -> ((P.minimum xs), (P.minimum ys))) . P.unzip $ treeIdx1
           ub1 = (\(xs, ys) -> ((P.maximum xs), (P.maximum ys))) . P.unzip $ treeIdx1
           arr1 =
             parMapChunk
               parallelParams
               rseq
-              (IA.array (lb2, ub2) .
+              (IA.array (lb1, ub1) .
                P.map (\p@(PolarSeparableFeaturePoint i j _) -> ((i, j), p)) .
                KDT.toList)
-              trees1
-          treeArrPair1 = P.zip trees1 arr1
+              trainTrees
+          treeArrPair1 = P.zip trainTrees arr1
           treeIdx2 =
             P.map (\(PolarSeparableFeaturePoint i j _) -> (i, j)) .
             KDT.toList . P.head $
-            trees2
+            testTrees
           lb2 = (\(xs, ys) -> ((P.minimum xs), (P.minimum ys))) . P.unzip $ treeIdx2
           ub2 = (\(xs, ys) -> ((P.maximum xs), (P.maximum ys))) . P.unzip $ treeIdx2
           arr2 =
@@ -122,18 +132,34 @@ libSVMPredictConduit parallelParams trees1 radius sampleRate = do
               (IA.array (lb2, ub2) .
                P.map (\p@(PolarSeparableFeaturePoint i j _) -> ((i, j), p)) .
                KDT.toList)
-              trees2
-          treeArrPair2 = P.zip trees2 arr2
+              testTrees
+          treeArrPair2 = P.zip testTrees arr2
+          pairs =
+            (\xs ->
+                withStrategy
+                  (parListChunk (div (P.length xs) (batchSize parallelParams)) rdeepseq)
+                  xs) $
+            [ (x, y)
+            | x <- treeArrPair2
+            , y <- treeArrPair1 ]
           feature =
             parMapChunk
               parallelParams
               rdeepseq
-              (\x -> P.map (\y -> similarity x y radius sampleRate) treeArrPair1)
-              treeArrPair2
-      ptrs <- liftIO $ MP.mapM (getPreComputedKernelFeatureVecPtr (-1)) feature
+              (\(x, y) -> similarity x y radius sampleRate)
+              pairs
+      ptrs <-
+        liftIO $
+        P.mapM (getPreComputedKernelFeatureVecPtr (-1)) $
+        sp (P.length treeArrPair1) feature
       sourceList ptrs
-      libSVMPredictConduit parallelParams trees1 radius sampleRate
+      libSVMPredictConduit parallelParams trainTrees radius sampleRate
     else return ()
+  where
+    sp _len [] = []
+    sp len xs = as : sp len bs
+      where
+        (as, bs) = P.splitAt len xs
 
 
 testSink :: Sink (KdTree Double PolarSeparableFeaturePoint) IO ()
@@ -150,29 +176,7 @@ testSink = do
           hehe1 = P.replicate 1 (tree1,arr1)
           hehe2 = P.replicate 1 (tree2,arr2)
       liftIO $ print . size $ tree2
-      liftIO $ P.mapM_  print $ P.zipWith (\x y -> similarity x y 1 11) hehe1 hehe2
+      liftIO $ P.mapM_  print $ P.zipWith (\x y -> similarity x y 3 11) hehe1 hehe2
       return ()
     else return ()
-  -- ys <- consume
-  -- let trees = xs P.++ ys
-  --     kernel =
-  --       parMap rdeepseq (\(x, y) -> similarity x y 10) $!!
-  --       [ (x, y)
-  --       | x <- trees
-  --       , y <- trees ]
-  -- kernelPtr <-
-  --   liftIO $
-  --   MP.sequence $
-  --   P.zipWith getPreComputedKernelFeatureVecPtr [1 ..] $ sp (P.length trees) kernel
-  -- liftIO $
-  --   P.mapM_
-  --     (\xs -> do
-  --        P.mapM_ (printf "%0.2f ") xs
-  --        putStrLn "") $
-  --   sp (P.length trees) kernel
-  -- return []
-  -- where
-  --   sp _len [] = []
-  --   sp len xs = as : sp len bs
-  --     where
-  --       (as, bs) = P.splitAt len xs
+

@@ -45,7 +45,7 @@ main = do
         }
   ctx <- initializeGPUCtx (Option $ gpuId params)
   print params
-  points <- decodeFile (treeFile params) :: IO [[PolarSeparableFeaturePoint]]
+  trees <- readKdTree (treeFile params) 
   labels <- readLabelFile (labelFile params)
   filterStats <-
     readFilterStats $
@@ -53,9 +53,7 @@ main = do
     "S" P.++
     (show $ S.toList $ getScale filterParams) P.++
     "MeanVar.data"
-  let trees =
-        parMapChunk parallelParams rdeepseq (build pointAsList) $ points
-      (labelMin, labelMax) =
+  let (labelMin, labelMax) =
         (P.round $ P.minimum labels, P.round $ P.maximum labels)
   case gpuDataType params of
     GPUFloat ->
