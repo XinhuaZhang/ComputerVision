@@ -266,9 +266,7 @@ oneVsRestPredict modelName output (labelMin,labelMax) =
      let percent = (fromIntegral correct) / (fromIntegral total) * 100
          str = show percent
      liftIO $ putStrLn str
-     h <- liftIO $ openFile output WriteMode
-     liftIO $ hPutStrLn h str
-     liftIO $ hClose h
+     liftIO $ writeFile output str
   where func :: [Ptr C'svm_model]
              -> (Int,Int)
              -> (Double,Ptr C'svm_node)
@@ -335,6 +333,6 @@ getPreComputedKernelFeatureVecPtr idx xs =
                        C'svm_node (P.fromIntegral i)
                                   (realToFrac x))
                     (V.generate (P.length xs)
-                                (\i -> i + 1))
+                                (\i -> i + 1)) 
                     (V.fromList $ xs)
         max = P.maximum xs

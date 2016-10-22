@@ -7,9 +7,12 @@ module Application.KDTree.KDTree
   , similarity
   , pointAsList
   , dist
+  , writeKdTree
+  , readKdTree
   ) where
 
 
+import           Application.KDTree.KdMapStatic  as KDM
 import           Application.KDTree.KdTreeStatic as KDT
 import           Control.DeepSeq
 import           Control.Monad.IO.Class
@@ -17,13 +20,15 @@ import           Control.Parallel
 import           CV.Feature.PolarSeparable
 import           CV.Utility.Parallel
 import           Data.Array                      as IA
+import           Data.Binary
+import           Data.Binary.Get
+import           Data.Binary.Put
 import           Data.Conduit
 import           Data.Conduit.List               as CL
-import           Data.Vector.Unboxed             as VU
 import           Prelude                         as P
 
 pointAsList :: PolarSeparableFeaturePoint -> [Double]
-pointAsList = VU.toList . feature
+pointAsList = feature
 
 buildTreeConduit
   :: ParallelParams
@@ -32,7 +37,7 @@ buildTreeConduit parallelParams = do
   xs <- CL.take (batchSize parallelParams)
   if P.length xs > 0
     then do
-      sourceList $ parMapChunk parallelParams rdeepseq ( KDT.buildWithDist pointAsList dist) xs
+      sourceList $ parMapChunk parallelParams rdeepseq (KDT.build pointAsList) xs
       buildTreeConduit parallelParams
     else return ()
 
@@ -44,8 +49,11 @@ similarity
   -> Double
 similarity (treeX, arrX) (treeY, arrY) radius sampleRate
   | P.or . P.map ((== 0) . KDT.size) $ [treeX, treeY] = error "KdTree is empty."
-  | otherwise = ((klDivergence xx yx) + (klDivergence yy xy)) / (-2) -- KL-divergence is always non-negative
+  | P.or . P.map (<sampleRate) $ [nyX,nxX,nyY,nxY] = error $ "The kdTree is smaller than the sampling grid. " P.++ (show nxX) P.++ " " P.++ (show nyX) P.++ " " P.++ (show nxY) P.++ " " P.++ (show nyY) P.++ " vs " P.++ (show sampleRate)
+  | otherwise = par hehe (pseq haha (2 / (hehe + haha + 0.001)))  -- KL-divergence is always non-negative
   where
+    hehe = (klDivergence xx yx)
+    haha = (klDivergence yy xy)
     (_, (nyX, nxX)) = bounds arrX
     intervalxX = div nxX sampleRate
     intervalyX = div nyX sampleRate
@@ -99,8 +107,21 @@ klDivergence xs ys =
 
 dist :: PolarSeparableFeaturePoint -> PolarSeparableFeaturePoint -> Double
 dist xs ys =
-  (VU.sum $ VU.map (^ 2) $ VU.zipWith (-) (feature xs) (feature ys))
+  (P.sum $ P.map (^ 2) $ P.zipWith (-) (feature xs) (feature ys))
   -- /
   -- (P.fromIntegral $ VU.length . feature $ xs)^2
 
 
+writeKdTree :: FilePath -> [KdTree Double PolarSeparableFeaturePoint] -> IO ()
+writeKdTree filePath =
+  encodeFile filePath . P.map (\(KdTree (KdMap _ _ node size)) -> (node, size))
+
+
+readKdTree :: FilePath -> IO [KdTree Double PolarSeparableFeaturePoint]
+readKdTree filePath = do
+  pairs <- decodeFile filePath
+  return $
+    P.map
+      (\(node, size) ->
+          KdTree (KdMap pointAsList (KDT.defaultSqrDist pointAsList) node size))
+      pairs

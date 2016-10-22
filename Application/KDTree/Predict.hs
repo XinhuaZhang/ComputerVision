@@ -3,6 +3,7 @@ module Main where
 import           Application.KDTree.ArgsParser      as Parser
 import           Application.KDTree.Conduit
 import           Application.KDTree.KDTree
+import           Application.KDTree.KdTreeStatic    as KDT
 import           Classifier.LibSVM                  as SVM
 import           CV.CUDA.Context
 import           CV.CUDA.DataType
@@ -14,9 +15,9 @@ import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
 import           Data.Array.Accelerate              as A
 import           Data.Array.Accelerate.Data.Complex as A
+import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
-import           Application.KDTree.KdTreeStatic                 as KDT
 import qualified Data.Set                           as S
 import           GHC.Float
 import           Prelude                            as P
@@ -28,8 +29,7 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  let sampleRate = 11
-      parallelParams =
+  let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
         , Parallel.batchSize = Parser.batchSize params
@@ -42,19 +42,9 @@ main = do
         , getAngularFreq = S.fromDistinctAscList [0 .. 3]
         , getName = Pinwheels
         }
-      trainParams =
-        TrainParams
-        { svmType = C_SVC
-        , kernelType = PRECOMPUTED
-        , SVM.modelName = Parser.modelName params
-        , numFeature = getFilterNum filterParams
-        , SVM.c = Parser.c params
-        , eps = 0.001
-        , nu = 0.5
-        }
   ctx <- initializeGPUCtx (Option $ gpuId params)
   print params
-  strs <- readFile (treeFile params)
+  trees <- readKdTree (treeFile params) 
   labels <- readLabelFile (labelFile params)
   filterStats <-
     readFilterStats $
@@ -62,10 +52,7 @@ main = do
     "S" P.++
     (show $ S.toList $ getScale filterParams) P.++
     "MeanVar.data"
-  let trees =
-        parMapChunk parallelParams rdeepseq (build pointAsList) $
-        (read strs :: [[PolarSeparableFeaturePoint]])
-      (labelMin, labelMax) =
+  let (labelMin, labelMax) =
         (P.round $ P.minimum labels, P.round $ P.maximum labels)
   case gpuDataType params of
     GPUFloat ->
@@ -94,7 +81,7 @@ main = do
            meanArr
            varArr =$=
          buildTreeConduit parallelParams =$=
-         libSVMPredictConduit parallelParams trees (radius params) sampleRate =$=
+         libSVMPredictConduit parallelParams trees (radius params) (sampleRate params) =$=
          mergeSource (labelSource $ labelFile params) =$
          oneVsRestPredict
            (Parser.modelName params)
@@ -126,7 +113,7 @@ main = do
            meanArr
            varArr =$=
          buildTreeConduit parallelParams =$=
-         libSVMPredictConduit parallelParams trees (radius params) sampleRate =$=
+         libSVMPredictConduit parallelParams trees (radius params) (sampleRate params) =$=
          mergeSource (labelSource $ labelFile params) =$
          oneVsRestPredict
            (Parser.modelName params)

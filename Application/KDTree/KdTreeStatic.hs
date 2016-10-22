@@ -65,7 +65,7 @@ import qualified Data.Foldable as F
 import Prelude hiding (null)
 
 import qualified Application.KDTree.KdMapStatic as KDM
-import Data.KdMap.Static (PointAsListFn, SquaredDistanceFn, defaultSqrDist)
+import Application.KDTree.KdMapStatic (PointAsListFn, SquaredDistanceFn, defaultSqrDist)
 
 -- $intro
 --

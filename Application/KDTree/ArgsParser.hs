@@ -22,6 +22,7 @@ data Flag
   | Radius Double
   | DownsampleFactor Int
   | TreeFile String
+  | SampleRate Int
   deriving (Show)
 
 data Params = Params
@@ -37,6 +38,7 @@ data Params = Params
   , radius           :: Double
   , downsampleFactor :: Int
   , treeFile         :: String
+  , sampleRate       :: Int
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -89,6 +91,11 @@ options =
       (ReqArg (\x -> DownsampleFactor $ readInt x) "INT")
       "Set the DownsampleFactor (Default 1)"
   , Option ['z'] ["treeFile"] (ReqArg TreeFile "FILE") "Tree data file."
+  , Option
+      ['s']
+      ["sampleRate"]
+      (ReqArg (\x -> SampleRate $ readInt x) "INT")
+      "Set the sampleRate."
   ]
 
 readInt :: String -> Int
@@ -130,6 +137,7 @@ parseFlag flags = go flags defaultFlag
       , radius = 10
       , downsampleFactor = 1
       , treeFile = "featurePoints.dat"
+      , sampleRate = 11
       }
     go [] params = params
     go (x:xs) params =
@@ -206,6 +214,7 @@ parseFlag flags = go flags defaultFlag
             (params
              { treeFile = str
              })
+        SampleRate x -> go xs (params {sampleRate = x})
 
 parseArgs :: [String] -> IO Params
 parseArgs args = do
