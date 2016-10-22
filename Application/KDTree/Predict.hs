@@ -29,8 +29,7 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  let sampleRate = 11
-      parallelParams =
+  let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
         , Parallel.batchSize = Parser.batchSize params
@@ -82,7 +81,7 @@ main = do
            meanArr
            varArr =$=
          buildTreeConduit parallelParams =$=
-         libSVMPredictConduit parallelParams trees (radius params) sampleRate =$=
+         libSVMPredictConduit parallelParams trees (radius params) (sampleRate params) =$=
          mergeSource (labelSource $ labelFile params) =$
          oneVsRestPredict
            (Parser.modelName params)
@@ -114,7 +113,7 @@ main = do
            meanArr
            varArr =$=
          buildTreeConduit parallelParams =$=
-         libSVMPredictConduit parallelParams trees (radius params) sampleRate =$=
+         libSVMPredictConduit parallelParams trees (radius params) (sampleRate params) =$=
          mergeSource (labelSource $ labelFile params) =$
          oneVsRestPredict
            (Parser.modelName params)

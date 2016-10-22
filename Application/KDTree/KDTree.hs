@@ -49,7 +49,7 @@ similarity
   -> Double
 similarity (treeX, arrX) (treeY, arrY) radius sampleRate
   | P.or . P.map ((== 0) . KDT.size) $ [treeX, treeY] = error "KdTree is empty."
-  | P.or . P.map (<sampleRate) $ [nyX,nxX,nyY,nxY] = error "The kdTree is smaller than the sampling grid."
+  | P.or . P.map (<sampleRate) $ [nyX,nxX,nyY,nxY] = error $ "The kdTree is smaller than the sampling grid. " P.++ (show nxX) P.++ " " P.++ (show nyX) P.++ " " P.++ (show nxY) P.++ " " P.++ (show nyY) P.++ " vs " P.++ (show sampleRate)
   | otherwise = par hehe (pseq haha (2 / (hehe + haha + 0.001)))  -- KL-divergence is always non-negative
   where
     hehe = (klDivergence xx yx)

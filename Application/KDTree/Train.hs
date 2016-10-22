@@ -28,8 +28,7 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  let sampleRate = 11
-      parallelParams =
+  let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
         , Parallel.batchSize = Parser.batchSize params
@@ -92,7 +91,7 @@ main = do
            parallelParams
            trainParams
            (radius params)
-           sampleRate
+           (sampleRate params)
            (treeFile params)
          -- testSink
     GPUDouble ->
@@ -126,6 +125,6 @@ main = do
            parallelParams
            trainParams
            (radius params)
-           sampleRate
+           (sampleRate params)
            (treeFile params)
   destoryGPUCtx ctx

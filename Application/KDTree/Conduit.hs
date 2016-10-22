@@ -176,7 +176,8 @@ testSink = do
           hehe1 = P.replicate 1 (tree1,arr1)
           hehe2 = P.replicate 1 (tree2,arr2)
       liftIO $ print . size $ tree2
-      liftIO $ P.mapM_  print $ P.zipWith (\x y -> similarity x y 3 11) hehe1 hehe2
+      liftIO . print $ KDT.inRadiusCount tree2 1.5 (P.head . KDT.toList $ tree1)
+      -- liftIO $ P.mapM_  print $ P.zipWith (\x y -> similarity x y 0.05 11) hehe1 hehe2
       return ()
     else return ()
 
