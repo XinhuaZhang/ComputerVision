@@ -8,9 +8,20 @@ import           GHC.Generics
 import           Prelude                  as P
 
 
+newtype Model a =
+  Model (Double,a)
+  deriving (Show,Generic)
+
+instance (Binary a) =>
+         Binary (Model a) where
+  put (Model x) = put x
+  get =
+    do x <- get
+       return $ Model x
+
 data MixtureModel a =
   MixtureModel {numModel :: Int
-               ,model    :: V.Vector (Double,a)}
+               ,model    :: V.Vector (Model a)}
   deriving (Show,Generic)
 
 instance (Binary a) =>
@@ -23,5 +34,5 @@ instance (Binary a) =>
        xs <- get
        return (MixtureModel numModel'
                             (V.fromList xs))
-                            
+
 
