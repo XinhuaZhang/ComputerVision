@@ -29,3 +29,5 @@ model_*
 /Application/FilterStatistics/main
 *.data
 /Application/FilterStatistics/run
+downsample*
+*.out
