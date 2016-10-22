@@ -1,7 +1,15 @@
-module Application.GMM.GMM where
+{-# LANGUAGE BangPatterns #-}
+module Application.GMM.GMM
+  (assignGMM
+  ,getNK
+  ,updateMuGMM
+  ,updateSigmaGMM
+  ,updateWGMM)
+  where
 
 import           Application.GMM.Gaussian
 import           Application.GMM.MixtureModel
+import           CV.Utility.Parallel
 import           Data.Binary
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
@@ -9,10 +17,113 @@ import           GHC.Generics
 import           Prelude                      as P
 
 type GMM = MixtureModel Gaussian
+type GMMData = VU.Vector Double
+type GMMParameters = VU.Vector Double
+type Assignment = V.Vector Double
 
-assignModelGMM
-  :: GMM -> Model Gaussian -> VU.Vector Double -> Double
-assignModelGMM (MixtureModel n modelVec) (Model (wk,mk)) xs =
-  (wk * gaussian mk xs)
-  where z =
-          V.foldl' (\v (Model (wj,mj)) -> v + (wj * gaussian mj xs)) 0 modelVec
+
+
+assignGMM
+  :: ParallelParams -> GMM -> V.Vector GMMData -> (V.Vector Assignment, V.Vector Double)
+assignGMM parallelParams (MixtureModel n modelVec) xs =
+  (parZipWithChunkVector
+     parallelParams
+     rdeepseq
+     (\x z -> V.map (\(Model (wk,mk)) -> (wk * gaussian mk x) / z) modelVec)
+     xs
+     zs
+  ,zs)
+  where !zs =
+          parMapChunkVector
+            parallelParams
+            rdeepseq
+            (\x ->
+               V.foldl' (\v (Model (wj,mj)) -> v + (wj * gaussian mj x)) 0 modelVec)
+            xs
+
+getNK :: V.Vector Assignment -> V.Vector Double
+getNK = V.foldl1' (V.zipWith (+))
+
+
+updateMuKGMM
+  :: V.Vector GMMData -> Assignment -> Double -> GMMParameters
+updateMuKGMM xs assignment nk =
+  VU.map (/ nk) .
+  (V.foldl1' (VU.zipWith (+)) . V.zipWith (\a x -> VU.map (* a) x) assignment) $
+  xs
+
+updateMuGMM :: ParallelParams
+            -> V.Vector GMMData
+            -> V.Vector Assignment
+            -> V.Vector Double
+            -> V.Vector GMMParameters
+updateMuGMM parallelParams xs assignments nks =
+  parZipWithChunkVector parallelParams
+                        rdeepseq
+                        (updateMuKGMM xs)
+                        assignments
+                        nks
+
+updateSigmaKGMM :: V.Vector GMMData
+                -> Assignment
+                -> Double
+                -> GMMParameters
+                -> GMMParameters
+updateSigmaKGMM xs assignment nk newMuK =
+  VU.map (/ nk) .
+  (V.foldl1' (VU.zipWith (+)) .
+   V.zipWith (\a x ->
+                VU.map (* a) .
+                VU.zipWith (\mu y -> (y - mu) ^ 2)
+                           newMuK $
+                x)
+             assignment) $
+  xs
+  
+updateSigmaGMM :: ParallelParams
+               -> V.Vector GMMData
+               -> V.Vector Assignment
+               -> V.Vector Double
+               -> V.Vector GMMParameters
+               -> V.Vector GMMParameters
+updateSigmaGMM parallelParams xs assignments nks newMu =
+  parZipWith3ChunkVector parallelParams
+                         rdeepseq
+                         (updateSigmaKGMM xs)
+                         assignments
+                         nks
+                         newMu
+                         
+updateWGMM
+  :: Int -> V.Vector Double -> V.Vector Double
+updateWGMM n = V.map (/ fromIntegral n)
+
+
+getLiklihood :: V.Vector Double -> Double
+getLiklihood = V.foldl' (\a b -> a + log b) 0
+
+
+-- EM algorithm
+em
+  :: ParallelParams -> V.Vector GMMData -> GMM -> Double -> GMM
+em parallelParams xs models threshold
+  | getLiklihood zs > threshold = models
+  | otherwise =
+    MixtureModel (numModel models) $
+    V.zipWith3
+      (\w mu sigma ->
+         Model (w
+               ,Gaussian (numDims . snd . (\(Model x) -> x) . V.head . model $
+                          models)
+                         mu
+                         sigma))
+      newW
+      newMu
+      newSigma
+  where (assignments,zs) = assignGMM parallelParams models xs
+        nks = getNK assignments
+        newMu = updateMuGMM parallelParams xs assignments nks
+        newSigma = updateSigmaGMM parallelParams xs assignments nks newMu
+        newW =
+          updateWGMM (V.length xs)
+                     nks

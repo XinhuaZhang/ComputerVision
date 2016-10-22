@@ -26,6 +26,33 @@ parMapChunkVector :: ParallelParams
                   -> V.Vector b
 parMapChunkVector ParallelParams {numThread = nt} strat f xs =
   ((withStrategy (parVectorChunk (div (V.length xs) nt) strat)) . (V.map f)) xs
+  
+parZipWithChunkVector :: ParallelParams
+                      -> Strategy c
+                      -> (a -> b -> c)
+                      -> V.Vector a
+                      -> V.Vector b
+                      -> V.Vector c
+parZipWithChunkVector ParallelParams{numThread = nt} strat f xs ys =
+  (withStrategy
+     (parVectorChunk (div (V.length xs) nt)
+                     strat)) .
+  (V.zipWith f xs) $
+  ys
+  
+parZipWith3ChunkVector :: ParallelParams
+                       -> Strategy d
+                       -> (a -> b -> c -> d)
+                       -> V.Vector a
+                       -> V.Vector b
+                       -> V.Vector c
+                       -> V.Vector d
+parZipWith3ChunkVector ParallelParams{numThread = nt} strat f xs ys zs =
+  (withStrategy
+     (parVectorChunk (div (V.length xs) nt)
+                     strat)) .
+  (V.zipWith3 f xs ys) $
+  zs
 
 vectorChunk
   :: Int -> V.Vector a -> [V.Vector a]
