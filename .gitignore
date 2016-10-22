@@ -31,3 +31,6 @@ model_*
 /Application/FilterStatistics/run
 downsample*
 *.out
+*.png
+/Application/FeatureHistogram/main
+/Application/KDTree/run1
