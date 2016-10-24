@@ -19,14 +19,29 @@ parMapChunk ParallelParams {numThread = nt} strat f xs =
   ((withStrategy (parListChunk (div (P.length xs) nt) strat)) . (P.map f)) xs
 
 {- Boxed Vector -}
+parMapVector
+  :: Strategy b -> (a -> b) -> V.Vector a -> V.Vector b
+parMapVector strat f = withStrategy (parTraversable strat) . V.map f
+
 parMapChunkVector :: ParallelParams
                   -> Strategy b
                   -> (a -> b)
                   -> V.Vector a
                   -> V.Vector b
-parMapChunkVector ParallelParams {numThread = nt} strat f xs =
-  ((withStrategy (parVectorChunk (div (V.length xs) nt) strat)) . (V.map f)) xs
+parMapChunkVector ParallelParams{numThread = nt} strat f xs =
+  ((withStrategy
+      (parVectorChunk (div (V.length xs) nt)
+                      strat)) .
+   (V.map f)) xs
   
+parZipWithVector :: Strategy c
+                 -> (a -> b -> c)
+                 -> V.Vector a
+                 -> V.Vector b
+                 -> V.Vector c
+parZipWithVector strat f xs =
+  withStrategy (parTraversable strat) . V.zipWith f xs
+
 parZipWithChunkVector :: ParallelParams
                       -> Strategy c
                       -> (a -> b -> c)
@@ -40,6 +55,16 @@ parZipWithChunkVector ParallelParams{numThread = nt} strat f xs ys =
   (V.zipWith f xs) $
   ys
   
+
+parZipWith3Vector :: Strategy d
+                  -> (a -> b -> c -> d)
+                  -> V.Vector a
+                  -> V.Vector b
+                  -> V.Vector c
+                  -> V.Vector d
+parZipWith3Vector start f xs ys =
+  withStrategy (parTraversable start) . V.zipWith3 f xs ys                       
+
 parZipWith3ChunkVector :: ParallelParams
                        -> Strategy d
                        -> (a -> b -> c -> d)
@@ -67,3 +92,4 @@ parVectorChunk n strat xs
   | n <= 1 = parTraversable strat xs
   | otherwise =
     fmap V.concat $ parTraversable (evalTraversable strat) (vectorChunk n xs)
+
