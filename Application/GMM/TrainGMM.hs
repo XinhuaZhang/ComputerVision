@@ -15,9 +15,9 @@ import           Data.Array.Accelerate.Data.Complex as A
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.Set                           as S
+import           Data.Vector                        as V
 import           Prelude                            as P
 import           System.Environment
-import Data.Vector as V
 
 main =
   do args <- getArgs
@@ -48,7 +48,10 @@ main =
                                   ctx
                                   filters
                                   (downsampleFactor params) =$=
-            CL.map (V.fromList $
+            CL.map (V.fromList .
                     P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-            gmmSink parallelParams models threshold filePath
+            gmmSink parallelParams
+                    (numGaussian params)
+                    (threshold params)
+                    (gmmFile params)
      destoryGPUCtx ctx

@@ -21,6 +21,8 @@ data Flag
   | GPUDataType String
   | DownsampleFactor Int
   | GMMFile String
+  | Threshold Double
+  | NumGaussian Int
   deriving (Show)
 
 data Params = Params
@@ -34,7 +36,9 @@ data Params = Params
   , gpuId            :: [Int]
   , gpuDataType      :: GPUDataType
   , downsampleFactor :: Int
-  , gmmFile         :: String
+  , gmmFile          :: String
+  , threshold        :: Double
+  , numGaussian      :: Int
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -89,7 +93,15 @@ options =
   ,Option ['z']
           ["GMMFile"]
           (ReqArg GMMFile "FILE")
-          "Tree data file."]
+          "Tree data file."
+  ,Option ['h']
+          ["threshold"]
+          (ReqArg (\x -> Threshold $ readDouble x) "DOUBLE")
+          "Set the stoppint criteria."
+  ,Option ['n']
+          ["numGaussian"]
+          (ReqArg (\x -> NumGaussian $ readInt x) "INT")
+          "Set the number of Gaussian in GMM."]
 
 readInt :: String -> Int
 readInt str =
@@ -126,7 +138,9 @@ parseFlag flags = go flags defaultFlag
                  ,gpuId = [0]
                  ,gpuDataType = GPUFloat
                  ,downsampleFactor = 1
-                 ,gmmFile = "gmm.dat"}
+                 ,gmmFile = "gmm.dat"
+                 ,threshold = 0.5
+                 ,numGaussian = 1}
         go [] params = params
         go (x:xs) params =
           case x of
@@ -142,6 +156,8 @@ parseFlag flags = go flags defaultFlag
               go xs (params {gpuDataType = read x :: GPUDataType})
             DownsampleFactor v -> go xs (params {downsampleFactor = v})
             GMMFile str -> go xs (params {gmmFile = str})
+            Threshold v -> go xs (params {threshold = v})
+            NumGaussian v -> go xs (params {numGaussian = v})
 
 parseArgs :: [String] -> IO Params
 parseArgs args = do

@@ -4,7 +4,8 @@ module Application.GMM.GMM
   ,getNK
   ,updateMuGMM
   ,updateSigmaGMM
-  ,updateWGMM)
+  ,updateWGMM
+  ,gmmSink)
   where
 
 import           Application.GMM.Gaussian
@@ -150,13 +151,16 @@ initializeGMM numModel numDimension =
      return (MixtureModel numModel models)
 
 
-gmmSink :: ParallelParams
-        -> GMM
+gmmSink :: ParallelParams -> Int
         -> Double
         -> FilePath
         -> Sink (V.Vector GMMData) IO ()
-gmmSink parallelParams models threshold filePath =
+gmmSink parallelParams numM threshold filePath =
   do xs <- consume
+     models <-
+       liftIO $
+       initializeGMM numM
+                     (VU.length . V.head . P.head $ xs)
      let ys = V.concat xs
          trainedModel = em parallelParams ys models threshold
      liftIO $ encodeFile filePath trainedModel
