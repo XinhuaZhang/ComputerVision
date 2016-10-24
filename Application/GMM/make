@@ -1,0 +1,8 @@
+#/bin/bash
+
+export OMP_NUM_THREADS=28
+FLAG="--make -O2 -rtsopts -j4 -threaded " 
+LIBS="-lgomp -lstdc++ -lblas"
+OBJPATH="../../Classifier/LibSVM/"
+
+ghc $FLAG $LIBS -i../../ TrainGMM.hs -o trainGMM

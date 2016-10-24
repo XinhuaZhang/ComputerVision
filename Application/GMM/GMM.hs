@@ -9,19 +9,21 @@ module Application.GMM.GMM
 
 import           Application.GMM.Gaussian
 import           Application.GMM.MixtureModel
+import           Control.Monad.IO.Class
 import           CV.Utility.Parallel
 import           Data.Binary
+import           Data.Conduit
+import           Data.Conduit.List            as CL
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           GHC.Generics
 import           Prelude                      as P
+import           System.Random
 
 type GMM = MixtureModel Gaussian
 type GMMData = VU.Vector Double
 type GMMParameters = VU.Vector Double
 type Assignment = V.Vector Double
-
-
 
 assignGMM
   :: ParallelParams -> GMM -> V.Vector GMMData -> (V.Vector Assignment, V.Vector Double)
@@ -79,7 +81,7 @@ updateSigmaKGMM xs assignment nk newMuK =
                 x)
              assignment) $
   xs
-  
+
 updateSigmaGMM :: ParallelParams
                -> V.Vector GMMData
                -> V.Vector Assignment
@@ -93,7 +95,7 @@ updateSigmaGMM parallelParams xs assignments nks newMu =
                          assignments
                          nks
                          newMu
-                         
+
 updateWGMM
   :: Int -> V.Vector Double -> V.Vector Double
 updateWGMM n = V.map (/ fromIntegral n)
@@ -127,3 +129,34 @@ em parallelParams xs models threshold
         newW =
           updateWGMM (V.length xs)
                      nks
+
+
+initializeGMM :: Int -> Int -> IO GMM
+initializeGMM numModel numDimension =
+  do gen <- getStdGen
+     let mu = randomRs (-1,1)
+         sigma = randomRs (0.1,1)
+         w' = P.take numModel $ randoms gen :: [Int]
+         ws' = P.fromIntegral . P.sum $ w'
+         w = V.fromList $ P.map (\x -> P.fromIntegral x / ws') w'
+         models' =
+           V.replicate numModel .
+           (\g ->
+               (Gaussian numDimension
+                              (VU.fromList . P.take numDimension $ mu g)
+                              (VU.fromList . P.take numDimension $ sigma g))) $
+           gen
+         models = V.zipWith (\a b -> Model (a,b)) w models'
+     return (MixtureModel numModel models)
+
+
+gmmSink :: ParallelParams
+        -> GMM
+        -> Double
+        -> FilePath
+        -> Sink (V.Vector GMMData) IO ()
+gmmSink parallelParams models threshold filePath =
+  do xs <- consume
+     let ys = V.concat xs
+         trainedModel = em parallelParams ys models threshold
+     liftIO $ encodeFile filePath trainedModel
