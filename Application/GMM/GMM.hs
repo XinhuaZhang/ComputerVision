@@ -30,6 +30,83 @@ type GMMParameters = VU.Vector Double
 
 type Assignment = V.Vector Double
 
+assignPoint
+  :: GMM -> Int -> GMMData -> Double
+assignPoint (MixtureModel n modelVec) k x =
+  (w * gaussian g x) /
+  (V.sum . V.map (\(Model (wj,mj)) -> (wj * gaussian mj x)) $ modelVec)
+  where (Model (w,g)) = modelVec V.! k
+  
+assignGMM1 :: ParallelParams -> GMM -> V.Vector GMMData -> (V.Vector Double,Double)
+assignGMM1 parallelParams (MixtureModel n modelVec) xs =
+  zs `pseq` likelihood `par` nks `pseq` (nks,likelihood)
+  where !zs =
+          parMapChunkVector
+            parallelParams
+            rdeepseq
+            (\x ->
+               V.sum $
+               V.map (\(Model (wj,mj)) -> (wj * gaussian mj x)) modelVec)
+            xs
+        assignments =
+          parMapChunkVector
+            parallelParams
+            rdeepseq
+            (\(Model (wk,mk)) ->
+               V.zipWith (\x z -> (wk * gaussian mk x) / z) xs zs)
+            modelVec
+        likelihood = getLikelihood zs
+        nks = getNK assignments
+        
+
+updateMuKGMM1
+  :: GMM -> Int -> V.Vector GMMData -> Double -> GMMParameters
+updateMuKGMM1 gmm k xs nk =
+  V.foldl1' (VU.zipWith (+)) . V.map (\x -> VU.map (* (assignPoint gmm k x)) x) $
+  xs
+
+updateMuGMM1 :: ParallelParams
+             -> GMM
+             -> V.Vector GMMData
+             -> V.Vector Double
+             -> V.Vector GMMParameters
+updateMuGMM1 parallelParams gmm@(MixtureModel n modelVec) xs nks =
+  parZipWithChunkVector parallelParams
+                        rdeepseq
+                        (\k nk -> updateMuKGMM1 gmm k xs nk)
+                        (V.generate n id)
+                        nks
+
+updateSigmaKGMM1 :: GMM
+                 -> Int
+                 -> V.Vector GMMData
+                 -> Double
+                 -> GMMParameters
+                 -> GMMParameters
+updateSigmaKGMM1 gmm k xs nk newMuK = undefined
+  where newSigma =
+          V.foldl1' (VU.zipWith (+)) .
+          V.map (\x ->
+                   VU.map (* (assignPoint gmm k x)) .
+                   VU.zipWith (\mu y -> (y - mu) ^ 2)
+                              newMuK $
+                   x) $
+          xs
+
+updateSigmaGMM1 :: ParallelParams
+                -> GMM
+                -> V.Vector GMMData
+                -> V.Vector Double
+                -> V.Vector GMMParameters
+                -> V.Vector GMMParameters
+updateSigmaGMM1 parallelParams gmm@(MixtureModel n modelVec) xs nks newMu =
+  parZipWith3ChunkVector parallelParams
+                         rdeepseq
+                         (\k nk muK -> updateSigmaKGMM1 gmm k xs nk muK)
+                         (V.generate n id)
+                         nks
+                         newMu
+
 assignGMM
   :: ParallelParams
   -> GMM
@@ -206,6 +283,43 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
             newW
             newMu
             newSigma
+            
+
+em1
+  :: ParallelParams -> FilePath -> V.Vector GMMData  -> Double -> Double -> GMM -> IO ()
+em1 parallelParams filePath xs threshold oldLikelihood oldModel
+  | isNaN newLikelihood =
+    error "Try increasing the initialization range of sigma and decreasing that of mu."
+  | abs ((oldLikelihood - newLikelihood) / oldLikelihood * 100) < threshold =
+    liftIO $ encodeFile filePath newModel
+  | otherwise =
+    do putStrLn $
+         (show newLikelihood) P.++ " (" P.++
+         (show $ abs $ (newLikelihood - oldLikelihood) / oldLikelihood * 100) P.++
+         "%)"
+       liftIO $ encodeFile filePath newModel
+       em parallelParams filePath xs threshold newLikelihood newModel
+  where (nks,newLikelihood) = assignGMM1 parallelParams oldModel xs
+        newMu = updateMuGMM1 parallelParams oldModel xs nks
+        newSigma = updateSigmaGMM1 parallelParams oldModel xs nks newMu
+        !newW =
+          updateWGMM (V.length xs)
+                     nks
+        !newModel =
+          newW `par`
+          newMu `pseq`
+          MixtureModel (numModel oldModel) $
+          V.zipWith3
+            (\w mu sigma ->
+               Model (w
+                     ,Gaussian (numDims .
+                                snd . (\(Model x) -> x) . V.head . model $
+                                oldModel)
+                               mu
+                               sigma))
+            newW
+            newMu
+            newSigma
 
 initializeGMM :: Int -> Int -> IO GMM
 initializeGMM numModel numDimension =
@@ -296,4 +410,4 @@ gmmSink parallelParams numM threshold filePath =
        initializeGMM numM
                      (VU.length . V.head . P.head $ xs)
      let !ys = V.concat xs
-     liftIO $ em parallelParams filePath ys threshold 0 models
+     liftIO $ em1 parallelParams filePath ys threshold 0 models
