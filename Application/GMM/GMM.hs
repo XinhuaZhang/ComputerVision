@@ -8,7 +8,7 @@ module Application.GMM.GMM
 import           Application.GMM.Gaussian
 import           Application.GMM.MixtureModel
 import           Control.DeepSeq              as DS
-import           Control.Monad as M
+import           Control.Monad                as M
 import           Control.Monad.IO.Class
 import           Control.Parallel
 import           CV.Utility.Parallel
@@ -168,22 +168,21 @@ emTest parallelParams xs threshold models
             newW
             newMu
             newSigma
-            
+
 em
-  :: ParallelParams -> V.Vector GMMData -> Double -> Double -> GMM -> IO GMM
-em parallelParams xs threshold oldLikelihood oldModel
+  :: ParallelParams -> FilePath -> V.Vector GMMData  -> Double -> Double -> GMM -> IO ()
+em parallelParams filePath xs threshold oldLikelihood oldModel
   | isNaN newLikelihood =
     error "Try increasing the initialization range of sigma and decreasing that of mu."
   | abs ((oldLikelihood - newLikelihood) / oldLikelihood * 100) < threshold =
-    return newModel
+    liftIO $ encodeFile filePath newModel
   | otherwise =
     do putStrLn $
          (show newLikelihood) P.++ " (" P.++
          (show $ abs $ (newLikelihood - oldLikelihood) / oldLikelihood * 100) P.++
          "%)"
-       newW `par`
-         newMu `pseq`
-         newSigma `pseq` em parallelParams xs threshold newLikelihood newModel
+       liftIO $ encodeFile filePath newModel
+       em parallelParams filePath xs threshold newLikelihood newModel
   where (assignments,newLikelihood) = assignGMM parallelParams oldModel xs
         !nks = getNK assignments
         newMu = updateMuGMM parallelParams xs assignments nks
@@ -192,6 +191,9 @@ em parallelParams xs threshold oldLikelihood oldModel
           updateWGMM (V.length xs)
                      nks
         !newModel =
+          newW `par`
+          newMu `pseq`
+          newSigma `pseq`
           MixtureModel (numModel oldModel) $
           V.zipWith3
             (\w mu sigma ->
@@ -280,7 +282,7 @@ gmmTestSink parallelParams numM threshold filePath =
                (0,models)
                (V.generate 10 id)
      liftIO $ encodeFile filePath trainedModel
-     
+
 
 gmmSink :: ParallelParams
         -> Int
@@ -294,5 +296,4 @@ gmmSink parallelParams numM threshold filePath =
        initializeGMM numM
                      (VU.length . V.head . P.head $ xs)
      let !ys = V.concat xs
-     trainedModel <- liftIO $ em parallelParams ys threshold 0 models
-     liftIO $ encodeFile filePath trainedModel
+     liftIO $ em parallelParams filePath ys threshold 0 models
