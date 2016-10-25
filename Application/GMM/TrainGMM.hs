@@ -50,7 +50,7 @@ main =
                                   (downsampleFactor params) =$=
             CL.map (V.fromList .
                     P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-            gmmSink parallelParams
+            gmmTestSink parallelParams
                     (numGaussian params)
                     (threshold params)
                     (gmmFile params)
@@ -65,8 +65,8 @@ main =
                                   (downsampleFactor params) =$=
             CL.map (V.fromList .
                     P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-            gmmSink parallelParams
-                    (numGaussian params)
-                    (threshold params)
-                    (gmmFile params)
+            gmmTestSink parallelParams
+                     (numGaussian params)
+                     (threshold params)
+                     (gmmFile params)
      destoryGPUCtx ctx
