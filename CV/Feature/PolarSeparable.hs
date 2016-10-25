@@ -308,7 +308,7 @@ magnitudeConduitFloat parallelParams ctx filter factor =
                                       arr)
                                    [0,1 ..]) $!!
                       zs
-                ys `pseq` zs `pseq` sourceList result
+                sourceList result
                 magnitudeConduitFloat parallelParams ctx filter factor
         else return ()
 

@@ -36,7 +36,7 @@ assignGMM
   -> V.Vector GMMData
   -> (V.Vector Assignment,Double)
 assignGMM parallelParams (MixtureModel n modelVec) xs =
-  zs `pseq` assignments `pseq` (assignments,getLikelihood zs)
+  zs `pseq` likelihood `par` assignments `pseq` (assignments,likelihood)
   where !zs =
           parMapChunkVector
             parallelParams
@@ -52,6 +52,7 @@ assignGMM parallelParams (MixtureModel n modelVec) xs =
             (\(Model (wk,mk)) ->
                V.zipWith (\x z -> (wk * gaussian mk x) / z) xs zs)
             modelVec
+        likelihood = getLikelihood zs
 
 
 updateMuKGMM
@@ -193,7 +194,6 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
         !newModel =
           newW `par`
           newMu `pseq`
-          newSigma `pseq`
           MixtureModel (numModel oldModel) $
           V.zipWith3
             (\w mu sigma ->
