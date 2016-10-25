@@ -9,6 +9,7 @@ module CV.Feature.PolarSeparable where
 
 import           Control.DeepSeq                    as DS
 import           Control.Monad.IO.Class
+import           Control.Parallel
 import           CV.CUDA.ArrayUtil
 import           CV.CUDA.Context
 import           CV.CUDA.DataType
@@ -250,10 +251,11 @@ magnitudeConduitFloat parallelParams ctx filter factor =
                     nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4)
                     nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
                     ys =
-                      P.map (\x ->
-                               P.map (slice2D x)
-                                     [0 .. nfOld])
-                            xs
+                      parMap rdeepseq
+                             (\x ->
+                                P.map (slice2D x)
+                                      [0 .. nfOld])
+                             xs
                     zs =
                       if factor == 1
                          then P.map (P.map toIArray .
@@ -284,21 +286,6 @@ magnitudeConduitFloat parallelParams ctx filter factor =
                                      P.map fromIArray)
                                     ys :: [[AU.Array (Int,Int,Int) Float]]
                     (lb,(sizeX,sizeY,nfNew)) = bounds . P.head . P.head $ zs
-                    arrList =
-                      parMapChunk
-                        parallelParams
-                        rseq
-                        (AU.array (lb
-                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
-                         P.concat .
-                         P.zipWith (\offset arr ->
-                                      P.map (\((i,j,k),v) ->
-                                               ((i,j,k + offset * (nfNew + 1))
-                                               ,v)) .
-                                      AU.assocs $
-                                      arr)
-                                   [0,1 ..]) $!!
-                      zs :: [AU.Array (Int,Int,Int) Float]
                     result =
                       parMapChunk
                         parallelParams
@@ -309,10 +296,19 @@ magnitudeConduitFloat parallelParams ctx filter factor =
                                         y
                                         (VU.fromList . P.map float2Double $ z))
                                    (range ((0,0),(sizeX,sizeY))) .
-                         slice1D)
-                        arrList
-                sourceList result
-                liftIO $ performGCCtx ctx
+                         slice1D .
+                         AU.array (lb
+                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
+                         P.concat .
+                         P.zipWith (\offset arr ->
+                                      P.map (\((i,j,k),v) ->
+                                               ((i,j,k + offset * (nfNew + 1))
+                                               ,v)) .
+                                      AU.assocs $
+                                      arr)
+                                   [0,1 ..]) $!!
+                      zs
+                ys `pseq` zs `pseq` sourceList result
                 magnitudeConduitFloat parallelParams ctx filter factor
         else return ()
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns  #-}
 {-# LANGUAGE DeriveGeneric #-}
 module Application.GMM.Gaussian where
 
@@ -28,10 +29,10 @@ instance Binary Gaussian where
 
 gaussian
   :: Gaussian -> VU.Vector Double -> Double
-gaussian (Gaussian numDims' mu' sigma') xs = (exp z) / (x * y)
-  where x = (2 * pi) ** (-0.5 * (fromIntegral numDims'))
-        y = (VU.foldl1' (*) sigma') ** 0.5
-        z =
+gaussian (Gaussian numDims' mu' sigma') xs = (exp z) / (y)
+  where -- !x = (2 * pi) ** (-0.5 * (fromIntegral numDims'))
+        !y = (VU.foldl1' (*) sigma') ** 0.5
+        !z =
           (-0.5) *
           (VU.sum $
            VU.zipWith3 (\a b c -> (a - b) ^ 2 / c)

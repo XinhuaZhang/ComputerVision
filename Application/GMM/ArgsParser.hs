@@ -97,7 +97,7 @@ options =
   ,Option ['h']
           ["threshold"]
           (ReqArg (\x -> Threshold $ readDouble x) "DOUBLE")
-          "Set the stoppint criteria."
+          "Set the stoppint criteria. It is the percentage that the probability increases. If it is lower than the threshold, then the program stops."
   ,Option ['n']
           ["numGaussian"]
           (ReqArg (\x -> NumGaussian $ readInt x) "INT")
