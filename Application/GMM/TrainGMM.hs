@@ -50,7 +50,7 @@ main =
                                   (downsampleFactor params) =$=
             CL.map (V.fromList .
                     P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-            gmmTestSink parallelParams
+            gmmSink parallelParams
                     (numGaussian params)
                     (threshold params)
                     (gmmFile params)
@@ -60,13 +60,13 @@ main =
          in imagePathSource (inputFile params) $$ grayImageConduit =$=
             grayImage2DoubleArrayConduit =$=
             magnitudeConduitDouble parallelParams
-                                  ctx
-                                  filters
-                                  (downsampleFactor params) =$=
+                                   ctx
+                                   filters
+                                   (downsampleFactor params) =$=
             CL.map (V.fromList .
                     P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-            gmmTestSink parallelParams
-                     (numGaussian params)
-                     (threshold params)
-                     (gmmFile params)
+            gmmSink parallelParams
+                    (numGaussian params)
+                    (threshold params)
+                    (gmmFile params)
      destoryGPUCtx ctx

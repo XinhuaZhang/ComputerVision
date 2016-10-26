@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 
 module Application.GMM.GMM
-       (assignGMM, getNK, updateMuGMM, updateSigmaGMM, updateWGMM,
+       (assignGMM, updateMuGMM, updateSigmaGMM, updateWGMM,
         gmmTestSink, gmmSink)
        where
 
@@ -28,149 +28,64 @@ type GMMData = VU.Vector Double
 
 type GMMParameters = VU.Vector Double
 
-type Assignment = V.Vector Double
-
 assignPoint
   :: Double -> Model Gaussian -> GMMData -> Double
-assignPoint z (Model (w,g)) x =
-  (w * gaussian g x) / z
+assignPoint z (Model (w,g)) x = (w * gaussian g x) / z
 
-
-
-assignGMM1
+assignGMM
   :: ParallelParams
   -> GMM
   -> V.Vector GMMData
   -> (V.Vector Double,V.Vector Double,Double)
-assignGMM1 parallelParams gmm@(MixtureModel n modelVec) xs =
+assignGMM parallelParams gmm@(MixtureModel n modelVec) xs =
   zs `pseq` likelihood `par` nks `pseq` (zs,nks,likelihood)
   where !zs =
           parMapChunkVector
             parallelParams
             rdeepseq
             (\x ->
-               V.sum $
-               V.map (\(Model (wj,mj)) -> (wj * gaussian mj x)) modelVec)
+               V.sum . V.map (\(Model (wj,mj)) -> (wj * gaussian mj x)) $
+               modelVec)
             xs
         nks =
           parMapChunkVector
             parallelParams
             rdeepseq
-            (\k -> V.sum . V.zipWith (\z x -> assignPoint z k x) zs $ xs)
+            (\m -> V.sum . V.zipWith (\z x -> assignPoint z m x) zs $ xs)
             modelVec
         likelihood = getLikelihood zs
---        nks = getNK assignments
-        
 
-updateMuKGMM1
-  :: Double -> Model Gaussian -> V.Vector GMMData -> Double -> GMMParameters
-updateMuKGMM1 z k xs nk =
-  V.foldl1' (VU.zipWith (+)) . V.map (\x -> VU.map (* (assignPoint z k x)) x) $
-  xs
-
-updateMuGMM1 :: ParallelParams
-             -> GMM
+updateMuKGMM :: Model Gaussian
              -> V.Vector Double
              -> V.Vector GMMData
-             -> V.Vector Double
-             -> V.Vector GMMParameters
-updateMuGMM1 parallelParams gmm@(MixtureModel n modelVec) zs xs nks =
-  parZipWith3ChunkVector parallelParams
-                         rdeepseq
-                         (\k nk z -> updateMuKGMM1 z k xs nk)
-                         modelVec
-                         nks
-                         zs
-
-updateSigmaKGMM1 :: Double
-                 -> Model Gaussian
-                 -> V.Vector GMMData
-                 -> Double
-                 -> GMMParameters
-                 -> GMMParameters
-updateSigmaKGMM1 z k xs nk newMuK
-  | VU.or . VU.map (== 0) $ newSigma =
-    VU.map (\x ->
-              if x == 0
-                 then 10 ** (-3)
-                 else x)
-           newSigma
-  | otherwise = newSigma
-  where newSigma =
-          V.foldl1' (VU.zipWith (+)) .
-          V.map (\x ->
-                   VU.map (* (assignPoint z k x)) .
-                   VU.zipWith (\mu y -> (y - mu) ^ 2)
-                              newMuK $
-                   x) $
-          xs
-
-updateSigmaGMM1 :: ParallelParams
-                -> GMM
-                -> V.Vector Double
-                -> V.Vector GMMData
-                -> V.Vector Double
-                -> V.Vector GMMParameters
-                -> V.Vector GMMParameters
-updateSigmaGMM1 parallelParams gmm@(MixtureModel n modelVec) zs xs nks newMu =
-  parZipWith4ChunkVector parallelParams
-                         rdeepseq
-                         (\k nk muK z -> updateSigmaKGMM1 z k xs nk muK)
-                         modelVec
-                         nks
-                         newMu
-                         zs
-
-assignGMM
-    :: ParallelParams
-    -> GMM
-    -> V.Vector GMMData
-    -> (V.Vector Assignment,Double)
-assignGMM parallelParams gmm@(MixtureModel n modelVec) xs =
-  zs `pseq` likelihood `par` assignments `pseq` (assignments,likelihood)
-  where !zs =
-          parMapChunkVector
-            parallelParams
-            rdeepseq
-            (\x ->
-               V.sum $
-               V.map (\(Model (wj,mj)) -> (wj * gaussian mj x)) modelVec)
-            xs
-        assignments =
-            parMapChunkVector
-              parallelParams
-              rdeepseq
-              (\(Model (wk,mk)) ->
-                 V.zipWith (\x z -> (wk * gaussian mk x) / z) xs zs)
-              modelVec
-        likelihood = getLikelihood zs
-
-
-updateMuKGMM
-  :: V.Vector GMMData -> Assignment -> Double -> GMMParameters
-updateMuKGMM xs assignment nk =
+             -> Double
+             -> GMMParameters
+updateMuKGMM mg zs xs nk =
   VU.map (/ nk) .
-  (V.foldl1' (VU.zipWith (+)) . V.zipWith (\a x -> VU.map (* a) x) assignment) $
+  V.foldl1' (VU.zipWith (+)) .
+  V.zipWith (\z x -> VU.map (* (assignPoint z mg x)) x) zs $
   xs
 
 updateMuGMM :: ParallelParams
+            -> GMM
+            -> V.Vector Double
             -> V.Vector GMMData
-            -> V.Vector Assignment
             -> V.Vector Double
             -> V.Vector GMMParameters
-updateMuGMM parallelParams xs assignments nks =
+updateMuGMM parallelParams gmm@(MixtureModel n modelVec) zs xs nks =
   parZipWithChunkVector parallelParams
                         rdeepseq
-                        (updateMuKGMM xs)
-                        assignments
+                        (\modelK nk -> updateMuKGMM modelK zs xs nk)
+                        modelVec
                         nks
 
-updateSigmaKGMM :: V.Vector GMMData
-                -> Assignment
+updateSigmaKGMM :: Model Gaussian
+                -> V.Vector Double
+                -> V.Vector GMMData
                 -> Double
                 -> GMMParameters
                 -> GMMParameters
-updateSigmaKGMM xs assignment nk newMuK
+updateSigmaKGMM modelK zs xs nk newMuK
   | VU.or . VU.map (== 0) $ newSigma =
     VU.map (\x ->
               if x == 0
@@ -180,26 +95,27 @@ updateSigmaKGMM xs assignment nk newMuK
   | otherwise = newSigma
   where newSigma =
           VU.map (/ nk) .
-          (V.foldl1' (VU.zipWith (+)) .
-           V.zipWith (\a x ->
-                        VU.map (* a) .
-                        VU.zipWith (\mu y -> (y - mu) ^ 2)
-                                   newMuK $
-                        x)
-                     assignment) $
+          V.foldl1' (VU.zipWith (+)) .
+          V.zipWith (\z x ->
+                       VU.map (* (assignPoint z modelK x)) .
+                       VU.zipWith (\mu y -> (y - mu) ^ 2)
+                                  newMuK $
+                       x)
+                    zs $
           xs
 
 updateSigmaGMM :: ParallelParams
+               -> GMM
+               -> V.Vector Double
                -> V.Vector GMMData
-               -> V.Vector Assignment
                -> V.Vector Double
                -> V.Vector GMMParameters
                -> V.Vector GMMParameters
-updateSigmaGMM parallelParams xs assignments nks newMu =
+updateSigmaGMM parallelParams gmm@(MixtureModel n modelVec) zs xs nks newMu =
   parZipWith3ChunkVector parallelParams
                          rdeepseq
-                         (updateSigmaKGMM xs)
-                         assignments
+                         (\modelK nk muK -> updateSigmaKGMM modelK zs xs nk muK)
+                         modelVec
                          nks
                          newMu
 
@@ -210,13 +126,6 @@ updateWGMM n = V.map (/ fromIntegral n)
 getLikelihood :: V.Vector Double -> Double
 getLikelihood = V.foldl' (\a b -> a + log b) 0
 
-getNK
-  :: ParallelParams -> V.Vector Assignment -> V.Vector Double
-getNK parallelParams =
-  parMapChunkVector parallelParams
-                    rdeepseq
-                    V.sum
-
 -- EM algorithm
 emTest :: ParallelParams
        -> V.Vector GMMData
@@ -224,71 +133,32 @@ emTest :: ParallelParams
        -> GMM
        -> IO (GMM
              ,Double
-             ,Assignment
              ,V.Vector Double
              ,V.Vector GMMParameters
              ,V.Vector GMMParameters
              ,V.Vector Double)
-emTest parallelParams xs threshold models
+emTest parallelParams xs threshold oldModel
   | V.or . V.map (<= 0) $ nks =
-    error "nk is zero! Try increasing the initialization range of sigma and decreasing that of mu."
+    --error "nk is zero! Try increasing the initialization range of sigma and decreasing that of mu."
+    error $
+    "nk is zero" P.++ (show . V.take 5 $ nks)
   | isNaN likelihood =
-    error "Try increasing the initialization range of sigma and decreasing that of mu."
-  | otherwise =
-    return (newModel
-           ,likelihood
-           ,V.map V.head assignments
-           ,nks
-           ,newMu
-           ,newSigma
-           ,newW)
-  where (assignments,likelihood) = assignGMM parallelParams models xs
-        !nks = getNK parallelParams assignments
-        newMu = updateMuGMM parallelParams xs assignments nks
-        newSigma = updateSigmaGMM parallelParams xs assignments nks newMu
+    -- error "Try increasing the initialization range of sigma and decreasing that of mu."
+    error $
+    "likelihood is nan" P.++ (show . V.take 5 $ nks) P.++ "\n" P.++
+    (show . V.take 5 $ zs) P.++
+    "\n" P.++
+    show oldModel
+  | otherwise = return (newModel,likelihood,nks,newMu,newSigma,newW)
+  where (zs,nks,likelihood) = assignGMM parallelParams oldModel xs
+        newMu = updateMuGMM parallelParams oldModel zs xs nks
+        newSigma = updateSigmaGMM parallelParams oldModel zs xs nks newMu
         !newW =
           updateWGMM (V.length xs)
                      nks
         !newModel =
           newMu `pseq`
           newSigma `pseq`
-          MixtureModel (numModel models) $
-          V.zipWith3
-            (\w mu sigma ->
-               Model (w
-                     ,Gaussian (numDims .
-                                snd . (\(Model x) -> x) . V.head . model $
-                                models)
-                               mu
-                               sigma))
-            newW
-            newMu
-            newSigma
-
-em
-  :: ParallelParams -> FilePath -> V.Vector GMMData  -> Double -> Double -> GMM -> IO ()
-em parallelParams filePath xs threshold oldLikelihood oldModel
-  | isNaN newLikelihood =
-    error "Try increasing the initialization range of sigma and decreasing that of mu."
-  | abs ((oldLikelihood - newLikelihood) / oldLikelihood * 100) < threshold =
-    liftIO $ encodeFile filePath newModel
-  | otherwise =
-    do putStrLn $
-         (show newLikelihood) P.++ " (" P.++
-         (show $ abs $ (newLikelihood - oldLikelihood) / oldLikelihood * 100) P.++
-         "%)"
-       liftIO $ encodeFile filePath newModel
-       em parallelParams filePath xs threshold newLikelihood newModel
-  where (assignments,newLikelihood) = assignGMM parallelParams oldModel xs
-        !nks = getNK parallelParams assignments
-        newMu = updateMuGMM parallelParams xs assignments nks
-        newSigma = updateSigmaGMM parallelParams xs assignments nks newMu
-        !newW =
-          updateWGMM (V.length xs)
-                     nks
-        !newModel =
-          newW `par`
-          newMu `pseq`
           MixtureModel (numModel oldModel) $
           V.zipWith3
             (\w mu sigma ->
@@ -301,49 +171,15 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
             newW
             newMu
             newSigma
-            
-emTest1 :: ParallelParams
-        -> V.Vector GMMData
-        -> Double
-        -> GMM
-        -> IO (GMM
-              ,Double
-              ,V.Vector Double
-              ,V.Vector GMMParameters
-              ,V.Vector GMMParameters
-              ,V.Vector Double)
-emTest1 parallelParams xs threshold models
-  | V.or . V.map (<= 0) $ nks =
-    error "nk is zero! Try increasing the initialization range of sigma and decreasing that of mu."
-  | isNaN likelihood =
-    error "Try increasing the initialization range of sigma and decreasing that of mu."
-  | otherwise = return (newModel,likelihood,nks,newMu,newSigma,newW)
-  where (zs,nks,likelihood) = assignGMM1 parallelParams models xs
-        newMu = updateMuGMM1 parallelParams models zs xs nks
-        newSigma = updateSigmaGMM1 parallelParams models zs xs nks newMu
-        !newW =
-          updateWGMM (V.length xs)
-                     nks
-        !newModel =
-          newMu `pseq`
-          newSigma `pseq`
-          MixtureModel (numModel models) $
-          V.zipWith3
-            (\w mu sigma ->
-               Model (w
-                     ,Gaussian (numDims .
-                                snd . (\(Model x) -> x) . V.head . model $
-                                models)
-                               mu
-                               sigma))
-            newW
-            newMu
-            newSigma
 
-
-em1
-  :: ParallelParams -> FilePath -> V.Vector GMMData  -> Double -> Double -> GMM -> IO ()
-em1 parallelParams filePath xs threshold oldLikelihood oldModel
+em :: ParallelParams
+   -> FilePath
+   -> V.Vector GMMData
+   -> Double
+   -> Double
+   -> GMM
+   -> IO ()
+em parallelParams filePath xs threshold oldLikelihood oldModel
   | isNaN newLikelihood =
     error "Try increasing the initialization range of sigma and decreasing that of mu."
   | abs ((oldLikelihood - newLikelihood) / oldLikelihood * 100) < threshold =
@@ -351,13 +187,13 @@ em1 parallelParams filePath xs threshold oldLikelihood oldModel
   | otherwise =
     do putStrLn $
          (show newLikelihood) P.++ " (" P.++
-         (show $ abs $ (newLikelihood - oldLikelihood) / oldLikelihood * 100) P.++
+         (show $ (newLikelihood - oldLikelihood) / (abs oldLikelihood) * 100) P.++
          "%)"
        liftIO $ encodeFile filePath newModel
        em parallelParams filePath xs threshold newLikelihood newModel
-  where (zs, nks,newLikelihood) = assignGMM1 parallelParams oldModel xs
-        newMu = updateMuGMM1 parallelParams oldModel zs  xs nks
-        newSigma = updateSigmaGMM1 parallelParams oldModel zs xs nks newMu
+  where (zs,nks,newLikelihood) = assignGMM parallelParams oldModel xs
+        newMu = updateMuGMM parallelParams oldModel zs xs nks
+        newSigma = updateSigmaGMM parallelParams oldModel zs xs nks newMu
         !newW =
           updateWGMM (V.length xs)
                      nks
@@ -417,7 +253,7 @@ randomGaussian numDimension gen =
                       gen
         (sigma,newGen2) =
           randomRList numDimension
-                      (1,500)
+                      (100,200)
                       newGen1
 
 gmmTestSink :: ParallelParams
@@ -436,7 +272,7 @@ gmmTestSink parallelParams numM threshold filePath =
        liftIO $
        M.foldM (\(oldLike,oldModel) b ->
                   do (newModel,like,nks,newMu,newSigma,newW) <-
-                       emTest1 parallelParams ys threshold oldModel
+                       emTest parallelParams ys threshold oldModel
                      putStrLn $ (show (b + 1)) P.++ ":"
                      putStrLn $
                        "likelihood: " P.++ (show like) P.++ " (" P.++
@@ -450,9 +286,8 @@ gmmTestSink parallelParams numM threshold filePath =
                      -- putStrLn $ "newW: " P.++ show (V.take 5 newW)
                      return (like,newModel))
                (0,models)
-               (V.generate 10 id)
+               (V.generate 12 id)
      liftIO $ encodeFile filePath trainedModel
-
 
 gmmSink :: ParallelParams
         -> Int
