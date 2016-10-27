@@ -3,6 +3,8 @@
 export OMP_NUM_THREADS=28
 FLAG="--make -O2 -rtsopts -j4 -threaded " 
 LIBS="-lgomp -lstdc++ -lblas"
-OBJPATH="../../Classifier/LibSVM/"
+OBJPATH="../../Classifier/LibLinear/"
 
 ghc $FLAG $LIBS -i../../ TrainGMM.hs -o trainGMM
+ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisher.hs -o trainFisher
+ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisher.hs -o predictFisher
