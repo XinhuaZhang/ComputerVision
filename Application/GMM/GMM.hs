@@ -191,8 +191,11 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
     newModel `pseq` liftIO $ encodeFile filePath newModel
   | otherwise =
     do time <- liftIO getZonedTime
-       let timeStr = (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
-       printf (timeStr P.++ "%0.1f%% (%0.1f%%)\n") avgLikelihood ((newLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
+       let timeStr =
+             (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
+       printf (timeStr P.++ "%0.2f (%0.3f%%)\n")
+              avgLikelihood
+              ((newLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
        newModel `pseq` liftIO $ encodeFile filePath newModel
        em parallelParams filePath xs threshold newLikelihood newModel
   where (zs,nks,newLikelihood) = assignGMM parallelParams oldModel xs
@@ -201,23 +204,19 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
         !newW =
           updateWGMM (V.length xs)
                      nks
+        !nD = numDims . snd . (\(Model x) -> x) . V.head . model $ oldModel
         !newModel =
           newW `par`
           newMu `pseq`
           MixtureModel (numModel oldModel) $
-          V.zipWith3
-            (\w mu sigma ->
-               Model (w
-                     ,Gaussian (numDims .
-                                snd . (\(Model x) -> x) . V.head . model $
-                                oldModel)
-                               mu
-                               sigma))
-            newW
-            newMu
-            newSigma
+          V.zipWith3 (\w mu sigma -> Model (w,Gaussian nD mu sigma))
+                     newW
+                     newMu
+                     newSigma
         !avgLikelihood =
-          (exp (newLikelihood / (P.fromIntegral $ V.length xs))) * 100
+          log $
+          (exp (newLikelihood / (P.fromIntegral $ V.length xs))) /
+          ((2 * pi) ** (0.5 * (fromIntegral nD)))
 
 initializeGMM :: Int -> Int -> IO GMM
 initializeGMM numModel numDimension =

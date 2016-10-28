@@ -30,7 +30,7 @@ instance Binary Gaussian where
 gaussian
   :: Gaussian -> VU.Vector Double -> Double
 gaussian (Gaussian numDims' mu' sigma') xs = result
-  where -- !x = (2 * pi) ** (-0.5 * (fromIntegral numDims'))
+  where -- !x = (2 * pi) ** (0.5 * (fromIntegral numDims'))
         !y = (VU.foldl1' (*) sigma') ** 0.5
         !z =
           (-0.5) *
@@ -39,4 +39,4 @@ gaussian (Gaussian numDims' mu' sigma') xs = result
                        xs
                        mu'
                        sigma')
-        !result = (exp z) / (y)
+        !result = (exp z) / y
