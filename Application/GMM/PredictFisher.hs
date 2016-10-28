@@ -45,37 +45,32 @@ main =
                                       ,getName = Pinwheels}
      print params
      ctx <- initializeGPUCtx (Option $ gpuId params)
-     case (gpuDataType params) of
-       GPUFloat ->
-         let filters =
-               makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
-         in do imagePathSource (inputFile params) $$ grayImageConduit =$=
-                 grayImage2FloatArrayConduit =$=
-                 magnitudeConduitFloat parallelParams
-                                       ctx
-                                       filters
-                                       (downsampleFactor params) =$=
-                 -- CL.map (V.fromList .
-                 --         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-                 fisherVectorConduit parallelParams gmm =$=
-                 CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
-                 mergeSource (labelSource $ labelFile params) =$=
-                 predict (modelName params)
-                         ((modelName params) P.++ ".out")
-       GPUDouble ->
-         let filters =
-               makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
-         in do imagePathSource (inputFile params) $$ grayImageConduit =$=
-                 grayImage2DoubleArrayConduit =$=
-                 magnitudeConduitDouble parallelParams
-                                        ctx
-                                        filters
-                                        (downsampleFactor params) =$=
-                 -- CL.map (V.fromList .
-                 --         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-                 fisherVectorConduit parallelParams gmm =$=
-                 CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
-                 mergeSource (labelSource $ labelFile params) =$=
-                 predict (modelName params)
-                         ((modelName params) P.++ ".out")
+     let featureConduit =
+           case (gpuDataType params) of
+             GPUFloat ->
+               let filters =
+                     makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
+               in do imagePathSource (inputFile params) =$= grayImageConduit =$=
+                       grayImage2FloatArrayConduit =$=
+                       magnitudeConduitFloat parallelParams
+                                             ctx
+                                             filters
+                                             (downsampleFactor params)
+             GPUDouble ->
+               let filters =
+                     makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
+               in do imagePathSource (inputFile params) =$= grayImageConduit =$=
+                       grayImage2DoubleArrayConduit =$=
+                       magnitudeConduitDouble parallelParams
+                                              ctx
+                                              filters
+                                              (downsampleFactor params)
+     featureConduit $$
+       CL.map (V.fromList .
+               P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
+       fisherVectorConduit parallelParams gmm =$=
+       CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
+       mergeSource (labelSource $ labelFile params) =$=
+       predict (modelName params)
+               ((modelName params) P.++ ".out")
      destoryGPUCtx ctx

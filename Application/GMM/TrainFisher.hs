@@ -30,28 +30,25 @@ import           Foreign.Ptr
 import           Prelude                            as P
 import           System.Environment
 
-
-
 trainSink
-  :: ParallelParams -> FilePath -> TrainParams -> Sink (VU.Vector Double) IO ()
-trainSink parallelParams filePath trainParams =
-  do
-     -- xs <- consume
-     -- if ((VU.length . P.head $ xs) /= (trainFeatureIndexMax trainParams))
-     --    then error $
-     --         "Number of feature in trainParams is not correct. (" P.++
-     --         (show . VU.length . P.head $ xs) P.++
-     --         " vs " P.++
-     --         (show $ trainFeatureIndexMax trainParams) P.++
-     --         ")"
-     --    else return ()
-     -- featurePtrs <-
-     --   xs `pseq` liftIO $ MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
+  :: ParallelParams -> FilePath -> TrainParams -> Bool -> Sink (VU.Vector Double) IO ()
+trainSink parallelParams filePath trainParams findCFlag =
+  do xs <- consume
+     if ((VU.length . P.head $ xs) /= (trainFeatureIndexMax trainParams))
+        then error $
+             "Number of feature in trainParams is not correct. (" P.++
+             (show . VU.length . P.head $ xs) P.++
+             " vs " P.++
+             (show $ trainFeatureIndexMax trainParams) P.++
+             ")"
+        else return ()
+     featurePtrs <-
+       xs `pseq` liftIO $ MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
      label <- liftIO $ readLabelFile filePath
-     go label []
-  where
-        -- liftIO $ train trainParams label featurePtrs
-        go :: [Double]
+     if findCFlag
+        then liftIO $ findParameterC trainParams label featurePtrs
+        else liftIO $ train trainParams label featurePtrs -- go label []
+  where go :: [Double]
            -> [[Ptr C'feature_node]]
            -> Sink (VU.Vector Double) IO ()
         go label pss =
@@ -73,7 +70,7 @@ main =
         then error "run with --help to see options."
         else return ()
      params <- parseArgs args
-     gmm <- decodeFile (gmmFile params)
+     gmm <- decodeFile (gmmFile params) :: IO GMM
      imageList <- readFile (inputFile params)
      let parallelParams =
            ParallelParams {Parallel.numThread = Parser.numThread params
@@ -96,41 +93,32 @@ main =
                        ,trainModel = modelName params}
      print params
      ctx <- initializeGPUCtx (Option $ gpuId params)
-     case (gpuDataType params) of
-       GPUFloat ->
-         let filters =
-               makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
-         in do imagePathSource (inputFile params) $$ grayImageConduit =$=
-                 grayImage2FloatArrayConduit =$=
-                 magnitudeConduitFloat parallelParams
-                                       ctx
-                                       filters
-                                       (downsampleFactor params) =$=
-                 -- CL.map (V.fromList .
-                 --         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-                 -- fisherVectorTestSink parallelParams gmm
-                 fisherVectorConduit parallelParams gmm =$=
-                 trainSink parallelParams (labelFile params) trainParams
-       -- imagePathSource (inputFile params) $$ grayImageConduit =$=
-       --   grayImage2FloatArrayConduit =$=
-       --   magnitudeConduitFloat parallelParams
-       --                         ctx
-       --                         filters
-       --                         (downsampleFactor params) =$=
-       --   CL.map (V.fromList .
-       --           P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-       --   fisherVectorSink parallelParams gmm "hehe.dat"
-       GPUDouble ->
-         let filters =
-               makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
-         in do imagePathSource (inputFile params) $$ grayImageConduit =$=
-                 grayImage2DoubleArrayConduit =$=
-                 magnitudeConduitDouble parallelParams
-                                       ctx
-                                       filters
-                                       (downsampleFactor params) =$=
-                 -- CL.map (V.fromList .
-                 --         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-                 fisherVectorConduit parallelParams gmm =$=
-                 trainSink parallelParams (labelFile params) trainParams
+     let featureConduit =
+           case (gpuDataType params) of
+             GPUFloat ->
+               let filters =
+                     makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
+               in imagePathSource (inputFile params) =$= grayImageConduit =$=
+                  grayImage2FloatArrayConduit =$=
+                  magnitudeConduitFloat parallelParams
+                                        ctx
+                                        filters
+                                        (downsampleFactor params)
+             GPUDouble ->
+               let filters =
+                     makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
+               in imagePathSource (inputFile params) =$= grayImageConduit =$=
+                  grayImage2DoubleArrayConduit =$=
+                  magnitudeConduitDouble parallelParams
+                                         ctx
+                                         filters
+                                         (downsampleFactor params)
+     featureConduit =$=
+       CL.map (V.fromList .
+               P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
+       (fisherVectorConduit parallelParams gmm) $$
+       trainSink parallelParams
+                 (labelFile params)
+                 trainParams
+                 (findC params) -- fisherVectorTestSink parallelParams gmm
      destoryGPUCtx ctx
