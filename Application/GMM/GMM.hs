@@ -187,7 +187,7 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
   | isNaN newLikelihood =
     error "Try increasing the initialization range of sigma and decreasing that of mu."
   | abs ((oldLikelihood - newLikelihood) / oldLikelihood * 100) < threshold =
-    liftIO $ encodeFile filePath newModel
+    newModel `pseq` liftIO $ encodeFile filePath newModel
   | otherwise =
     do time <- liftIO getZonedTime
        putStrLn $
@@ -197,7 +197,7 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
          " (" P.++
          (show $ (newLikelihood - oldLikelihood) / (abs oldLikelihood) * 100) P.++
          "%)"
-       liftIO $ encodeFile filePath newModel
+       newModel `pseq` liftIO $ encodeFile filePath newModel
        em parallelParams filePath xs threshold newLikelihood newModel
   where (zs,nks,newLikelihood) = assignGMM parallelParams oldModel xs
         newMu = updateMuGMM parallelParams oldModel zs xs nks
