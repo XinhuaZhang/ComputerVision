@@ -192,7 +192,7 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
   | otherwise =
     do time <- liftIO getZonedTime
        let timeStr = (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
-       printf (timeStr P.++ "%0.1e%% (%0.1e%%)\n") avgLikelihood ((newLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
+       printf (timeStr P.++ "%0.1f%% (%0.1f%%)\n") avgLikelihood ((newLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
        newModel `pseq` liftIO $ encodeFile filePath newModel
        em parallelParams filePath xs threshold newLikelihood newModel
   where (zs,nks,newLikelihood) = assignGMM parallelParams oldModel xs
