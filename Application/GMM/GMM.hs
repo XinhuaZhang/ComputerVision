@@ -32,6 +32,7 @@ import           GHC.Generics
 import           Prelude                      as P
 import           System.Directory
 import           System.Random
+import           Text.Printf
 
 type GMM = MixtureModel Gaussian
 
@@ -190,13 +191,8 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
     newModel `pseq` liftIO $ encodeFile filePath newModel
   | otherwise =
     do time <- liftIO getZonedTime
-       putStrLn $
-         (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": " P.++
-         (show avgLikelihood) P.++
-         "% " P.++
-         " (" P.++
-         (show $ (newLikelihood - oldLikelihood) / (abs oldLikelihood) * 100) P.++
-         "%)"
+       let timeStr = (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
+       printf (timeStr P.++ "%0.1e%% (%0.1e%%)\n") avgLikelihood ((newLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
        newModel `pseq` liftIO $ encodeFile filePath newModel
        em parallelParams filePath xs threshold newLikelihood newModel
   where (zs,nks,newLikelihood) = assignGMM parallelParams oldModel xs
@@ -221,7 +217,7 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
             newMu
             newSigma
         !avgLikelihood =
-          (exp (newLikelihood / (P.fromIntegral $ V.length xs))) * 100 
+          (exp (newLikelihood / (P.fromIntegral $ V.length xs))) * 100
 
 initializeGMM :: Int -> Int -> IO GMM
 initializeGMM numModel numDimension =
