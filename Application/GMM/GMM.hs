@@ -20,7 +20,9 @@ import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           GHC.Generics
 import           Prelude                      as P
+import           System.Directory
 import           System.Random
+import Data.Time.LocalTime
 
 type GMM = MixtureModel Gaussian
 
@@ -296,9 +298,12 @@ gmmSink :: ParallelParams
         -> Sink (V.Vector GMMData) IO ()
 gmmSink parallelParams numM threshold filePath =
   do xs <- consume
+     fileFlag <- liftIO $ doesFileExist filePath
      models <-
        liftIO $
-       initializeGMM numM
-                     (VU.length . V.head . P.head $ xs)
+       if fileFlag
+          then decodeFile filePath
+          else initializeGMM numM
+                             (VU.length . V.head . P.head $ xs)
      let !ys = V.concat xs
      liftIO $ em parallelParams filePath ys threshold 0 models
