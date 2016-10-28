@@ -187,7 +187,7 @@ em :: ParallelParams
 em parallelParams filePath xs threshold oldLikelihood oldModel
   | isNaN newLikelihood =
     error "Try increasing the initialization range of sigma and decreasing that of mu."
-  | abs ((oldLikelihood - newLikelihood) / oldLikelihood * 100) < threshold =
+  | avgLikelihood > threshold =
     newModel `pseq` liftIO $ encodeFile filePath newModel
   | otherwise =
     do time <- liftIO getZonedTime
