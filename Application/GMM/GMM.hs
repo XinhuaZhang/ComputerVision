@@ -25,13 +25,13 @@ import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.Maybe
 import           Data.Time.LocalTime
+import           Data.Time.LocalTime
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           GHC.Generics
 import           Prelude                      as P
 import           System.Directory
 import           System.Random
-import Data.Time.LocalTime
 
 type GMM = MixtureModel Gaussian
 
@@ -192,7 +192,8 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
     do time <- liftIO getZonedTime
        putStrLn $
          (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": " P.++
-         (show newLikelihood) P.++
+         (show avgLikelihood) P.++
+         "% " P.++
          " (" P.++
          (show $ (newLikelihood - oldLikelihood) / (abs oldLikelihood) * 100) P.++
          "%)"
@@ -219,6 +220,8 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
             newW
             newMu
             newSigma
+        !avgLikelihood =
+          (exp (newLikelihood / (P.fromIntegral $ V.length xs))) * 100 
 
 initializeGMM :: Int -> Int -> IO GMM
 initializeGMM numModel numDimension =
