@@ -1,9 +1,17 @@
 {-# LANGUAGE BangPatterns #-}
 
 module Application.GMM.GMM
-       (assignGMM, updateMuGMM, updateSigmaGMM, updateWGMM,
-        gmmTestSink, gmmSink)
-       where
+  (GMM
+  ,GMMData
+  ,GMMParameters
+  ,assignPoint
+  ,assignGMM
+  ,updateMuGMM
+  ,updateSigmaGMM
+  ,updateWGMM
+  ,gmmTestSink
+  ,gmmSink)
+  where
 
 import           Application.GMM.Gaussian
 import           Application.GMM.MixtureModel
@@ -16,13 +24,13 @@ import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.Maybe
+import           Data.Time.LocalTime
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           GHC.Generics
 import           Prelude                      as P
 import           System.Directory
 import           System.Random
-import Data.Time.LocalTime
 
 type GMM = MixtureModel Gaussian
 
@@ -31,8 +39,8 @@ type GMMData = VU.Vector Double
 type GMMParameters = VU.Vector Double
 
 assignPoint
-  :: Double -> Model Gaussian -> GMMData -> Double
-assignPoint z (Model (w,g)) x = (w * gaussian g x) / z
+  :: Model Gaussian -> Double -> GMMData -> Double
+assignPoint (Model (w,g)) z x = DS.force (w * gaussian g x) / z
 
 assignGMM
   :: ParallelParams
@@ -46,14 +54,14 @@ assignGMM parallelParams gmm@(MixtureModel n modelVec) xs =
             parallelParams
             rdeepseq
             (\x ->
-               V.sum . V.map (\(Model (wj,mj)) -> (wj * gaussian mj x)) $
+               V.foldl' (\s (Model (wj,mj)) -> s + (wj * gaussian mj x)) 0 $
                modelVec)
             xs
         nks =
           parMapChunkVector
             parallelParams
             rdeepseq
-            (\m -> V.sum . V.zipWith (\z x -> assignPoint z m x) zs $ xs)
+            (\m -> V.sum . V.zipWith (\z x -> assignPoint m z x) zs $ xs)
             modelVec
         likelihood = getLikelihood zs
 
@@ -65,7 +73,7 @@ updateMuKGMM :: Model Gaussian
 updateMuKGMM mg zs xs nk =
   VU.map (/ nk) .
   V.foldl1' (VU.zipWith (+)) .
-  V.zipWith (\z x -> VU.map (* (assignPoint z mg x)) x) zs $
+  V.zipWith (\z x -> VU.map (* (assignPoint mg z x)) x) zs $
   xs
 
 updateMuGMM :: ParallelParams
@@ -99,7 +107,7 @@ updateSigmaKGMM modelK zs xs nk newMuK
           VU.map (/ nk) .
           V.foldl1' (VU.zipWith (+)) .
           V.zipWith (\z x ->
-                       VU.map (* (assignPoint z modelK x)) .
+                       VU.map (* (assignPoint modelK z x)) .
                        VU.zipWith (\mu y -> (y - mu) ^ 2)
                                   newMuK $
                        x)
