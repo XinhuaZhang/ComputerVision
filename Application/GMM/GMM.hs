@@ -16,13 +16,13 @@ import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.Maybe
+import           Data.Time.LocalTime
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           GHC.Generics
 import           Prelude                      as P
 import           System.Directory
 import           System.Random
-import Data.Time.LocalTime
 
 type GMM = MixtureModel Gaussian
 
@@ -180,8 +180,11 @@ em parallelParams filePath xs threshold oldLikelihood oldModel
   | abs ((oldLikelihood - newLikelihood) / oldLikelihood * 100) < threshold =
     liftIO $ encodeFile filePath newModel
   | otherwise =
-    do putStrLn $
-         (show newLikelihood) P.++ " (" P.++
+    do time <- liftIO getZonedTime
+       putStrLn $
+         (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": " P.++
+         (show newLikelihood) P.++
+         " (" P.++
          (show $ (newLikelihood - oldLikelihood) / (abs oldLikelihood) * 100) P.++
          "%)"
        liftIO $ encodeFile filePath newModel
