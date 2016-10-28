@@ -55,8 +55,8 @@ main =
                                        ctx
                                        filters
                                        (downsampleFactor params) =$=
-                 CL.map (V.fromList .
-                         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
+                 -- CL.map (V.fromList .
+                 --         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
                  fisherVectorConduit parallelParams gmm =$=
                  CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
                  mergeSource (labelSource $ labelFile params) =$=
@@ -71,8 +71,8 @@ main =
                                         ctx
                                         filters
                                         (downsampleFactor params) =$=
-                 CL.map (V.fromList .
-                         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
+                 -- CL.map (V.fromList .
+                 --         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
                  fisherVectorConduit parallelParams gmm =$=
                  CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
                  mergeSource (labelSource $ labelFile params) =$=

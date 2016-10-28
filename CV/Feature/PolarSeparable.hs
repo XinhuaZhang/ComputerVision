@@ -94,7 +94,7 @@ normalizedMagnitudeConduitFloat parallelParams ctx filter factor meanArr varArr 
                                                 nyNew
                                                 nx
                                                 ny) .
-                                     P.map fromIArray)
+                                     P.map fromIArray) 
                                     ys :: [[AU.Array (Int,Int,Int) Float]]
                          else P.map (P.map toIArray .
                                      multiGPUStream
@@ -251,11 +251,13 @@ magnitudeConduitFloat parallelParams ctx filter factor =
                     nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4)
                     nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
                     ys =
-                      parMap rdeepseq
-                             (\x ->
-                                P.map (slice2D x)
-                                      [0 .. nfOld])
-                             xs
+                      parMapChunk
+                        parallelParams
+                        rdeepseq
+                        (\x ->
+                           P.map (slice2D x)
+                                 [0 .. nfOld])
+                        xs
                     zs =
                       if factor == 1
                          then P.map (P.map toIArray .
@@ -269,8 +271,8 @@ magnitudeConduitFloat parallelParams ctx filter factor =
                                                 nyNew
                                                 nx
                                                 ny) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) Float]]
+                                     P.map fromIArray) $!!
+                              ys :: [[AU.Array (Int,Int,Int) Float]]
                          else P.map (P.map toIArray .
                                      multiGPUStream
                                        ctx
@@ -283,8 +285,8 @@ magnitudeConduitFloat parallelParams ctx filter factor =
                                                 nx
                                                 ny >->
                                         downsample25D factor) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) Float]]
+                                     P.map fromIArray) $!!
+                              ys :: [[AU.Array (Int,Int,Int) Float]]
                     (lb,(sizeX,sizeY,nfNew)) = bounds . P.head . P.head $ zs
                     result =
                       parMapChunk

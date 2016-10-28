@@ -147,16 +147,9 @@ emTest :: ParallelParams
              ,V.Vector Double)
 emTest parallelParams xs threshold oldModel
   | V.or . V.map (<= 0) $ nks =
-    --error "nk is zero! Try increasing the initialization range of sigma and decreasing that of mu."
-    error $
-    "nk is zero" P.++ (show . V.take 5 $ nks)
+    error "nk is zero! Try increasing the initialization range of sigma and decreasing that of mu."
   | isNaN likelihood =
-    -- error "Try increasing the initialization range of sigma and decreasing that of mu."
-    error $
-    "likelihood is nan" P.++ (show . V.take 5 $ nks) P.++ "\n" P.++
-    (show . V.take 5 $ zs) P.++
-    "\n" P.++
-    show oldModel
+    error "Likelihood is NaN! There must be something wrong."
   | otherwise = return (newModel,likelihood,nks,newMu,newSigma,newW)
   where (zs,nks,likelihood) = assignGMM parallelParams oldModel xs
         newMu = updateMuGMM parallelParams oldModel zs xs nks

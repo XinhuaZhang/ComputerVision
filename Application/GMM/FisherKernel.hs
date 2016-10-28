@@ -16,6 +16,7 @@ import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
 import           System.IO
+import           CV.Feature.PolarSeparable
 
 fisherVectorW
   :: GMM -> V.Vector Double -> V.Vector GMMData -> VU.Vector Double
@@ -75,8 +76,8 @@ fisherVectorSigma gmm@(MixtureModel n modelVec) zs xs =
                    V.zipWith (\z x ->
                                 let !assignment = assignPoint gmk z x
                                 in VU.zipWith3
-                                     (\xd muKd sigmaKd -> 
-                                        assignment * 
+                                     (\xd muKd sigmaKd ->
+                                        assignment *
                                         (((xd - muKd) ^ 2 / sigmaKd ^ 3) -
                                          (1 / sigmaKd)))
                                      x
@@ -87,24 +88,33 @@ fisherVectorSigma gmm@(MixtureModel n modelVec) zs xs =
                 modelVec
 
 fisherVectorConduit
-  :: ParallelParams -> GMM -> Conduit (V.Vector GMMData) IO (VU.Vector Double)
+  :: ParallelParams -> GMM -> Conduit [PolarSeparableFeaturePoint] IO (VU.Vector Double)
 fisherVectorConduit parallelParams gmm =
   do xs <- CL.take (batchSize parallelParams)
      if P.length xs > 0
-        then let !ys =
+        then let ys =
                    parMapChunk
                      parallelParams
                      rdeepseq
                      (\x ->
-                        let !z =
-                              V.map (\y ->
+                        let y =
+                              V.fromList .
+                              P.map (\(PolarSeparableFeaturePoint _ _ vec) ->
+                                       vec) $
+                              x
+                            !z =
+                              V.map (\a ->
                                        V.foldl' (\s (Model (wj,mj)) ->
-                                                   s + (wj * gaussian mj y))
+                                                   s + (wj * gaussian mj a))
                                                 0 $
                                        (model gmm))
-                                    x
-                        in VU.concat . P.map (\f -> f gmm z x) $
-                           [fisherVectorW,fisherVectorMu,fisherVectorSigma])
+                                    y
+                            vec =
+                              VU.concat . parMap rpar (\f -> f gmm z y) $
+                              [fisherVectorW,fisherVectorMu,fisherVectorSigma]
+                            !norm =
+                              (VU.foldl' (\a b -> a + b ^ 2) 0 vec) ** (0.5)
+                        in vec ) 
                      xs
              in do sourceList ys
                    fisherVectorConduit parallelParams gmm
@@ -160,25 +170,9 @@ fisherVectorTestSink parallelParams gmm =
              result =
                VU.toList . VU.concat . P.map (\f -> f gmm zs y) $
                [fisherVectorW,fisherVectorMu,fisherVectorSigma]
-             gm0 = (model gmm) V.! 0
-             gm1 = (model gmm) V.! 1
-             w1 = (\(Model (w1',_)) -> w1') gm1
-             w0 = (\(Model (w0',_)) -> w0') gm0
-             !numData = P.fromIntegral . V.length $ y
-             hehe =
-               V.zipWith (\z x' ->
-                            (assignPoint gm1 z x') / (w1) -
-                            (assignPoint gm0
-                                         (V.head zs)
-                                         x') /
-                            (w0))
-                         zs
-                         y
-             haha = (numData * (1 / w1 + 1 / w0)) ** (-0.5)
-         in do liftIO $ print . P.take 5 $ result
-               liftIO $ print $ V.take 5 $ hehe
-               liftIO $ print haha
-               liftIO $ print $ V.sum hehe
-               liftIO $
-                 print $
-                  haha * (V.sum hehe)
+             w = fisherVectorW gmm zs y
+             mu = fisherVectorMu gmm zs y
+             sigma = fisherVectorSigma gmm zs y
+         in do liftIO $ print $ VU.take 10 w
+               liftIO $ print $ VU.take 10 mu
+               liftIO $ print $ VU.take 10 sigma

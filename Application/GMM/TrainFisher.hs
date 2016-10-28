@@ -21,21 +21,51 @@ import           Data.Array.Accelerate.Data.Complex as A
 import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
+import           Data.List                          as L
 import           Data.Set                           as S
+import           Data.Time.LocalTime
 import           Data.Vector                        as V
 import           Data.Vector.Unboxed                as VU
+import           Foreign.Ptr
 import           Prelude                            as P
 import           System.Environment
 
 
 
 trainSink
-  :: FilePath -> TrainParams -> Sink (VU.Vector Double) IO ()
-trainSink filePath trainParams =
-  do xs <- consume
-     featurePtrs <- xs `pseq` liftIO $ MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
+  :: ParallelParams -> FilePath -> TrainParams -> Sink (VU.Vector Double) IO ()
+trainSink parallelParams filePath trainParams =
+  do
+     -- xs <- consume
+     -- if ((VU.length . P.head $ xs) /= (trainFeatureIndexMax trainParams))
+     --    then error $
+     --         "Number of feature in trainParams is not correct. (" P.++
+     --         (show . VU.length . P.head $ xs) P.++
+     --         " vs " P.++
+     --         (show $ trainFeatureIndexMax trainParams) P.++
+     --         ")"
+     --    else return ()
+     -- featurePtrs <-
+     --   xs `pseq` liftIO $ MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
      label <- liftIO $ readLabelFile filePath
-     liftIO $ train trainParams label featurePtrs
+     go label []
+  where
+        -- liftIO $ train trainParams label featurePtrs
+        go :: [Double]
+           -> [[Ptr C'feature_node]]
+           -> Sink (VU.Vector Double) IO ()
+        go label pss =
+          do xs <- CL.take (Parallel.batchSize parallelParams)
+             if P.length xs > 0
+                then do ps <-
+                          liftIO $
+                          P.mapM (getFeatureVecPtr . Dense . VU.toList) xs
+                        time <- liftIO getZonedTime
+                        liftIO $
+                          print . localTimeOfDay . zonedTimeToLocalTime $ time
+                        go label $! (ps : pss)
+                else liftIO $
+                     train trainParams label (P.concat . L.reverse $ pss)
 
 main =
   do args <- getArgs
@@ -61,8 +91,8 @@ main =
                        ,trainC = c params
                        ,trainNumExamples = P.length . lines $ imageList
                        ,trainFeatureIndexMax =
-                          (numModel gmm - 1) +
-                          (getFilterNum filterParams) * (numModel gmm)
+                          numModel gmm +
+                          (2 * getFilterNum filterParams) * (numModel gmm)
                        ,trainModel = modelName params}
      print params
      ctx <- initializeGPUCtx (Option $ gpuId params)
@@ -76,11 +106,11 @@ main =
                                        ctx
                                        filters
                                        (downsampleFactor params) =$=
-                 CL.map (V.fromList .
-                         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
+                 -- CL.map (V.fromList .
+                 --         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
                  -- fisherVectorTestSink parallelParams gmm
                  fisherVectorConduit parallelParams gmm =$=
-                 trainSink (labelFile params) trainParams
+                 trainSink parallelParams (labelFile params) trainParams
        -- imagePathSource (inputFile params) $$ grayImageConduit =$=
        --   grayImage2FloatArrayConduit =$=
        --   magnitudeConduitFloat parallelParams
@@ -99,8 +129,8 @@ main =
                                        ctx
                                        filters
                                        (downsampleFactor params) =$=
-                 CL.map (V.fromList .
-                         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
+                 -- CL.map (V.fromList .
+                 --         P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
                  fisherVectorConduit parallelParams gmm =$=
-                 trainSink (labelFile params) trainParams
+                 trainSink parallelParams (labelFile params) trainParams
      destoryGPUCtx ctx
