@@ -48,9 +48,10 @@ assignGMM
   :: ParallelParams
   -> GMM
   -> V.Vector GMMData
-  -> (V.Vector Double,V.Vector Double,Double)
-assignGMM parallelParams gmm@(MixtureModel n modelVec) xs =
-  zs `pseq` likelihood `par` nks `pseq` (zs,nks,likelihood)
+  -> (V.Vector Double,V.Vector Double,Double) 
+assignGMM parallelParams gmm@(MixtureModel n modelVec) xs = zs `pseq` likelihood `par` nks `pseq` (zs,nks,likelihood)
+  {-| V.or . V.map (== 0) $ nks = error "There is one model that none of the points is assigned to it."
+  | otherwise = zs `pseq` likelihood `par` nks `pseq` (zs,nks,likelihood)-}
   where !zs =
           parMapChunkVector
             parallelParams
@@ -101,12 +102,12 @@ updateSigmaKGMM modelK zs xs nk newMuK
   | VU.or . VU.map (== 0) $ newSigma =
     VU.map (\x ->
               if x == 0
-                 then 10 ** (-3)
+                 then 100
                  else x)
            newSigma
   | otherwise = newSigma
   where newSigma =
-          VU.map (/ nk) .
+          VU.map (\x -> sqrt $ x / nk) .
           V.foldl1' (VU.zipWith (+)) .
           V.zipWith (\z x ->
                        VU.map (* (assignPoint modelK z x)) .
@@ -187,6 +188,7 @@ em :: ParallelParams
 em parallelParams filePath xs threshold oldLikelihood oldModel
   | isNaN newLikelihood =
     error "Try increasing the initialization range of sigma and decreasing that of mu."
+    -- error $ ((show oldModel) P.++ "\n" P.++ (show . V.take 100 $ zs))
   | avgLikelihood > threshold =
     newModel `pseq` liftIO $ encodeFile filePath newModel
   | otherwise =
@@ -258,7 +260,7 @@ randomGaussian numDimension gen =
                       gen
         (sigma,newGen2) =
           randomRList numDimension
-                      (100,1000)
+                      (100,500)
                       newGen1
 
 gmmTestSink :: ParallelParams

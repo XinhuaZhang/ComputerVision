@@ -30,11 +30,12 @@ main =
                           ,Parallel.batchSize = Parser.batchSize params}
          filterParams =
            PolarSeparableFilterParams {getRadius = 128
-                                      ,getScale = S.fromDistinctAscList [8]
-                                      ,getRadialFreq = 
-                                         S.fromDistinctAscList [0 .. 3]
+                                      ,getScale =
+                                         S.fromDistinctAscList (scale params)
+                                      ,getRadialFreq =
+                                         S.fromDistinctAscList [0 .. (freq params - 1)]
                                       ,getAngularFreq =
-                                         S.fromDistinctAscList [0 .. 3]
+                                         S.fromDistinctAscList [0 .. (freq params - 1)]
                                       ,getName = Pinwheels}
      print params
      ctx <- initializeGPUCtx (Option $ gpuId params)

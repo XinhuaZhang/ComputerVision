@@ -77,11 +77,11 @@ main =
                           ,Parallel.batchSize = Parser.batchSize params}
          filterParams =
            PolarSeparableFilterParams {getRadius = 128
-                                      ,getScale = S.fromDistinctAscList [4]
+                                      ,getScale = S.fromDistinctAscList (scale params)
                                       ,getRadialFreq =
-                                         S.fromDistinctAscList [0 .. 7]
+                                         S.fromDistinctAscList [0 .. (freq params - 1)]
                                       ,getAngularFreq =
-                                         S.fromDistinctAscList [0 .. 7]
+                                         S.fromDistinctAscList [0 .. (freq params - 1)]
                                       ,getName = Pinwheels}
          trainParams =
            TrainParams {trainSolver = L2R_L2LOSS_SVC_DUAL

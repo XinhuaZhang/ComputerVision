@@ -31,9 +31,9 @@ instance Binary Gaussian where
 gaussian
   :: Gaussian -> VU.Vector Double -> Double
 gaussian (Gaussian numDims' mu' sigma') xs
-  | isNaN y = error "sigma is negative"
+  | isNaN y = error $ "sigma is negative\n" P.++ show sigma'
   | otherwise = result
-  where !y = (VU.foldl' (\a b -> a * b ^ 2) 1 sigma') ** 0.5
+  where !y = sqrt (VU.foldl' (\a b -> a * b ^ 2) 1 sigma') 
         !z =
           (-0.5) *
           (VU.sum $

@@ -23,6 +23,8 @@ data Flag
   | GMMFile String
   | Threshold Double
   | NumGaussian Int
+  | Freq Int
+  | Scale [Double]
   deriving (Show)
 
 data Params = Params
@@ -39,6 +41,8 @@ data Params = Params
   , gmmFile          :: String
   , threshold        :: Double
   , numGaussian      :: Int
+  , freq             :: Int
+  , scale            :: [Double]
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -101,7 +105,22 @@ options =
   ,Option ['n']
           ["numGaussian"]
           (ReqArg (\x -> NumGaussian $ readInt x) "INT")
-          "Set the number of Gaussian in GMM."]
+          "Set the number of Gaussian in GMM."
+  ,Option ['a']
+          ["freq"]
+          (ReqArg (\x -> Freq $ readInt x) "INT")
+          "Set the radial and angular frequencies. Their ranges are assumed to be the same."
+  ,Option ['e']
+          ["scale"]
+          (ReqArg (\x ->
+                     let go xs [] = [xs]
+                         go xs (y:ys) =
+                           if y == ','
+                              then xs : (go [] ys)
+                              else go (y:xs) ys
+                     in Scale $ map (readDouble . L.reverse) $ go [] x)
+                  "[Double]")
+          "Set the scale list"]
 
 readInt :: String -> Int
 readInt str =
@@ -140,7 +159,9 @@ parseFlag flags = go flags defaultFlag
                  ,downsampleFactor = 1
                  ,gmmFile = "gmm.dat"
                  ,threshold = -15
-                 ,numGaussian = 1}
+                 ,numGaussian = 1
+                 ,freq = 0
+                 ,scale = [1]}
         go [] params = params
         go (x:xs) params =
           case x of
@@ -158,6 +179,8 @@ parseFlag flags = go flags defaultFlag
             GMMFile str -> go xs (params {gmmFile = str})
             Threshold v -> go xs (params {threshold = v})
             NumGaussian v -> go xs (params {numGaussian = v})
+            Freq v -> go xs (params {freq = v})
+            Scale v -> go xs (params {scale = v})
 
 parseArgs :: [String] -> IO Params
 parseArgs args = do
