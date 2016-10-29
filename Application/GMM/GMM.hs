@@ -49,9 +49,14 @@ assignGMM
   -> GMM
   -> V.Vector GMMData
   -> (V.Vector Double,V.Vector Double,Double) 
-assignGMM parallelParams gmm@(MixtureModel n modelVec) xs = zs `pseq` likelihood `par` nks `pseq` (zs,nks,likelihood)
-  {-| V.or . V.map (== 0) $ nks = error "There is one model that none of the points is assigned to it."
-  | otherwise = zs `pseq` likelihood `par` nks `pseq` (zs,nks,likelihood)-}
+assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
+  | isJust zeroIdx =
+    error $
+    "There is one data point which is assigned to none of the model. Try to increase the initialization range of sigma and to decrease that of mu.\n" P.++
+    (show (xs V.! fromJust zeroIdx)) P.++
+    "\n" P.++
+    (show $ probability (xs V.! fromJust zeroIdx))
+  | otherwise = (zs,nks,likelihood)
   where !zs =
           parMapChunkVector
             parallelParams
@@ -67,6 +72,9 @@ assignGMM parallelParams gmm@(MixtureModel n modelVec) xs = zs `pseq` likelihood
             (\m -> V.sum . V.zipWith (\z x -> assignPoint m z x) zs $ xs)
             modelVec
         likelihood = getLikelihood zs
+        zeroIdx = V.findIndex (== 0) zs
+        probability y =
+          V.map (\(Model (wj,mj)) -> (wj * gaussian mj y)) modelVec
 
 updateMuKGMM :: Model Gaussian
              -> V.Vector Double
@@ -107,7 +115,7 @@ updateSigmaKGMM modelK zs xs nk newMuK
            newSigma
   | otherwise = newSigma
   where newSigma =
-          VU.map (\x -> sqrt $ x / nk) .
+          VU.map (\x -> sqrt (x / nk)) .
           V.foldl1' (VU.zipWith (+)) .
           V.zipWith (\z x ->
                        VU.map (* (assignPoint modelK z x)) .
@@ -186,9 +194,6 @@ em :: ParallelParams
    -> GMM
    -> IO ()
 em parallelParams filePath xs threshold oldLikelihood oldModel
-  | isNaN newLikelihood =
-    error "Try increasing the initialization range of sigma and decreasing that of mu."
-    -- error $ ((show oldModel) P.++ "\n" P.++ (show . V.take 100 $ zs))
   | avgLikelihood > threshold =
     newModel `pseq` liftIO $ encodeFile filePath newModel
   | otherwise =
@@ -256,11 +261,11 @@ randomGaussian numDimension gen =
   ,newGen2)
   where (mu,newGen1) =
           randomRList numDimension
-                      (-10,10)
+                      (-5,5)
                       gen
         (sigma,newGen2) =
           randomRList numDimension
-                      (100,500)
+                      (1,100)
                       newGen1
 
 gmmTestSink :: ParallelParams
