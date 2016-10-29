@@ -258,7 +258,7 @@ randomGaussian numDimension gen =
                       gen
         (sigma,newGen2) =
           randomRList numDimension
-                      (100,200)
+                      (100,1000)
                       newGen1
 
 gmmTestSink :: ParallelParams

@@ -77,18 +77,17 @@ main =
                           ,Parallel.batchSize = Parser.batchSize params}
          filterParams =
            PolarSeparableFilterParams {getRadius = 128
-                                      ,getScale = S.fromDistinctAscList [8]
+                                      ,getScale = S.fromDistinctAscList [4]
                                       ,getRadialFreq =
-                                         S.fromDistinctAscList [0 .. 3]
+                                         S.fromDistinctAscList [0 .. 7]
                                       ,getAngularFreq =
-                                         S.fromDistinctAscList [0 .. 3]
+                                         S.fromDistinctAscList [0 .. 7]
                                       ,getName = Pinwheels}
          trainParams =
            TrainParams {trainSolver = L2R_L2LOSS_SVC_DUAL
                        ,trainC = c params
                        ,trainNumExamples = P.length . lines $ imageList
                        ,trainFeatureIndexMax =
-                          numModel gmm +
                           (2 * getFilterNum filterParams) * (numModel gmm)
                        ,trainModel = modelName params}
      print params

@@ -31,7 +31,7 @@ main =
          filterParams =
            PolarSeparableFilterParams {getRadius = 128
                                       ,getScale = S.fromDistinctAscList [8]
-                                      ,getRadialFreq =
+                                      ,getRadialFreq = 
                                          S.fromDistinctAscList [0 .. 3]
                                       ,getAngularFreq =
                                          S.fromDistinctAscList [0 .. 3]

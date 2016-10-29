@@ -1,6 +1,6 @@
 #/bin/bash
 
-export OMP_NUM_THREADS=28
+export OMP_NUM_THREADS=16
 FLAG="--make -O2 -rtsopts -j4 -threaded -XBangPatterns" 
 LIBS="-lgomp -lstdc++ -lblas"
 OBJPATH="../../Classifier/LibLinear/"
