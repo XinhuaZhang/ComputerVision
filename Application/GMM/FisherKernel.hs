@@ -45,13 +45,12 @@ fisherVectorMu gmm@(MixtureModel n modelVec) zs xs =
   where !numData = P.fromIntegral . V.length $ xs
         !newMuK =
           V.map (\gmk@(Model (wk,(Gaussian _nd muK sigmaK))) ->
-                   VU.zipWith (*)
-                              (VU.map (* ((numData * wk) ** (-0.5))) sigmaK) .
+                   VU.map (* ((numData * wk) ** (-0.5))) .
                    V.foldl1' (VU.zipWith (+)) .
                    V.zipWith (\z x ->
                                 let !assignment = assignPoint gmk z x
                                 in VU.zipWith3
-                                     (\xd muKd sigmaKd -> 
+                                     (\xd muKd sigmaKd ->
                                         assignment * ((xd - muKd) / sigmaKd))
                                      x
                                      muK
@@ -69,16 +68,14 @@ fisherVectorSigma gmm@(MixtureModel n modelVec) zs xs =
   where !numData = P.fromIntegral . V.length $ xs
         !newSigmaK =
           V.map (\gmk@(Model (wk,(Gaussian _nd muK sigmaK))) ->
-                   VU.zipWith (*)
-                              (VU.map (* ((2 * numData * wk) ** (-0.5))) sigmaK) .
+                   VU.map (* ((2 * numData * wk) ** (-0.5))) .
                    V.foldl1' (VU.zipWith (+)) .
                    V.zipWith (\z x ->
                                 let !assignment = assignPoint gmk z x
                                 in VU.zipWith3
-                                     (\xd muKd sigmaKd -> 
-                                        assignment * 
-                                        (((xd - muKd) ^ 2 / sigmaKd ^ 3) -
-                                         (1 / sigmaKd)))
+                                     (\xd muKd sigmaKd ->
+                                        assignment *
+                                        (((xd - muKd) / sigmaKd) ^ 2 - 1))
                                      x
                                      muK
                                      sigmaK)
