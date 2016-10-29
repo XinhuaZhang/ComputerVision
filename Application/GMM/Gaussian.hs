@@ -30,9 +30,7 @@ instance Binary Gaussian where
 {-!x = (2 * pi) ** (0.5 * (fromIntegral numDims'))-}
 gaussian
   :: Gaussian -> VU.Vector Double -> Double
-gaussian (Gaussian numDims' mu' sigma') xs
-  | isNaN y = error $ "sigma is negative\n" P.++ show sigma'
-  | otherwise = result
+gaussian (Gaussian numDims' mu' sigma') xs = result
   where !y = sqrt (VU.foldl' (\a b -> a * b ^ 2) 1 sigma') 
         !z =
           (-0.5) *

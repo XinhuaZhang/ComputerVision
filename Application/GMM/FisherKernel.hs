@@ -100,8 +100,18 @@ fisherVectorConduit parallelParams gmm =
                                                 0 $
                                        (model gmm))
                                     x
-                        in VU.concat . parMap rdeepseq (\f -> f gmm z x) $
-                           [fisherVectorMu,fisherVectorSigma])
+                            vec =
+                              VU.concat . parMap rdeepseq (\f -> f gmm z x) $
+                              [fisherVectorMu,fisherVectorSigma]
+                            powerNormVec =
+                              VU.map (\x ->
+                                        if x > 0
+                                           then x ** (0.5)
+                                           else -((-x) ** (0.5)))
+                                     vec
+                            !l2Norm =
+                              sqrt (VU.foldl' (\a b -> a + b ^ 2) 0 powerNormVec)
+                        in VU.map (/ l2Norm) vec)
                      xs
              in do sourceList ys
                    fisherVectorConduit parallelParams gmm
