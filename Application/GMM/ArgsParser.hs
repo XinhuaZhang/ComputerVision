@@ -25,6 +25,7 @@ data Flag
   | NumGaussian Int
   | Freq Int
   | Scale [Double]
+  | IsComplex
   deriving (Show)
 
 data Params = Params
@@ -43,6 +44,7 @@ data Params = Params
   , numGaussian      :: Int
   , freq             :: Int
   , scale            :: [Double]
+  , isComplex        :: Bool
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -120,7 +122,11 @@ options =
                               else go (y:xs) ys
                      in Scale $ map (readDouble . L.reverse) $ go [] x)
                   "[Double]")
-          "Set the scale list"]
+          "Set the scale list"
+  ,Option ['j']
+          ["complex"]
+          (NoArg IsComplex)
+          "Flag which decides using complex value or magnitude."]
 
 readInt :: String -> Int
 readInt str =
@@ -161,7 +167,8 @@ parseFlag flags = go flags defaultFlag
                  ,threshold = -15
                  ,numGaussian = 1
                  ,freq = 0
-                 ,scale = [1]}
+                 ,scale = [1]
+                 ,isComplex = False}
         go [] params = params
         go (x:xs) params =
           case x of
@@ -181,6 +188,7 @@ parseFlag flags = go flags defaultFlag
             NumGaussian v -> go xs (params {numGaussian = v})
             Freq v -> go xs (params {freq = v})
             Scale v -> go xs (params {scale = v})
+            IsComplex -> go xs (params {isComplex = True})
 
 parseArgs :: [String] -> IO Params
 parseArgs args = do

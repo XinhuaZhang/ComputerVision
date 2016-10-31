@@ -33,9 +33,11 @@ main =
                                       ,getScale =
                                          S.fromDistinctAscList (scale params)
                                       ,getRadialFreq =
-                                         S.fromDistinctAscList [0 .. (freq params - 1)]
+                                         S.fromDistinctAscList
+                                           [0 .. (freq params - 1)]
                                       ,getAngularFreq =
-                                         S.fromDistinctAscList [0 .. (freq params - 1)]
+                                         S.fromDistinctAscList
+                                           [0 .. (freq params - 1)]
                                       ,getName = Pinwheels}
      print params
      ctx <- initializeGPUCtx (Option $ gpuId params)
@@ -46,19 +48,29 @@ main =
                      makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
                in imagePathSource (inputFile params) =$= grayImageConduit =$=
                   grayImage2FloatArrayConduit =$=
-                  magnitudeConduitFloat parallelParams
-                                        ctx
-                                        filters
-                                        (downsampleFactor params)
+                  if isComplex params
+                     then complexConduitFloat parallelParams
+                                              ctx
+                                              filters
+                                              (downsampleFactor params)
+                     else magnitudeConduitFloat parallelParams
+                                                ctx
+                                                filters
+                                                (downsampleFactor params)
              GPUDouble ->
                let filters =
                      makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
                in imagePathSource (inputFile params) =$= grayImageConduit =$=
                   grayImage2DoubleArrayConduit =$=
-                  magnitudeConduitDouble parallelParams
-                                         ctx
-                                         filters
-                                         (downsampleFactor params)
+                  if isComplex params
+                     then complexConduitDouble parallelParams
+                                               ctx
+                                               filters
+                                               (downsampleFactor params)
+                     else magnitudeConduitDouble parallelParams
+                                                 ctx
+                                                 filters
+                                                 (downsampleFactor params)
      featureConduit $$
        CL.map (V.fromList .
                P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=

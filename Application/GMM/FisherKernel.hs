@@ -110,8 +110,8 @@ fisherVectorConduit parallelParams gmm =
                                            else -((-x) ** (0.5)))
                                      vec
                             !l2Norm =
-                              sqrt (VU.foldl' (\a b -> a + b ^ 2) 0 powerNormVec)
-                        in VU.map (/ l2Norm) vec)
+                              sqrt (VU.foldl' (\a b -> a + b ^ 2) 0 vec)
+                        in VU.map (/ l2Norm) vec)  
                      xs
              in do sourceList ys
                    fisherVectorConduit parallelParams gmm

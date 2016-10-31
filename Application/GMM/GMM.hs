@@ -24,8 +24,7 @@ import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.Maybe
-import           Data.Time.LocalTime
-import           Data.Time.LocalTime
+import           Data.Time
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           GHC.Generics
@@ -33,6 +32,7 @@ import           Prelude                      as P
 import           System.Directory
 import           System.Random
 import           Text.Printf
+
 
 type GMM = MixtureModel Gaussian
 
@@ -48,15 +48,42 @@ assignGMM
   :: ParallelParams
   -> GMM
   -> V.Vector GMMData
-  -> (V.Vector Double,V.Vector Double,Double) 
+  -> IO (V.Vector Double,V.Vector Double,Double, GMM) 
 assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
-  | isJust zeroIdx =
+  | isJust zeroZIdx =
     error $
     "There is one data point which is assigned to none of the model. Try to increase the initialization range of sigma and to decrease that of mu.\n" P.++
-    (show (xs V.! fromJust zeroIdx)) P.++
+    (show (xs V.! fromJust zeroZIdx)) P.++
     "\n" P.++
-    (show $ probability (xs V.! fromJust zeroIdx))
-  | otherwise = (zs,nks,likelihood)
+    (show $ probability (xs V.! fromJust zeroZIdx))
+  | V.length zeroKIdx > 0 =
+    do time <- liftIO getCurrentTime
+       let gen = mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $ time
+           models' =
+             V.unfoldrN
+               (V.length zeroKIdx)
+               (\g ->
+                  Just $
+                  randomGaussian
+                    ((\(Model (_,gm)) -> numDims gm) $ V.head modelVec)
+                    g)
+               gen
+           idxModels = V.zip zeroKIdx models'
+           newModel =
+             MixtureModel
+               n
+               (V.generate
+                  n
+                  (\i ->
+                     let mi@(Model (wi,_)) = modelVec V.! i
+                     in case V.find (\(j,_) -> i == j) idxModels of
+                          Nothing -> mi
+                          Just (_j,gm) -> Model (wi,gm)))
+       putStrLn "There are models which have no point assigned to them! Reset them now."
+--       P.mapM_ (\i -> print $ modelVec V.! i) zeroKIdx
+       assignGMM parallelParams newModel xs
+  -- | isNaN likelihood = error $ "likelihood is nan. \n" P.++ (show zeroZIdx) P.++ "\n" P.++ (show zeroKIdx) P.++ (show $ V.take 10 zs) P.++ "\n" P.++ (show (V.head xs)) P.++ "\n" P.++ (show (modelVec V.! (fromJust nanIdx)))
+  | otherwise = return (zs,nks,likelihood,gmm)
   where !zs =
           parMapChunkVector
             parallelParams
@@ -72,9 +99,11 @@ assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
             (\m -> V.sum . V.zipWith (\z x -> assignPoint m z x) zs $ xs)
             modelVec
         likelihood = getLikelihood zs
-        zeroIdx = V.findIndex (== 0) zs
+        zeroZIdx = V.findIndex (== 0) zs
+        zeroKIdx = V.findIndices (\x -> x == 0 || isNaN x) nks
         probability y =
           V.map (\(Model (wj,mj)) -> (wj * gaussian mj y)) modelVec
+        nanIdx = V.findIndex isNaN . probability . V.head $ xs
 
 updateMuKGMM :: Model Gaussian
              -> V.Vector Double
@@ -158,33 +187,33 @@ emTest :: ParallelParams
              ,V.Vector GMMParameters
              ,V.Vector GMMParameters
              ,V.Vector Double)
-emTest parallelParams xs threshold oldModel
-  | V.or . V.map (<= 0) $ nks =
-    error "nk is zero! Try increasing the initialization range of sigma and decreasing that of mu."
-  | isNaN likelihood =
-    error "Likelihood is NaN! There must be something wrong."
-  | otherwise = return (newModel,likelihood,nks,newMu,newSigma,newW)
-  where (zs,nks,likelihood) = assignGMM parallelParams oldModel xs
-        newMu = updateMuGMM parallelParams oldModel zs xs nks
-        newSigma = updateSigmaGMM parallelParams oldModel zs xs nks newMu
-        !newW =
-          updateWGMM (V.length xs)
-                     nks
-        !newModel =
-          newMu `pseq`
-          newSigma `pseq`
-          MixtureModel (numModel oldModel) $
-          V.zipWith3
-            (\w mu sigma ->
-               Model (w
-                     ,Gaussian (numDims .
-                                snd . (\(Model x) -> x) . V.head . model $
-                                oldModel)
-                               mu
-                               sigma))
-            newW
-            newMu
-            newSigma
+emTest parallelParams xs threshold oldModel = undefined
+  -- | V.or . V.map (<= 0) $ nks =
+  --   error "nk is zero! Try increasing the initialization range of sigma and decreasing that of mu."
+  -- | isNaN likelihood =
+  --   error "Likelihood is NaN! There must be something wrong."
+  -- | otherwise = return (newModel,likelihood,nks,newMu,newSigma,newW)
+  -- where (zs,nks,likelihood) = assignGMM parallelParams oldModel xs
+  --       newMu = updateMuGMM parallelParams oldModel zs xs nks
+  --       newSigma = updateSigmaGMM parallelParams oldModel zs xs nks newMu
+  --       !newW =
+  --         updateWGMM (V.length xs)
+  --                    nks
+  --       !newModel =
+  --         newMu `pseq`
+  --         newSigma `pseq`
+  --         MixtureModel (numModel oldModel) $
+  --         V.zipWith3
+  --           (\w mu sigma ->
+  --              Model (w
+  --                    ,Gaussian (numDims .
+  --                               snd . (\(Model x) -> x) . V.head . model $
+  --                               oldModel)
+  --                              mu
+  --                              sigma))
+  --           newW
+  --           newMu
+  --           newSigma
 
 em :: ParallelParams
    -> FilePath
@@ -193,42 +222,57 @@ em :: ParallelParams
    -> Double
    -> GMM
    -> IO ()
-em parallelParams filePath xs threshold oldLikelihood oldModel
-  | avgLikelihood > threshold =
-    newModel `pseq` liftIO $ encodeFile filePath newModel
-  | otherwise =
-    do time <- liftIO getZonedTime
-       let timeStr =
-             (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
-       printf (timeStr P.++ "%0.2f\n")
-              avgLikelihood
-              ((avgLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
-       newModel `pseq` liftIO $ encodeFile filePath newModel
-       em parallelParams filePath xs threshold avgLikelihood newModel
-  where (zs,nks,newLikelihood) = assignGMM parallelParams oldModel xs
-        newMu = updateMuGMM parallelParams oldModel zs xs nks
-        newSigma = updateSigmaGMM parallelParams oldModel zs xs nks newMu
-        !newW =
-          updateWGMM (V.length xs)
-                     nks
-        !nD = numDims . snd . (\(Model x) -> x) . V.head . model $ oldModel
-        !newModel =
-          newW `par`
-          newMu `pseq`
-          MixtureModel (numModel oldModel) $
-          V.zipWith3 (\w mu sigma -> Model (w,Gaussian nD mu sigma))
-                     newW
-                     newMu
-                     newSigma
-        !avgLikelihood =
-          log $
-          (exp (newLikelihood / (P.fromIntegral $ V.length xs))) /
-          ((2 * pi) ** (0.5 * (fromIntegral nD)))
+em parallelParams filePath xs threshold oldLikelihood oldModel =
+  do (zs,nks,newLikelihood,intermediateModel) <-
+       assignGMM parallelParams oldModel xs
+     let newMu = updateMuGMM parallelParams intermediateModel zs xs nks
+         newSigma = updateSigmaGMM parallelParams intermediateModel zs xs nks newMu
+         !newW =
+           updateWGMM (V.length xs)
+                      nks
+         !nD = numDims . snd . (\(Model x) -> x) . V.head . model $ intermediateModel
+         !newModel =
+           newW `par`
+           newMu `pseq`
+           MixtureModel (numModel intermediateModel) $
+           V.zipWith3 (\w mu sigma -> Model (w,Gaussian nD mu sigma))
+                      newW
+                      newMu
+                      newSigma
+         !avgLikelihood =
+           log $
+           (exp (newLikelihood / (P.fromIntegral $ V.length xs))) /
+           ((2 * pi) ** (0.5 * (fromIntegral nD)))
+     if avgLikelihood > threshold  
+       then liftIO $ encodeFile filePath newModel
+       else do time <- liftIO getZonedTime
+               let timeStr =
+                     (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
+               printf (timeStr P.++ "%0.2f (%0.3f%%)\n")
+                      avgLikelihood
+                      ((avgLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
+               liftIO $ encodeFile filePath newModel
+               em parallelParams filePath xs threshold avgLikelihood newModel 
+
+  -- where
+  --       -- | avgLikelihood > threshold =
+  --       --   newModel `pseq` liftIO $ encodeFile filePath newModel
+  --       -- | otherwise =
+  --       --   do time <- liftIO getZonedTime
+  --       --      let timeStr =
+  --       --            (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
+  --       --      printf (timeStr P.++ "%0.2f (%0.3f%%)\n")
+  --       --             avgLikelihood
+  --       --             ((avgLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
+  --       --      newModel `pseq` liftIO $ encodeFile filePath newModel
+  --       --      em parallelParams filePath xs threshold avgLikelihood newModel 
+        
 
 initializeGMM :: Int -> Int -> IO GMM
 initializeGMM numModel numDimension =
-  do gen <- getStdGen
-     let (w',gen1) =
+  do time <- getCurrentTime
+     let gen = mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $ time
+         (w',gen1) =
            randomRList numModel
                        (1,100)
                        gen

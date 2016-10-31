@@ -443,21 +443,6 @@ complexConduitFloat parallelParams ctx filter factor =
                                      P.map fromIArray)
                                     ys :: [[AU.Array (Int,Int,Int) (C.Complex Float)]]
                     (lb,(sizeX,sizeY,nfNew)) = bounds . P.head . P.head $ zs
-                    arrList =
-                      parMapChunk
-                        parallelParams
-                        rseq
-                        (AU.array (lb
-                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
-                         P.concat .
-                         P.zipWith (\offset arr ->
-                                      P.map (\((i,j,k),v) ->
-                                               ((i,j,k + offset * (nfNew + 1))
-                                               ,v)) .
-                                      AU.assocs $
-                                      arr)
-                                   [0,1 ..]) $!!
-                      zs :: [AU.Array (Int,Int,Int) (C.Complex Float)]
                     result =
                       parMapChunk
                         parallelParams
@@ -471,8 +456,18 @@ complexConduitFloat parallelParams ctx filter factor =
                                          P.concatMap (\(a :+ b) -> [a,b]) $
                                          z))
                                    (range ((0,0),(sizeX,sizeY))) .
-                         slice1D)
-                        arrList
+                         slice1D .
+                         AU.array (lb
+                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
+                         P.concat .
+                         P.zipWith (\offset arr ->
+                                      P.map (\((i,j,k),v) ->
+                                               ((i,j,k + offset * (nfNew + 1))
+                                               ,v)) .
+                                      AU.assocs $
+                                      arr)
+                                   [0,1 ..]) $!!
+                        zs
                 sourceList result
                 liftIO $ performGCCtx ctx
                 complexConduitFloat parallelParams ctx filter factor
@@ -526,21 +521,6 @@ complexConduitDouble parallelParams ctx filter factor =
                                      P.map fromIArray)
                                     ys :: [[AU.Array (Int,Int,Int) (C.Complex Double)]]
                     (lb,(sizeX,sizeY,nfNew)) = bounds . P.head . P.head $ zs
-                    arrList =
-                      parMapChunk
-                        parallelParams
-                        rseq
-                        (AU.array (lb
-                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
-                         P.concat .
-                         P.zipWith (\offset arr ->
-                                      P.map (\((i,j,k),v) ->
-                                               ((i,j,k + offset * (nfNew + 1))
-                                               ,v)) .
-                                      AU.assocs $
-                                      arr)
-                                   [0,1 ..]) $!!
-                      zs :: [AU.Array (Int,Int,Int) (C.Complex Double)]
                     result =
                       parMapChunk
                         parallelParams
@@ -553,8 +533,18 @@ complexConduitDouble parallelParams ctx filter factor =
                                          P.concatMap (\(a :+ b) -> [a,b])
                                                      $z))
                                    (range ((0,0),(sizeX,sizeY))) .
-                         slice1D)
-                        arrList
+                         slice1D .
+                         AU.array (lb
+                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
+                         P.concat .
+                         P.zipWith (\offset arr ->
+                                      P.map (\((i,j,k),v) ->
+                                               ((i,j,k + offset * (nfNew + 1))
+                                               ,v)) .
+                                      AU.assocs $
+                                      arr)
+                                   [0,1 ..]) $!!
+                      zs
                 sourceList result
                 liftIO $ performGCCtx ctx
                 complexConduitDouble parallelParams ctx filter factor

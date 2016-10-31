@@ -52,19 +52,29 @@ main =
                      makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
                in do imagePathSource (inputFile params) =$= grayImageConduit =$=
                        grayImage2FloatArrayConduit =$=
-                       magnitudeConduitFloat parallelParams
-                                             ctx
-                                             filters
-                                             (downsampleFactor params)
+                       if isComplex params
+                          then complexConduitFloat parallelParams
+                                                   ctx
+                                                   filters
+                                                   (downsampleFactor params)
+                          else magnitudeConduitFloat parallelParams
+                                                     ctx
+                                                     filters
+                                                     (downsampleFactor params)
              GPUDouble ->
                let filters =
                      makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
                in do imagePathSource (inputFile params) =$= grayImageConduit =$=
                        grayImage2DoubleArrayConduit =$=
-                       magnitudeConduitDouble parallelParams
-                                              ctx
-                                              filters
-                                              (downsampleFactor params)
+                       if isComplex params
+                          then complexConduitDouble parallelParams
+                                                    ctx
+                                                    filters
+                                                    (downsampleFactor params)
+                          else magnitudeConduitDouble parallelParams
+                                                      ctx
+                                                      filters
+                                                      (downsampleFactor params)
      featureConduit $$
        CL.map (V.fromList .
                P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
