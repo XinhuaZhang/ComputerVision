@@ -78,7 +78,7 @@ main =
      featureConduit $$
        CL.map (V.fromList .
                P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-       fisherVectorConduit parallelParams gmm =$=
+       fisherVectorConduitFloatAcc parallelParams ctx gmm =$=
        CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
        mergeSource (labelSource $ labelFile params) =$=
        predict (modelName params)
