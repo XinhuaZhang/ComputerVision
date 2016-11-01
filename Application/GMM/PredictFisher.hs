@@ -20,6 +20,7 @@ import           Data.Array.Accelerate.Data.Complex as A
 import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
+import           Data.List                          as L
 import           Data.Set                           as S
 import           Data.Vector                        as V
 import           Data.Vector.Unboxed                as VU
