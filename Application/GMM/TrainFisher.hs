@@ -2,6 +2,7 @@ module Main where
 
 import           Application.GMM.ArgsParser         as Parser
 import           Application.GMM.FisherKernel
+import           Application.GMM.Gaussian
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
@@ -27,6 +28,7 @@ import           Data.Time.LocalTime
 import           Data.Vector                        as V
 import           Data.Vector.Unboxed                as VU
 import           Foreign.Ptr
+import           GHC.Float
 import           Prelude                            as P
 import           System.Environment
 
@@ -70,7 +72,7 @@ main =
         then error "run with --help to see options."
         else return ()
      params <- parseArgs args
-     gmm <- decodeFile (gmmFile params) :: IO GMM
+     gmm@(MixtureModel k modelVec) <- decodeFile (gmmFile params) :: IO GMM
      imageList <- readFile (inputFile params)
      let parallelParams =
            ParallelParams {Parallel.numThread = Parser.numThread params
@@ -97,6 +99,22 @@ main =
                              else (2 * getFilterNum filterParams) *
                                   (numModel gmm)
                        ,trainModel = modelName params}
+         d = (\(Model (w,(Gaussian d' _ _))) -> d') $ V.head modelVec
+         wAcc =
+           A.use .
+           A.fromList (Z :. k) .
+           P.map double2Float . V.toList . V.map (\(Model (w,gm)) -> w) $
+           modelVec
+         getAcc f =
+           A.use .
+           A.fromList (Z :. k :. d) .
+           P.map double2Float .
+           L.concat .
+           L.transpose .
+           V.toList . V.map (\(Model (w,gm)) -> VU.toList $ f gm) $
+           modelVec
+         muAcc = getAcc mu
+         sigmaAcc = getAcc sigma
      print params
      ctx <- initializeGPUCtx (Option $ gpuId params)
      let featureConduit =
@@ -132,7 +150,7 @@ main =
      featureConduit =$=
        CL.map (V.fromList .
                P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-       (fisherVectorConduit parallelParams gmm) $$
+       (fisherVectorConduitFloatAcc parallelParams ctx gmm wAcc muAcc sigmaAcc) $$
        trainSink parallelParams
                  (labelFile params)
                  trainParams
