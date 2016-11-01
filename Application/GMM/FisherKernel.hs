@@ -250,30 +250,24 @@ fisherVectorAcc w mu sigma x = A.zip fisherVecterMuNK fisherVectorSigmaNK
 
 
 fisherVectorConduitFloatAcc
-  :: ParallelParams -> [Context] -> GMM -> Conduit (V.Vector GMMData) IO (VU.Vector Double)
-fisherVectorConduitFloatAcc parallelParams ctx gmm@(MixtureModel k modelVec) =
+  :: ParallelParams
+  -> [Context]
+  -> GMM
+  -> Acc (A.Array DIM1 Float)
+  -> Acc (A.Array DIM2 Float)
+  -> Acc (A.Array DIM2 Float)
+  -> Conduit (V.Vector GMMData) IO (VU.Vector Double)
+fisherVectorConduitFloatAcc parallelParams ctx gmm@(MixtureModel k modelVec) wAcc muAcc sigmaAcc =
   do xs <- CL.take (batchSize parallelParams)
      if P.length xs > 0
         then let d = (\(Model (w,(Gaussian d' _ _))) -> d') $ V.head modelVec
-                 wAcc =
-                   A.use .
-                   A.fromList (Z :. k) .
-                   P.map double2Float . V.toList . V.map (\(Model (w,gm)) -> w) $
-                   modelVec
-                 getAcc f =
-                   A.use .
-                   A.fromList (Z :. k :. d) .
-                   P.map double2Float .
-                   L.concat .
-                   L.transpose .
-                   V.toList . V.map (\(Model (w,gm)) -> VU.toList $ f gm) $
-                   modelVec
-                 muAcc = getAcc mu
-                 sigmaAcc = getAcc sigma
                  !xArr =
-                   P.map (A.fromList (Z :. ((V.length . P.head $ xs)) :. d) .
-                          P.map double2Float . VU.toList . VU.concat . V.toList)
-                         xs :: [A.Array DIM2 Float]
+                   parMapChunk
+                     parallelParams
+                     rseq
+                     (A.fromList (Z :. ((V.length . P.head $ xs)) :. d) .
+                      P.map double2Float . VU.toList . VU.concat . V.toList)
+                     xs :: [A.Array DIM2 Float]
                  !yArr =
                    multiGPUStream ctx
                                   (fisherVectorAcc wAcc muAcc sigmaAcc)
@@ -283,5 +277,5 @@ fisherVectorConduitFloatAcc parallelParams ctx gmm@(MixtureModel k modelVec) =
                             P.map float2Double .
                             (\(a,b) -> a P.++ b) . P.unzip . A.toList) $
                      yArr
-                   fisherVectorConduitFloatAcc parallelParams ctx gmm
+                   fisherVectorConduitFloatAcc parallelParams ctx gmm wAcc muAcc sigmaAcc
         else return ()

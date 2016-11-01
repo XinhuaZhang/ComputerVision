@@ -2,9 +2,11 @@ module Main where
 
 import           Application.GMM.ArgsParser         as Parser
 import           Application.GMM.FisherKernel
+import           Application.GMM.Gaussian
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
+import           Control.Monad.IO.Class
 import           CV.CUDA.Context
 import           CV.CUDA.DataType
 import           CV.Feature.PolarSeparable
@@ -21,9 +23,9 @@ import           Data.Conduit.List                  as CL
 import           Data.Set                           as S
 import           Data.Vector                        as V
 import           Data.Vector.Unboxed                as VU
+import           GHC.Float
 import           Prelude                            as P
 import           System.Environment
-import Control.Monad.IO.Class
 
 main =
   do args <- getArgs
@@ -31,18 +33,36 @@ main =
         then error "run with --help to see options."
         else return ()
      params <- parseArgs args
-     gmm <- decodeFile (gmmFile params)
+     gmm@(MixtureModel k modelVec) <- decodeFile (gmmFile params)
      let parallelParams =
            ParallelParams {Parallel.numThread = Parser.numThread params
                           ,Parallel.batchSize = Parser.batchSize params}
          filterParams =
            PolarSeparableFilterParams {getRadius = 128
-                                      ,getScale = S.fromDistinctAscList (scale params)
+                                      ,getScale =
+                                         S.fromDistinctAscList (scale params)
                                       ,getRadialFreq =
-                                         S.fromDistinctAscList [0 .. (freq params - 1)]
+                                         S.fromDistinctAscList
+                                           [0 .. (freq params - 1)]
                                       ,getAngularFreq =
-                                         S.fromDistinctAscList [0 .. (freq params - 1)]
+                                         S.fromDistinctAscList
+                                           [0 .. (freq params - 1)]
                                       ,getName = Pinwheels}
+         d = (\(Model (w,(Gaussian d' _ _))) -> d') $ V.head modelVec
+         wAcc =
+           A.use .
+           A.fromList (Z :. k) .
+           P.map double2Float . V.toList . V.map (\(Model (w,gm)) -> w) $
+           modelVec
+         getAcc f =
+           A.use .
+           A.fromList (Z :. k :. d) .
+           P.map double2Float .
+           L.concat .
+           L.transpose . V.toList . V.map (\(Model (w,gm)) -> VU.toList $ f gm) $
+           modelVec
+         muAcc = getAcc mu
+         sigmaAcc = getAcc sigma
      print params
      ctx <- initializeGPUCtx (Option $ gpuId params)
      let featureConduit =
@@ -78,7 +98,7 @@ main =
      featureConduit $$
        CL.map (V.fromList .
                P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-       fisherVectorConduitFloatAcc parallelParams ctx gmm =$=
+       fisherVectorConduitFloatAcc parallelParams ctx gmm wAcc muAcc sigmaAcc =$=
        CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
        mergeSource (labelSource $ labelFile params) =$=
        predict (modelName params)
