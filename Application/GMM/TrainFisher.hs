@@ -149,11 +149,11 @@ main =
      featureConduit =$=
        CL.map (V.fromList .
                P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) $$
-       -- (fisherVectorConduitFloatAcc parallelParams ctx gmm wAcc muAcc sigmaAcc) $$
+       (fisherVectorConduitFloatAcc parallelParams ctx gmm wAcc muAcc sigmaAcc) $$
        -- fisherVectorConduit parallelParams gmm $$
-       -- trainSink parallelParams
-       --           (labelFile params)
-       --           trainParams
-       --           (findC params)
-       fisherVectorTestSink parallelParams gmm
+       trainSink parallelParams
+                 (labelFile params)
+                 trainParams
+                 (findC params)
+     -- fisherVectorTestSink parallelParams gmm
      destoryGPUCtx ctx
