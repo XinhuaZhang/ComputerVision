@@ -136,10 +136,10 @@ updateSigmaKGMM :: Model Gaussian
                 -> GMMParameters
                 -> GMMParameters
 updateSigmaKGMM modelK zs xs nk newMuK
-  | VU.or . VU.map (== 0) $ newSigma =
+  | isJust smallIdx =
     VU.map (\x ->
-              if x == 0
-                 then 100
+              if x < 0.1
+                 then 1
                  else x)
            newSigma
   | otherwise = newSigma
@@ -153,6 +153,7 @@ updateSigmaKGMM modelK zs xs nk newMuK
                        x)
                     zs $
           xs
+        smallIdx = VU.findIndex (< 0.1) newSigma
 
 updateSigmaGMM :: ParallelParams
                -> GMM
@@ -226,11 +227,14 @@ em parallelParams filePath xs threshold oldLikelihood oldModel =
   do (zs,nks,newLikelihood,intermediateModel) <-
        assignGMM parallelParams oldModel xs
      let newMu = updateMuGMM parallelParams intermediateModel zs xs nks
-         newSigma = updateSigmaGMM parallelParams intermediateModel zs xs nks newMu
+         newSigma =
+           updateSigmaGMM parallelParams intermediateModel zs xs nks newMu
          !newW =
            updateWGMM (V.length xs)
                       nks
-         !nD = numDims . snd . (\(Model x) -> x) . V.head . model $ intermediateModel
+         !nD =
+           numDims . snd . (\(Model x) -> x) . V.head . model $
+           intermediateModel
          !newModel =
            newW `par`
            newMu `pseq`
@@ -243,29 +247,16 @@ em parallelParams filePath xs threshold oldLikelihood oldModel =
            log $
            (exp (newLikelihood / (P.fromIntegral $ V.length xs))) /
            ((2 * pi) ** (0.5 * (fromIntegral nD)))
-     if avgLikelihood > threshold  
-       then liftIO $ encodeFile filePath newModel
-       else do time <- liftIO getZonedTime
-               let timeStr =
-                     (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
-               printf (timeStr P.++ "%0.2f (%0.3f%%)\n")
-                      avgLikelihood
-                      ((avgLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
-               liftIO $ encodeFile filePath newModel
-               em parallelParams filePath xs threshold avgLikelihood newModel 
-
-  -- where
-  --       -- | avgLikelihood > threshold =
-  --       --   newModel `pseq` liftIO $ encodeFile filePath newModel
-  --       -- | otherwise =
-  --       --   do time <- liftIO getZonedTime
-  --       --      let timeStr =
-  --       --            (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
-  --       --      printf (timeStr P.++ "%0.2f (%0.3f%%)\n")
-  --       --             avgLikelihood
-  --       --             ((avgLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
-  --       --      newModel `pseq` liftIO $ encodeFile filePath newModel
-  --       --      em parallelParams filePath xs threshold avgLikelihood newModel 
+     time <- liftIO getZonedTime
+     let timeStr =
+           (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
+     printf (timeStr P.++ "%0.2f (%0.3f%%)\n")
+            avgLikelihood
+            ((avgLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
+     if avgLikelihood > threshold
+        then liftIO $ encodeFile filePath newModel
+        else do liftIO $ encodeFile filePath newModel
+                em parallelParams filePath xs threshold avgLikelihood newModel
         
 
 initializeGMM :: Int -> Int -> IO GMM

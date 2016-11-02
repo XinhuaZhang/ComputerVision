@@ -31,7 +31,7 @@ instance Binary Gaussian where
 gaussian
   :: Gaussian -> VU.Vector Double -> Double
 gaussian (Gaussian numDims' mu' sigma') xs = result
-  where !y = sqrt (VU.foldl' (\a b -> a * b ^ 2) 1 sigma') 
+  where !y = VU.foldl1' (*) sigma'
         !z =
           (-0.5) *
           (VU.sum $

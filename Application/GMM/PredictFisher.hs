@@ -58,9 +58,9 @@ main =
          getAcc f =
            A.use .
            A.fromList (Z :. k :. d) .
-           P.map double2Float .
-           L.concat .
-           L.transpose . V.toList . V.map (\(Model (w,gm)) -> VU.toList $ f gm) $
+           VU.toList .
+           VU.map double2Float .
+           VU.concat . V.toList . V.map (\(Model (w,gm)) -> f gm) $
            modelVec
          muAcc = getAcc mu
          sigmaAcc = getAcc sigma
@@ -100,6 +100,7 @@ main =
        CL.map (V.fromList .
                P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
        fisherVectorConduitFloatAcc parallelParams ctx gmm wAcc muAcc sigmaAcc =$=
+       -- fisherVectorConduit parallelParams gmm =$=
        CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
        mergeSource (labelSource $ labelFile params) =$=
        predict (modelName params)

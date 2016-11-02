@@ -173,7 +173,9 @@ fisherVectorTestSink parallelParams gmm =
                      y
              result =
                VU.toList . VU.concat . P.map (\f -> f gmm zs y) $
-               [fisherVectorW,fisherVectorMu,fisherVectorSigma]
+               [fisherVectorMu,fisherVectorSigma]
+             norm = sqrt $ L.foldl' (\a b -> a + b^2) 0 result
+             result' = P.map (/norm) result
              gm0 = (model gmm) V.! 0
              gm1 = (model gmm) V.! 1
              w1 = (\(Model (w1',_)) -> w1') gm1
@@ -189,13 +191,7 @@ fisherVectorTestSink parallelParams gmm =
                          zs
                          y
              haha = (numData * (1 / w1 + 1 / w0)) ** (-0.5)
-         in do liftIO $ print . P.take 5 $ result
-               liftIO $ print $ V.take 5 $ hehe
-               liftIO $ print haha
-               liftIO $ print $ V.sum hehe
-               liftIO $
-                 print $
-                  haha * (V.sum hehe)
+         in do liftIO . print . P.take 256 $ result
 
 
 fisherVectorAcc :: (Elt a
@@ -205,7 +201,7 @@ fisherVectorAcc :: (Elt a
                 -> Acc (A.Array DIM2 a)
                 -> Acc (A.Array DIM2 a)
                 -> Acc (A.Array DIM2 (a,a))
-fisherVectorAcc w mu sigma x = A.zip fisherVecterMuNK fisherVectorSigmaNK
+fisherVectorAcc w mu sigma x = A.zip fisherVecterMuKD fisherVectorSigmaKD
   where (Z :. n :. d) = unlift $ shape x :: Z :. Exp Int :. Exp Int
         (Z :. k) = unlift $ shape w :: Z :. Exp Int
         xNKD =
@@ -213,6 +209,9 @@ fisherVectorAcc w mu sigma x = A.zip fisherVecterMuNK fisherVectorSigmaNK
                       x
         wNK =
           A.replicate (lift (Z :. n :. All))
+                      w
+        wKD =
+          A.replicate (lift (Z :. All :. d))
                       w
         muNKD =
           A.replicate (lift (Z :. n :. All :. All))
@@ -235,17 +234,21 @@ fisherVectorAcc w mu sigma x = A.zip fisherVecterMuNK fisherVectorSigmaNK
                      gaussianENK
                      gaussianZNK
         assignmentZNK = A.replicate (lift (Z :. All :. k)) . A.fold1 (+) $ wpNK
-        assignmentNK = A.zipWith (/) wpNK assignmentZNK
+        assignmentNK =
+          A.zipWith (\a b ->
+                       A.cond (b ==* 0)
+                              0
+                              (a / b))
+                    wpNK
+                    assignmentZNK
         assignmentNKD =
           A.replicate (lift (Z :. All :. All :. d))
                       assignmentNK
-        fisherVecterMuNK =
-          A.zipWith (\w y -> y / (sqrt (A.fromIntegral n * w))) wNK .
-          A.fold1 (+) . rotate3D $
+        fisherVecterMuKD =
+          A.zipWith (\w y -> y / (sqrt w)) wKD . A.fold1 (+) . rotate3D $
           A.zipWith (*) assignmentNKD normalizedXNKD
-        fisherVectorSigmaNK =
-          A.zipWith (\w y -> y / (sqrt (A.fromIntegral n * w * 2))) wNK .
-          A.fold1 (+) . rotate3D $
+        fisherVectorSigmaKD =
+          A.zipWith (\w y -> y / (sqrt (w * 2))) wKD . A.fold1 (+) . rotate3D $
           A.zipWith (\a b -> a * (b - 1)) assignmentNKD normalizedXNKD2
 
 
@@ -260,22 +263,56 @@ fisherVectorConduitFloatAcc
 fisherVectorConduitFloatAcc parallelParams ctx gmm@(MixtureModel k modelVec) wAcc muAcc sigmaAcc =
   do xs <- CL.take (batchSize parallelParams)
      if P.length xs > 0
-        then let d = (\(Model (w,(Gaussian d' _ _))) -> d') $ V.head modelVec
+        then let numData = V.length . P.head $ xs
+                 n = div numData 16
+                 d = (\(Model (w,(Gaussian d' _ _))) -> d') $ V.head modelVec
                  !xArr =
                    parMapChunk
                      parallelParams
                      rseq
-                     (A.fromList (Z :. ((V.length . P.head $ xs)) :. d) .
-                      P.map double2Float . VU.toList . VU.concat . V.toList)
-                     xs :: [A.Array DIM2 Float]
+                     (P.map (A.fromList (Z :. n :. d) .
+                             P.map double2Float .
+                             VU.toList . VU.concat . V.toList) .
+                      split n)
+                     xs :: [[A.Array DIM2 Float]]
                  !yArr =
-                   multiGPUStream ctx
-                                  (fisherVectorAcc wAcc muAcc sigmaAcc)
-                                  xArr
-             in do sourceList .
-                     P.map (VU.fromList .
-                            P.map float2Double .
-                            (\(a,b) -> a P.++ b) . P.unzip . A.toList) $
-                     yArr
+                   if P.length ctx > 1
+                      then P.concat .
+                           parMap rseq
+                                  (\(ctx',zs) ->
+                                     P.map (multiGPUStream [ctx']
+                                                           (fisherVectorAcc wAcc muAcc sigmaAcc))
+                                           zs) .
+                           P.zip ctx $
+                           splitList (P.length ctx) xArr
+                      else P.map (multiGPUStream ctx
+                                                 (fisherVectorAcc wAcc muAcc sigmaAcc))
+                                 xArr :: [[A.Array DIM2 (Float,Float)]]
+                 vec =
+                   parMapChunk
+                     parallelParams
+                     rdeepseq
+                     (VU.map (/ (sqrt . P.fromIntegral $ numData)) .
+                      L.foldl1' (VU.zipWith (+)) .
+                      P.map (VU.fromList .
+                             P.map float2Double .
+                             (\(a,b) -> a P.++ b) . P.unzip . A.toList)) $
+                   yArr
+                 normVec =
+                   parMapChunk parallelParams
+                               rdeepseq
+                               (sqrt . VU.foldl' (\a b -> a + b ^ 2) 0)
+                               vec
+             in do sourceList $ P.zipWith (\a b -> VU.map (/ b) a) vec normVec
                    fisherVectorConduitFloatAcc parallelParams ctx gmm wAcc muAcc sigmaAcc
         else return ()
+  where split
+          :: Int -> V.Vector a -> [V.Vector a]
+        split n vec
+          | V.null vec = []
+          | otherwise = as : split n bs
+          where (as,bs) = V.splitAt n vec
+        splitList :: Int -> [a] -> [[a]]
+        splitList _ [] = []
+        splitList n vec = as : splitList n bs
+          where (as,bs) = L.splitAt n vec
