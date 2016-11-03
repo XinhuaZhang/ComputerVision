@@ -35,21 +35,22 @@ import           System.Environment
 trainSink
   :: ParallelParams -> FilePath -> TrainParams -> Bool -> Sink (VU.Vector Double) IO ()
 trainSink parallelParams filePath trainParams findCFlag =
-  do xs <- consume
-     if ((VU.length . P.head $ xs) /= (trainFeatureIndexMax trainParams))
-        then error $
-             "Number of feature in trainParams is not correct. (" P.++
-             (show . VU.length . P.head $ xs) P.++
-             " vs " P.++
-             (show $ trainFeatureIndexMax trainParams) P.++
-             ")"
-        else return ()
-     featurePtrs <-
-       xs `pseq` liftIO $ MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
+  do -- xs <- consume
+     -- if ((VU.length . P.head $ xs) /= (trainFeatureIndexMax trainParams))
+     --    then error $
+     --         "Number of feature in trainParams is not correct. (" P.++
+     --         (show . VU.length . P.head $ xs) P.++
+     --         " vs " P.++
+     --         (show $ trainFeatureIndexMax trainParams) P.++
+     --         ")"
+     --    else return ()
+     -- featurePtrs <-
+     --   xs `pseq` liftIO $ MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
      label <- liftIO $ readLabelFile filePath
-     if findCFlag
-        then liftIO $ findParameterC trainParams label featurePtrs
-        else liftIO $ train trainParams label featurePtrs -- go label []
+     go label []
+     -- if findCFlag
+     --    then liftIO $ findParameterC trainParams label featurePtrs
+     --    else liftIO $ train trainParams label featurePtrs -- go label []
   where go :: [Double]
            -> [[Ptr C'feature_node]]
            -> Sink (VU.Vector Double) IO ()
@@ -58,7 +59,7 @@ trainSink parallelParams filePath trainParams findCFlag =
              if P.length xs > 0
                 then do ps <-
                           liftIO $
-                          P.mapM (getFeatureVecPtr . Dense . VU.toList) xs
+                          MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
                         time <- liftIO getZonedTime
                         liftIO $
                           print . localTimeOfDay . zonedTimeToLocalTime $ time
@@ -149,8 +150,8 @@ main =
      featureConduit =$=
        CL.map (V.fromList .
                P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-       (fisherVectorConduitFloatAcc parallelParams ctx gmm wAcc muAcc sigmaAcc) $$
-       -- fisherVectorConduit parallelParams gmm $$
+       -- (fisherVectorConduitFloatAcc parallelParams ctx gmm wAcc muAcc sigmaAcc) $$
+       fisherVectorConduit parallelParams gmm $$
        trainSink parallelParams
                  (labelFile params)
                  trainParams

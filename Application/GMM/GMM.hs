@@ -50,6 +50,10 @@ assignGMM
   -> V.Vector GMMData
   -> IO (V.Vector Double,V.Vector Double,Double, GMM) 
 assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
+  | V.length smallVarIdx > 0 =
+    do putStrLn "Variances of some Gaussians are too small. Overfitting could happen. Reset."
+       newModel <- resetGMM gmm zeroKIdx
+       assignGMM parallelParams newModel xs
   | isJust zeroZIdx =
     error $
     "There is one data point which is assigned to none of the model. Try to increase the initialization range of sigma and to decrease that of mu.\n" P.++
@@ -57,32 +61,9 @@ assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
     "\n" P.++
     (show $ probability (xs V.! fromJust zeroZIdx))
   | V.length zeroKIdx > 0 =
-    do time <- liftIO getCurrentTime
-       let gen = mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $ time
-           models' =
-             V.unfoldrN
-               (V.length zeroKIdx)
-               (\g ->
-                  Just $
-                  randomGaussian
-                    ((\(Model (_,gm)) -> numDims gm) $ V.head modelVec)
-                    g)
-               gen
-           idxModels = V.zip zeroKIdx models'
-           newModel =
-             MixtureModel
-               n
-               (V.generate
-                  n
-                  (\i ->
-                     let mi@(Model (wi,_)) = modelVec V.! i
-                     in case V.find (\(j,_) -> i == j) idxModels of
-                          Nothing -> mi
-                          Just (_j,gm) -> Model (wi,gm)))
-       putStrLn "There are models which have no point assigned to them! Reset them now."
---       P.mapM_ (\i -> print $ modelVec V.! i) zeroKIdx
+    do putStrLn "There are models which have no point assigned to them! Reset them now."
+       newModel <- resetGMM gmm zeroKIdx
        assignGMM parallelParams newModel xs
-  -- | isNaN likelihood = error $ "likelihood is nan. \n" P.++ (show zeroZIdx) P.++ "\n" P.++ (show zeroKIdx) P.++ (show $ V.take 10 zs) P.++ "\n" P.++ (show (V.head xs)) P.++ "\n" P.++ (show (modelVec V.! (fromJust nanIdx)))
   | otherwise = return (zs,nks,likelihood,gmm)
   where !zs =
           parMapChunkVector
@@ -100,10 +81,47 @@ assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
             modelVec
         likelihood = getLikelihood zs
         zeroZIdx = V.findIndex (== 0) zs
-        zeroKIdx = V.findIndices (\x -> x == 0 || isNaN x) nks
+        zeroKIdx =
+          V.findIndices (\x -> x == 0 || isNaN x)
+                        nks
         probability y =
           V.map (\(Model (wj,mj)) -> (wj * gaussian mj y)) modelVec
         nanIdx = V.findIndex isNaN . probability . V.head $ xs
+        smallVarIdx =
+          V.findIndices
+            (\(Model (w,Gaussian _ _ sigmaVec)) ->
+               case VU.find (< 0.1) sigmaVec of
+                 Nothing -> False
+                 Just _ -> True)
+            modelVec
+
+resetGMM :: GMM -> V.Vector Int -> IO GMM
+resetGMM gmm@(MixtureModel n modelVec) idx =
+  do time <- liftIO getCurrentTime
+     let gen =
+           mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $
+           time
+         models' =
+           V.unfoldrN
+             (V.length idx)
+             (\g ->
+                Just $
+                randomGaussian
+                  ((\(Model (_,gm)) -> numDims gm) $ V.head modelVec)
+                  g)
+             gen
+         idxModels = V.zip idx models'
+     return $!
+       MixtureModel
+         n
+         (V.generate
+            n
+            (\i ->
+               let mi@(Model (wi,_)) = modelVec V.! i
+               in case V.find (\(j,_) -> i == j) idxModels of
+                    Nothing -> mi
+                    Just (_j,gm) -> Model (wi,gm)))
+
 
 updateMuKGMM :: Model Gaussian
              -> V.Vector Double
@@ -135,14 +153,7 @@ updateSigmaKGMM :: Model Gaussian
                 -> Double
                 -> GMMParameters
                 -> GMMParameters
-updateSigmaKGMM modelK zs xs nk newMuK
-  | isJust smallIdx =
-    VU.map (\x ->
-              if x < 0.1
-                 then 1
-                 else x)
-           newSigma
-  | otherwise = newSigma
+updateSigmaKGMM modelK zs xs nk newMuK = newSigma
   where newSigma =
           VU.map (\x -> sqrt (x / nk)) .
           V.foldl1' (VU.zipWith (+)) .

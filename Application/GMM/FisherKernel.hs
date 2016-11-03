@@ -264,15 +264,15 @@ fisherVectorConduitFloatAcc parallelParams ctx gmm@(MixtureModel k modelVec) wAc
   do xs <- CL.take (batchSize parallelParams)
      if P.length xs > 0
         then let numData = V.length . P.head $ xs
-                 n = div numData 16
+                 n = div numData 32
                  d = (\(Model (w,(Gaussian d' _ _))) -> d') $ V.head modelVec
                  !xArr =
                    parMapChunk
                      parallelParams
                      rseq
                      (P.map (A.fromList (Z :. n :. d) .
-                             P.map double2Float .
-                             VU.toList . VU.concat . V.toList) .
+                             VU.toList .
+                             VU.map double2Float . VU.concat . V.toList) .
                       split n)
                      xs :: [[A.Array DIM2 Float]]
                  !yArr =

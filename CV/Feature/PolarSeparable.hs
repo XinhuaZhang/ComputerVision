@@ -242,7 +242,7 @@ magnitudeConduitFloat
   -> Int
   -> Conduit (AU.Array (Int,Int,Int) Float) IO [PolarSeparableFeaturePoint]
 magnitudeConduitFloat parallelParams ctx filter factor =
-  do xs <- CL.take (batchSize parallelParams)
+  do !xs <- CL.take (batchSize parallelParams)
      if P.length xs > 0
         then do let (_,(nx',ny',nfOld)) = bounds . P.head $ xs
                     nx = nx' + 1
