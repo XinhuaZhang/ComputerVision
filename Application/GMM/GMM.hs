@@ -52,7 +52,8 @@ assignGMM
 assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
   | V.length smallVarIdx > 0 =
     do putStrLn "Variances of some Gaussians are too small. Overfitting could happen. Reset."
-       newModel <- resetGMM gmm zeroKIdx
+       print smallVarIdx
+       newModel <- resetGMM gmm smallVarIdx
        assignGMM parallelParams newModel xs
   | isJust zeroZIdx =
     error $
@@ -62,6 +63,8 @@ assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
     (show $ probability (xs V.! fromJust zeroZIdx))
   | V.length zeroKIdx > 0 =
     do putStrLn "There are models which have no point assigned to them! Reset them now."
+       print zeroKIdx
+       -- print (modelVec V.! (V.head zeroKIdx))
        newModel <- resetGMM gmm zeroKIdx
        assignGMM parallelParams newModel xs
   | otherwise = return (zs,nks,likelihood,gmm)
@@ -90,7 +93,7 @@ assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
         smallVarIdx =
           V.findIndices
             (\(Model (w,Gaussian _ _ sigmaVec)) ->
-               case VU.find (< 0.1) sigmaVec of
+               case VU.find (< 0.05) sigmaVec of
                  Nothing -> False
                  Just _ -> True)
             modelVec
@@ -153,7 +156,14 @@ updateSigmaKGMM :: Model Gaussian
                 -> Double
                 -> GMMParameters
                 -> GMMParameters
-updateSigmaKGMM modelK zs xs nk newMuK = newSigma
+updateSigmaKGMM modelK zs xs nk newMuK
+  | isJust smallIdx =
+    VU.map (\x ->
+              if x == 0
+                 then 100
+                 else x)
+           newSigma
+  | otherwise = newSigma
   where newSigma =
           VU.map (\x -> sqrt (x / nk)) .
           V.foldl1' (VU.zipWith (+)) .
@@ -260,7 +270,7 @@ em parallelParams filePath xs threshold oldLikelihood oldModel =
            ((2 * pi) ** (0.5 * (fromIntegral nD)))
      time <- liftIO getZonedTime
      let timeStr =
-           (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
+            (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
      printf (timeStr P.++ "%0.2f (%0.3f%%)\n")
             avgLikelihood
             ((avgLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
