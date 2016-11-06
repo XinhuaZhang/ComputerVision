@@ -363,11 +363,14 @@ gmmSink :: ParallelParams
 gmmSink parallelParams numM threshold filePath =
   do xs <- consume
      fileFlag <- liftIO $ doesFileExist filePath
-     fileSize <- liftIO $ getFileSize filePath
      models <-
        liftIO $
-       if fileFlag && (fileSize > 0)
-          then decodeFile filePath
+       if fileFlag
+          then do fileSize <- liftIO $ getFileSize filePath
+                  if fileSize > 0
+                     then decodeFile filePath
+                     else initializeGMM numM
+                                        (VU.length . V.head . P.head $ xs)
           else initializeGMM numM
                              (VU.length . V.head . P.head $ xs)
      let !ys = V.concat xs
