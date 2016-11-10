@@ -16,25 +16,26 @@ data PPCA =
        ,numZDims :: Int           -- M
        ,wMat     :: Matrix Double -- D X M
        ,muMat    :: Matrix Double -- D X 1
-       ,sigma    :: Double} 
+       ,sigma    :: Double}
   deriving (Show,Generic)
 
 data PPCAInitParams =
-  PPCAInitParams {wRange     :: (Double,Double)
-                 ,muRange    :: (Double,Double)
-                 ,sigmaRange :: (Double,Double)}
-  deriving (Show)
+  PPCAInitParams {numPrincipal :: Int
+                 ,wRange       :: (Double,Double)
+                 ,muRange      :: (Double,Double)
+                 ,sigmaRange   :: (Double,Double)}
+  deriving ((Show))
 
 instance Binary PPCA where
   put (PPCA nd nzd w mu sigma') =
     do put nd
-       put nzd 
+       put nzd
        put $ Mat.toLists w
        put $ Mat.toLists mu
        put sigma'
   get =
     do nd <- get
-       nzd <- get 
+       nzd <- get
        ws <- get
        mus <- get
        sigma' <- get
@@ -58,8 +59,8 @@ randomRList len bound gen
 
 randomPPCA
   :: (RandomGen g)
-  => PPCAInitParams -> Int -> Int -> g -> (PPCA,g)
-randomPPCA (PPCAInitParams wR muR sigmaR) nD nM gen =
+  => PPCAInitParams -> Int -> g -> (PPCA,g)
+randomPPCA (PPCAInitParams nM wR muR sigmaR) nD gen =
   (PPCA nD
         nM
         (Mat.fromList nD nM w)
@@ -74,11 +75,11 @@ randomPPCA (PPCAInitParams wR muR sigmaR) nD nM gen =
         (s,gen3) = randomR sigmaR gen2
 
 
--- The normalization term (2 * pi * sigma' ^ (2 :: Int)) ** (-(P.fromIntegral nd) / 2) is not needed.
+-- The normalization term (2 * pi) ** (-(P.fromIntegral nd) / 2) is not needed.
 ppcaP
   :: PPCA -> Matrix Double -> Double
-ppcaP model@(PPCA _nd _nzd w' mu' sigma') x =
-  (exp (-1 * y3 / (2 * sigma' ^ (2 :: Int))))
+ppcaP model@(PPCA nd _nzd w' mu' sigma') x =
+  (exp (-1 * y3 / (2 * sigma' ^ (2 :: Int)))) / (sigma' ^ nd)
   where wz = w' `multStd2` z
         y1 = elementwiseUnsafe (-) x wz
         y2 = elementwiseUnsafe (-) y1 mu'
@@ -114,7 +115,7 @@ computeLatentZ (PPCA _nD nM w' mu' sigma') x =
         invM =
           case inverse m of
             Left msg -> error msg
-            Right y -> y
+            Right y  -> y
 
 computeLatentZVec :: PPCA -> V.Vector (Matrix Double) -> V.Vector (Matrix Double)
 computeLatentZVec (PPCA _nD nM w' mu' sigma') =
@@ -128,5 +129,5 @@ computeLatentZVec (PPCA _nD nM w' mu' sigma') =
         invM =
           case inverse m of
             Left msg -> error msg
-            Right y -> y
+            Right y  -> y
         mwt = invM `multStd2` wt
