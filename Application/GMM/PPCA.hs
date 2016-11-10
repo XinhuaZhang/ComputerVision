@@ -1,9 +1,8 @@
-{-# LANGUAGE BangPatterns  #-}
 {-# LANGUAGE DeriveGeneric #-}
+
 module Application.GMM.PPCA where
 
 import           Data.Binary
-import           Data.Foldable as F
 import           Data.Matrix   as Mat
 import           Data.Time
 import           Data.Vector   as V
@@ -16,7 +15,8 @@ data PPCA =
        ,numZDims :: Int           -- M
        ,wMat     :: Matrix Double -- D X M
        ,muMat    :: Matrix Double -- D X 1
-       ,sigma    :: Double}
+       ,sigma    :: Double        -- sigma here is actually a sigma^2
+       }
   deriving (Show,Generic)
 
 data PPCAInitParams =
@@ -24,7 +24,7 @@ data PPCAInitParams =
                  ,wRange       :: (Double,Double)
                  ,muRange      :: (Double,Double)
                  ,sigmaRange   :: (Double,Double)}
-  deriving ((Show))
+  deriving (Show)
 
 instance Binary PPCA where
   put (PPCA nd nzd w mu sigma') =
@@ -46,7 +46,8 @@ instance Binary PPCA where
                     sigma')
 
 -- initialization
-randomRList :: (RandomGen g,Random a)
+randomRList :: (RandomGen g
+               ,Random a)
             => Int -> (a,a) -> g -> ([a],g)
 randomRList len bound gen
   | len > 0 =
@@ -74,52 +75,97 @@ randomPPCA (PPCAInitParams nM wR muR sigmaR) nD gen =
         (mu,gen2) = randomRList nD muR gen1
         (s,gen3) = randomR sigmaR gen2
 
-
 -- The normalization term (2 * pi) ** (-(P.fromIntegral nd) / 2) is not needed.
-ppcaP
-  :: PPCA -> Matrix Double -> Double
+ppcaP :: PPCA -> Matrix Double -> Double
 ppcaP model@(PPCA nd _nzd w' mu' sigma') x =
-  (exp (-1 * y3 / (2 * sigma' ^ (2 :: Int)))) / (sigma' ^ nd)
-  where wz = w' `multStd2` z
-        y1 = elementwiseUnsafe (-) x wz
-        y2 = elementwiseUnsafe (-) y1 mu'
-        y3 = F.foldl' (\a b -> a + b ^ (2 :: Int)) 0 $ y2
-        z = computeLatentZ model x
+  ((detLU c) ** (-0.5)) *
+  (exp ((-0.5) * (((transpose xmu) `multStd2` invC `multStd2` xmu)) Mat.! (1,1)))
+  where xmu = elementwiseUnsafe (-) x mu'
+        invM = computeInvM model
+        invC = computeInvC model invM
+        c =
+          elementwiseUnsafe (+)
+                            (diagonal 0 (V.replicate nd sigma'))
+                            (w' `multStd2` (transpose w'))
 
+ppcaP'
+  :: PPCA -> Matrix Double -> Matrix Double -> Double
+ppcaP' model@(PPCA nd _nzd w' mu' sigma') invM x =
+  ((detLU c) ** (-0.5)) *
+  (exp ((-0.5) * (((transpose xmu) `multStd2` invC `multStd2` xmu)) Mat.! (1,1)))
+  where xmu = elementwiseUnsafe (-) x mu'
+        invC = computeInvC model invM
+        c =
+          elementwiseUnsafe (+)
+                            (diagonal 0 (V.replicate nd sigma'))
+                            (w' `multStd2` (transpose w'))
 
-ppcaPVec :: PPCA -> V.Vector (Matrix Double) -> V.Vector Double
-ppcaPVec model@(PPCA _nd _nzd w' mu' sigma') vecX =
-  V.zipWith (\x z ->
-               exp . (\y -> -1 * y / (2 * sigma' ^ (2 :: Int))) . squareSum $
-               elementwiseUnsafe
-                 (-)
-                 (elementwiseUnsafe (-)
-                                    x
-                                    (w' `multStd2` z))
-                 mu')
-            vecX
-            vecZ
-  where squareSum x = F.foldl' (\a b -> a + b ^ (2 :: Int)) 0 $ x
-        !vecZ = computeLatentZVec model vecX
+ppcaPVec
+  :: PPCA -> V.Vector (Matrix Double) -> V.Vector Double
+ppcaPVec model@(PPCA nd _nzd w' mu' sigma') =
+  V.map (\x ->
+           ((detLU c) ** (-0.5)) *
+           (exp ((-0.5) *
+                 (((transpose (xmu x)) `multStd2` invC `multStd2` (xmu x))) Mat.!
+                 (1,1))))
+  where xmu x = elementwiseUnsafe (-) x mu'
+        invM = computeInvM model
+        invC = computeInvC model invM
+        c =
+          elementwiseUnsafe (+)
+                            (diagonal 0 (V.replicate nd sigma'))
+                            (w' `multStd2` (transpose w'))
 
+ppcaPVec' :: PPCA
+          -> Matrix Double
+          -> V.Vector (Matrix Double)
+          -> V.Vector Double
+ppcaPVec' model@(PPCA nd _nzd w' mu' sigma') invM =
+  V.map (\x ->
+           ((detLU c) ** (-0.5)) *
+           (exp ((-0.5) *
+                 (((transpose (xmu x)) `multStd2` invC `multStd2` (xmu x))) Mat.!
+                 (1,1))))
+  where xmu x = elementwiseUnsafe (-) x mu'
+        invC = computeInvC model invM
+        c =
+          elementwiseUnsafe (+)
+                            (diagonal 0 (V.replicate nd sigma'))
+                            (w' `multStd2` (transpose w'))
 
-computeLatentZ :: PPCA -> Matrix Double -> Matrix Double
-computeLatentZ (PPCA _nD nM w' mu' sigma') x =
+computeLatentZ
+  :: PPCA -> Matrix Double -> Matrix Double
+computeLatentZ model@(PPCA _nD nM w' mu' sigma') x =
   invM `multStd2` wt `multStd2` (elementwiseUnsafe (-) x mu')
   where wt = transpose w'
-        diagSigma = diagonal 0 (V.replicate nM sigma')
-        m =
-          elementwiseUnsafe (+)
-                            diagSigma
-                            (wt `multStd2` w')
-        invM =
-          case inverse m of
-            Left msg -> error msg
-            Right y  -> y
+        invM = computeInvM model
 
-computeLatentZVec :: PPCA -> V.Vector (Matrix Double) -> V.Vector (Matrix Double)
-computeLatentZVec (PPCA _nD nM w' mu' sigma') =
+computeLatentZ'
+  :: PPCA -> Matrix Double -> Matrix Double -> Matrix Double
+computeLatentZ' model@(PPCA _nD nM w' mu' sigma') invM x =
+  invM `multStd2` wt `multStd2` (elementwiseUnsafe (-) x mu')
+  where wt = transpose w'
+
+computeLatentZVec :: PPCA
+                  -> V.Vector (Matrix Double)
+                  -> V.Vector (Matrix Double)
+computeLatentZVec model@(PPCA _nD nM w' mu' sigma') =
   V.map (\x -> mwt `multStd2` (elementwiseUnsafe (-) x mu'))
+  where invM = computeInvM model
+        wt = transpose w'
+        mwt = invM `multStd2` wt
+
+computeLatentZVec' :: PPCA
+                   -> Matrix Double
+                   -> V.Vector (Matrix Double)
+                   -> V.Vector (Matrix Double)
+computeLatentZVec' (PPCA _nD nM w' mu' sigma') invM =
+  V.map (\x -> mwt `multStd2` (elementwiseUnsafe (-) x mu'))
+  where wt = transpose w'
+        mwt = invM `multStd2` wt
+
+computeInvM :: PPCA -> Matrix Double
+computeInvM (PPCA _nD nM w' mu' sigma') = invM
   where wt = transpose w'
         diagSigma = diagonal 0 (V.replicate nM sigma')
         m =
@@ -130,4 +176,13 @@ computeLatentZVec (PPCA _nD nM w' mu' sigma') =
           case inverse m of
             Left msg -> error msg
             Right y  -> y
-        mwt = invM `multStd2` wt
+
+computeInvC
+  :: PPCA -> Matrix Double -> Matrix Double
+computeInvC (PPCA nD _nM w' mu' sigma') invM =
+  scaleMatrix
+    (1 / (sigma' ^ 2))
+    (elementwiseUnsafe (-)
+                       (identity nD)
+                       (w' `multStd2` invM `multStd2` wt))
+  where wt = transpose w'
