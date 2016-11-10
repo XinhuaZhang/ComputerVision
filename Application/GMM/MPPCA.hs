@@ -122,11 +122,15 @@ computeSS parallelParams model@(MixtureModel n modelVec) newMu zs xs = ss
                                let r = assignPoint m z x
                                    xmu = elementwiseUnsafe (-) x newMu'
                                in scaleMatrix r
-                                              (xmu `multStd2` (transpose xmu)))
+                                              (xmu * (transpose xmu)))
                             zs $
                   xs))
             modelVec
             newMu
+            
+computeInvMS :: MPPCA -> V.Vector (Matrix Double)
+computeInvMS (MixtureModel _ modelVec) =
+  V.map (\(Model (_,m)) -> computeInvM m) modelVec
 
 
 getLikelihood :: V.Vector Double -> Double
@@ -166,18 +170,18 @@ updateWKMPPCA :: Model PPCA
               -> MPPCAData
               -> MPPCAParameter
 updateWKMPPCA (Model (a,(PPCA _nD nM wM _muM sigma'))) s =
-  s `multStd2` wM `multStd2` z
+  s * wM * z
   where wt = transpose wM
         diagSigma = diagonal 0 (V.replicate nM sigma')
         m =
           elementwiseUnsafe (+)
                             diagSigma
-                            (wt `multStd2` wM)
+                            (wt * wM)
         invM =
           case inverse m of
             Left msg -> error msg
             Right y' -> y'
-        x = invM `multStd2` wt `multStd2` s `multStd2` wM
+        x = invM * wt * s * wM
         y = elementwiseUnsafe (+) x diagSigma
         z =
           case inverse y of
@@ -204,12 +208,12 @@ updateSigmaKMPPCA (Model (a,(PPCA nD nM wMOld _muM sigma'))) wMNew s =
         m =
           elementwiseUnsafe (+)
                             diagSigma
-                            (wt `multStd2` wMOld)
+                            (wt * wMOld)
         invM =
           case inverse m of
             Left msg -> error msg
             Right y' -> y'
-        x = s `multStd2` wMOld `multStd2` invM `multStd2` wt
+        x = s * wMOld * invM * wt
         y = elementwiseUnsafe (-) s x
 
 updateSigmaMPPCA :: ParallelParams
@@ -224,6 +228,55 @@ updateSigmaMPPCA parallelParams model@(MixtureModel n modelVec) newWs ss =
                          modelVec
                          newWs
                          ss
+                         
+updateWSigmaKMPPCA :: Model PPCA
+                   -> Matrix Double
+                   -> MPPCAParameter
+                   -> V.Vector Double
+                   -> V.Vector MPPCAData
+                   -> (MPPCAParameter,Double)
+updateWSigmaKMPPCA m@(Model (a,(PPCA nD nM wMOld _muM sigma'))) invM newMu zs xs =
+  (newW,trace y2 / (P.fromIntegral nD))
+  where n = P.fromIntegral $ V.length xs
+        diagSigma = diagonal 0 (V.replicate nM sigma')
+        s =
+          scaleMatrix
+            (1 / (n * a))
+            (V.foldl1' (elementwiseUnsafe (+)) .
+             V.zipWith (\z x ->
+                          let r = assignPoint m z x
+                              xmu = elementwiseUnsafe (-) x newMu
+                          in scaleMatrix r
+                                         (xmu * (transpose xmu)))
+                       zs $
+             xs)
+        sw = s * wMOld
+        x1 = invM * (transpose wMOld) * sw
+        x2 = elementwiseUnsafe (+) x1 diagSigma
+        x3 =
+          case inverse x2 of
+            Left msg -> error msg
+            Right x' -> x'
+        newW = sw * x3
+        y1 = sw * invM * (transpose newW)
+        y2 = elementwiseUnsafe (-) s y1
+        
+updateWSigmaMPPCA
+  :: ParallelParams
+  -> MPPCA
+  -> V.Vector (Matrix Double)
+  -> V.Vector MPPCAParameter
+  -> V.Vector Double
+  -> V.Vector MPPCAData
+  -> (V.Vector MPPCAParameter,V.Vector Double)
+updateWSigmaMPPCA parallelParams model@(MixtureModel n modelVec) invM newMu zs xs =
+  V.unzip $
+  parZipWith3ChunkVector parallelParams
+                         rdeepseq
+                         (\m im mu -> updateWSigmaKMPPCA m im mu zs xs)
+                         modelVec
+                         invM
+                         newMu
 
 em :: ParallelParams
    -> FilePath
@@ -247,9 +300,11 @@ em parallelParams filePath initParams xs threshold oldLikelihood oldModel =
            updatePiMPPCA (V.length xs)
                          nks
          newMu = updateMuMPPCA parallelParams intermediateModel zs xs nks
-         ss = computeSS parallelParams intermediateModel newMu zs xs
-         newW = updateWMPPCA parallelParams intermediateModel ss
-         newSigma = updateSigmaMPPCA parallelParams intermediateModel newW ss
+         invM = computeInvMS intermediateModel
+         -- newW = updateWMPPCA parallelParams intermediateModel ss
+         -- newSigma = updateSigmaMPPCA parallelParams intermediateModel newW ss
+         (newW,newSigma) =
+           updateWSigmaMPPCA parallelParams intermediateModel invM newMu zs xs
          newModel =
            MixtureModel (numModel intermediateModel) $
            V.zipWith4 (\a w mu s -> Model (a,PPCA nD nM w mu s))
