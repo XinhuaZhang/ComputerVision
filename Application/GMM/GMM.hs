@@ -154,14 +154,7 @@ updateSigmaKGMM :: Model Gaussian
                 -> Double
                 -> GMMParameters
                 -> GMMParameters
-updateSigmaKGMM modelK zs xs nk newMuK
-  | isJust smallIdx =
-    VU.map (\x ->
-              if x == 0
-                 then 100
-                 else x)
-           newSigma
-  | otherwise = newSigma
+updateSigmaKGMM modelK zs xs nk newMuK = newSigma
   where newSigma =
           VU.map (\x -> sqrt (x / nk)) .
           V.foldl1' (VU.zipWith (+)) .
@@ -172,7 +165,6 @@ updateSigmaKGMM modelK zs xs nk newMuK
                        x)
                     zs $
           xs
-        smallIdx = VU.findIndex (< 0.1) newSigma
 
 updateSigmaGMM :: ParallelParams
                -> GMM
@@ -315,7 +307,7 @@ randomGaussian numDimension gen =
   ,newGen2)
   where (mu,newGen1) =
           randomRList numDimension
-                      (-5,5)
+                      (0,10)
                       gen
         (sigma,newGen2) =
           randomRList numDimension

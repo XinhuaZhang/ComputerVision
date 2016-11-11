@@ -16,6 +16,7 @@ import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.Set                           as S
 import           Data.Vector                        as V
+import           Data.Vector.Unboxed                as VU
 import           Prelude                            as P
 import           System.Environment
 
@@ -73,7 +74,7 @@ main =
                                                  (downsampleFactor params)
      featureConduit $$
        CL.map (V.fromList .
-               P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
+               P.map (\(PolarSeparableFeaturePoint _ _ vec) -> VU.map (*10) vec)) =$=
        gmmSink parallelParams
                (numGaussian params)
                (threshold params)

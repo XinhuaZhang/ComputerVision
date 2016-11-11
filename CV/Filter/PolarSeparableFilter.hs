@@ -317,7 +317,8 @@ pinwheels :: Double
 pinwheels scale rf af x y
   | scale == 0 = (real2Complex (gaussian2D scale x y)) * (angularFunc af x y)
   | otherwise =
-    (real2Complex (gaussian2D scale x y)) * (angularFunc af x y) *
+    (real2Complex (gaussian2D scale x y)) * 
+    (angularFunc af x y) *
     (radialFunc rf x y)
 
 getFilterFunc :: PolarSeparableFilterParams
