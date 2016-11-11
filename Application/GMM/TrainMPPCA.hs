@@ -42,7 +42,7 @@ main =
                                            [0 .. (freq params - 1)]
                                       ,getName = Pinwheels}
          ppcaInitParams =
-           PPCAInitParams {numPrincipal = 4
+           PPCAInitParams {numPrincipal = 16 
                           ,wRange = (0,1)
                           ,muRange = (0,10)
                           ,sigmaRange = (1,100)}
