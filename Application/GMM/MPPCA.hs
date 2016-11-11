@@ -17,7 +17,9 @@ import           System.Random
 import           Text.Printf
 
 type MPPCA = MixtureModel PPCA
+
 type MPPCAData = Matrix Double
+
 type MPPCAParameter = Matrix Double
 
 initializeMPPCA
@@ -33,8 +35,8 @@ initializeMPPCA initParams numModel numDimension =
                       gen
      initializeMixture numModel models'
 
-
-resetMPPCA :: PPCAInitParams -> MPPCA -> V.Vector Int -> IO MPPCA
+resetMPPCA
+  :: PPCAInitParams -> MPPCA -> V.Vector Int -> IO MPPCA
 resetMPPCA initParams model@(MixtureModel n modelVec) idx =
   do time <- liftIO getCurrentTime
      let gen =
@@ -59,176 +61,103 @@ resetMPPCA initParams model@(MixtureModel n modelVec) idx =
                     Just (_j,gm) -> Model (wi,gm)))
 
 assignPoint
-  :: Model PPCA -> Double -> MPPCAData -> Double
-assignPoint (Model (w,m)) z x = w * (ppcaP m x) / z
+  :: Model PPCA -> Matrix Double -> Double -> MPPCAData -> Double
+assignPoint (Model (w,m)) invM z x = w * (ppcaP' m invM x) / z
 
 computeZS
-  :: ParallelParams -> MPPCA -> V.Vector MPPCAData -> V.Vector Double
+  :: ParallelParams
+  -> MPPCA
+  -> V.Vector MPPCAData
+  -> (V.Vector Double,V.Vector (Matrix Double))
 computeZS parallelParams model@(MixtureModel n modelVec) xs
   | isJust zeroZIdx =
     error $
     "There is one data point which is assigned to none of the model. Try to increase the initialization range of sigma and to decrease that of mu.\n" P.++
     (show (xs V.! fromJust zeroZIdx))
-  | otherwise = zs
-  where zs =
+  | otherwise = (zs,invM)
+  where invM = computeInvMS model
+        zs =
           parMapChunkVector
             parallelParams
             rdeepseq
             (\x ->
-               V.foldl' (\s (Model (wj,mj)) -> s + (wj * (ppcaP mj x))) 0 modelVec)
+               V.foldl' (\s (im,(Model (wj,mj))) -> s + (wj * (ppcaP' mj im x))) 0 $
+               V.zip invM modelVec)
             xs
         zeroZIdx = V.findIndex (== 0) zs
 
-computeNKS :: ParallelParams
-           -> PPCAInitParams
-           -> MPPCA
-           -> V.Vector Double
-           -> V.Vector MPPCAData
-           -> IO (V.Vector Double,MPPCA)
-computeNKS parallelParams initParams model@(MixtureModel n modelVec) zs xs
+computeNKS
+  :: ParallelParams
+  -> PPCAInitParams
+  -> MPPCA
+  -> V.Vector (Matrix Double)
+  -> V.Vector Double
+  -> V.Vector MPPCAData
+  -> IO (V.Vector Double,MPPCA,V.Vector (Matrix Double))
+computeNKS parallelParams initParams model@(MixtureModel n modelVec) invM zs xs
   | V.length zeroKIdx > 0 =
     do putStrLn "There are models which have no point assigned to them! Reset them now."
        print zeroKIdx
        newModel <- resetMPPCA initParams model zeroKIdx
-       computeNKS parallelParams initParams newModel zs xs
-  | otherwise = return (nks,model)
+       computeNKS parallelParams
+                  initParams
+                  newModel
+                  (computeInvMS newModel)
+                  zs
+                  xs
+  | otherwise = return (nks,model,invM)
   where nks =
-          parMapChunkVector
+          parZipWithChunkVector
             parallelParams
             rdeepseq
-            (\m -> V.sum . V.zipWith (\z x -> assignPoint m z x) zs $ xs)
+            (\m im -> V.sum . V.zipWith (\z x -> assignPoint m im z x) zs $ xs)
             modelVec
+            invM
         zeroKIdx =
           V.findIndices (\x -> x == 0 || isNaN x)
                         nks
 
-computeSS :: ParallelParams
-          -> MPPCA
-          -> V.Vector MPPCAParameter
-          -> V.Vector Double
-          -> V.Vector MPPCAData
-          -> V.Vector MPPCAData
-computeSS parallelParams model@(MixtureModel n modelVec) newMu zs xs = ss
-  where n = P.fromIntegral $ V.length xs
-        ss =
-          parZipWithChunkVector
-            parallelParams
-            rdeepseq
-            (\m@(Model (w,p)) newMu' ->
-               scaleMatrix
-                 (1 / (n * w))
-                 (V.foldl1' (elementwiseUnsafe (+)) .
-                  V.zipWith (\z x ->
-                               let r = assignPoint m z x
-                                   xmu = elementwiseUnsafe (-) x newMu'
-                               in scaleMatrix r
-                                              (xmu * (transpose xmu)))
-                            zs $
-                  xs))
-            modelVec
-            newMu
-            
 computeInvMS :: MPPCA -> V.Vector (Matrix Double)
 computeInvMS (MixtureModel _ modelVec) =
   V.map (\(Model (_,m)) -> computeInvM m) modelVec
 
-
 getLikelihood :: V.Vector Double -> Double
 getLikelihood = V.foldl' (\a b -> a + log b) 0
 
-updatePiMPPCA :: Int -> V.Vector Double -> V.Vector Double
+updatePiMPPCA
+  :: Int -> V.Vector Double -> V.Vector Double
 updatePiMPPCA n = V.map (/ fromIntegral n)
 
 updateMuKMPPCA :: Model PPCA
+               -> Matrix Double
                -> V.Vector Double
                -> V.Vector MPPCAData
                -> Double
                -> MPPCAParameter
-updateMuKMPPCA mp zs xs nk =
+updateMuKMPPCA mp invM zs xs nk =
   scaleMatrix (1 / nk) .
   V.foldl1' (elementwiseUnsafe (+)) .
   V.zipWith (\z x ->
-               scaleMatrix (assignPoint mp z x)
+               scaleMatrix (assignPoint mp invM z x)
                            x)
             zs $
   xs
 
 updateMuMPPCA :: ParallelParams
               -> MPPCA
+              -> V.Vector (Matrix Double)
               -> V.Vector Double
               -> V.Vector MPPCAData
               -> V.Vector Double
               -> V.Vector MPPCAParameter
-updateMuMPPCA parallelParams model@(MixtureModel n modelVec) zs xs nks =
-  parZipWithChunkVector parallelParams
-                        rdeepseq
-                        (\modelK nk -> updateMuKMPPCA modelK zs xs nk)
-                        modelVec
-                        nks
-
-updateWKMPPCA :: Model PPCA
-              -> MPPCAData
-              -> MPPCAParameter
-updateWKMPPCA (Model (a,(PPCA _nD nM wM _muM sigma'))) s =
-  s * wM * z
-  where wt = transpose wM
-        diagSigma = diagonal 0 (V.replicate nM sigma')
-        m =
-          elementwiseUnsafe (+)
-                            diagSigma
-                            (wt * wM)
-        invM =
-          case inverse m of
-            Left msg -> error msg
-            Right y' -> y'
-        x = invM * wt * s * wM
-        y = elementwiseUnsafe (+) x diagSigma
-        z =
-          case inverse y of
-            Left msg -> error msg
-            Right y' -> y'
-
-updateWMPPCA :: ParallelParams
-             -> MPPCA
-             -> V.Vector MPPCAData
-             -> V.Vector MPPCAParameter
-updateWMPPCA parallelParams model@(MixtureModel n modelVec) ss =
-  parZipWithChunkVector parallelParams
-                        rdeepseq
-                        (\m s -> updateWKMPPCA m s)
-                        modelVec
-                        ss
-
-updateSigmaKMPPCA
-  :: Model PPCA -> MPPCAParameter -> MPPCAData -> Double
-updateSigmaKMPPCA (Model (a,(PPCA nD nM wMOld _muM sigma'))) wMNew s =
-  (trace y) / (P.fromIntegral nD)
-  where wt = transpose wMNew
-        diagSigma = diagonal 0 (V.replicate nM sigma')
-        m =
-          elementwiseUnsafe (+)
-                            diagSigma
-                            (wt * wMOld)
-        invM =
-          case inverse m of
-            Left msg -> error msg
-            Right y' -> y'
-        x = s * wMOld * invM * wt
-        y = elementwiseUnsafe (-) s x
-
-updateSigmaMPPCA :: ParallelParams
-                 -> MPPCA
-                 -> V.Vector MPPCAParameter
-                 -> V.Vector MPPCAData
-                 -> V.Vector Double
-updateSigmaMPPCA parallelParams model@(MixtureModel n modelVec) newWs ss =
+updateMuMPPCA parallelParams model@(MixtureModel n modelVec) invM zs xs nks =
   parZipWith3ChunkVector parallelParams
                          rdeepseq
-                         (\m w s -> updateSigmaKMPPCA m w s)
+                         (\modelK nk im -> updateMuKMPPCA modelK im zs xs nk)
                          modelVec
-                         newWs
-                         ss
-                         
+                         nks
+                         invM
+
 updateWSigmaKMPPCA :: Model PPCA
                    -> Matrix Double
                    -> MPPCAParameter
@@ -244,7 +173,7 @@ updateWSigmaKMPPCA m@(Model (a,(PPCA nD nM wMOld _muM sigma'))) invM newMu zs xs
             (1 / (n * a))
             (V.foldl1' (elementwiseUnsafe (+)) .
              V.zipWith (\z x ->
-                          let r = assignPoint m z x
+                          let r = assignPoint m invM z x
                               xmu = elementwiseUnsafe (-) x newMu
                           in scaleMatrix r
                                          (xmu * (transpose xmu)))
@@ -260,7 +189,7 @@ updateWSigmaKMPPCA m@(Model (a,(PPCA nD nM wMOld _muM sigma'))) invM newMu zs xs
         newW = sw * x3
         y1 = sw * invM * (transpose newW)
         y2 = elementwiseUnsafe (-) s y1
-        
+
 updateWSigmaMPPCA
   :: ParallelParams
   -> MPPCA
@@ -287,9 +216,9 @@ em :: ParallelParams
    -> MPPCA
    -> IO ()
 em parallelParams filePath initParams xs threshold oldLikelihood oldModel =
-  do let zs = computeZS parallelParams oldModel xs
-     (nks,intermediateModel) <-
-       computeNKS parallelParams initParams oldModel zs xs
+  do let (zs,invM1) = computeZS parallelParams oldModel xs
+     (nks,intermediateModel,invM) <-
+       computeNKS parallelParams initParams oldModel invM1 zs xs
      let newLikelihood = getLikelihood zs
          (PPCA nD nM _ _ _) =
            snd . (\(Model x) -> x) . V.head . model $ intermediateModel
@@ -299,10 +228,7 @@ em parallelParams filePath initParams xs threshold oldLikelihood oldModel =
          newPi =
            updatePiMPPCA (V.length xs)
                          nks
-         newMu = updateMuMPPCA parallelParams intermediateModel zs xs nks
-         invM = computeInvMS intermediateModel
-         -- newW = updateWMPPCA parallelParams intermediateModel ss
-         -- newSigma = updateSigmaMPPCA parallelParams intermediateModel newW ss
+         newMu = updateMuMPPCA parallelParams intermediateModel invM zs xs nks
          (newW,newSigma) =
            updateWSigmaMPPCA parallelParams intermediateModel invM newMu zs xs
          newModel =
@@ -323,7 +249,8 @@ em parallelParams filePath initParams xs threshold oldLikelihood oldModel =
         else do liftIO $ encodeFile filePath intermediateModel
                 em parallelParams filePath initParams xs threshold avgLikelihood newModel
 
-mppcaSink :: ParallelParams -> PPCAInitParams
+mppcaSink :: ParallelParams
+          -> PPCAInitParams
           -> Int
           -> Double
           -> FilePath
