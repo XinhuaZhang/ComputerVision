@@ -287,17 +287,6 @@ initializeGMM numModel numDimension =
          models = V.zipWith (\a b -> Model (a,b)) w models'
      return (MixtureModel numModel models)
 
-randomRList :: (RandomGen g,Random a)
-            => Int -> (a,a) -> g -> ([a],g)
-randomRList len bound gen
-  | len > 0 =
-    (\(xs,g) -> (x : xs,g)) $
-    randomRList (len - 1)
-                bound
-                newGen
-  | otherwise = ([],gen)
-  where (x,newGen) = randomR bound gen
-
 randomGaussian :: (RandomGen g)
                => Int -> g -> (Gaussian,g)
 randomGaussian numDimension gen =

@@ -6,5 +6,6 @@ LIBS="-lgomp -lstdc++ -lblas"
 OBJPATH="../../Classifier/LibLinear/"
 
 ghc $FLAG $LIBS -i../../ TrainGMM.hs -o trainGMM
+ghc $FLAG $LIBS -i../../ TrainMPPCA.hs -o trainMPPCA
 ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisher.hs -o trainFisher
 ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisher.hs -o predictFisher
