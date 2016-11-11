@@ -25,7 +25,7 @@ type MPPCAParameter = Matrix Double
 initializeMPPCA
   :: PPCAInitParams -> Int -> Int -> IO MPPCA
 initializeMPPCA initParams numModel numDimension =
-  do time <- liftIO getCurrentTime
+  do time <- getCurrentTime
      let gen =
            mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $
            time
@@ -38,7 +38,7 @@ initializeMPPCA initParams numModel numDimension =
 resetMPPCA
   :: PPCAInitParams -> MPPCA -> V.Vector Int -> IO MPPCA
 resetMPPCA initParams model@(MixtureModel n modelVec) idx =
-  do time <- liftIO getCurrentTime
+  do time <- getCurrentTime
      let gen =
            mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $
            time
@@ -57,7 +57,7 @@ resetMPPCA initParams model@(MixtureModel n modelVec) idx =
             (\i ->
                let mi@(Model (wi,_)) = modelVec V.! i
                in case V.find (\(j,_) -> i == j) idxModels of
-                    Nothing      -> mi
+                    Nothing -> mi
                     Just (_j,gm) -> Model (wi,gm)))
 
 assignPoint
@@ -238,15 +238,15 @@ em parallelParams filePath initParams xs threshold oldLikelihood oldModel =
                       newW
                       newMu
                       newSigma
-     time <- liftIO getZonedTime
+     time <- getZonedTime
      let timeStr =
            (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
      printf (timeStr P.++ "%0.2f (%0.3f%%)\n")
             avgLikelihood
             ((avgLikelihood - oldLikelihood) / (abs oldLikelihood) * 100)
      if avgLikelihood > threshold
-        then liftIO $ encodeFile filePath intermediateModel
-        else do liftIO $ encodeFile filePath intermediateModel
+        then encodeFile filePath intermediateModel
+        else do encodeFile filePath intermediateModel
                 em parallelParams filePath initParams xs threshold avgLikelihood newModel
 
 mppcaSink :: ParallelParams
