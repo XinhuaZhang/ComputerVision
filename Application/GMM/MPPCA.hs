@@ -44,6 +44,7 @@ resetMPPCA initParams model@(MixtureModel n modelVec) idx = do
       models' =
         V.unfoldrN (V.length idx) (\g -> Just $ randomPPCA initParams nD g) gen
       idxModels = V.zip idx models'
+  print . V.map (\(Model (w,_)) -> w) $ modelVec
   return $!
     MixtureModel
       n
@@ -94,18 +95,16 @@ computeNKS
   :: ParallelParams
   -> PPCAInitParams
   -> MPPCA
-  -> V.Vector (Matrix Double)
-  -> V.Vector Double
   -> V.Vector MPPCAData
-  -> IO (V.Vector Double, MPPCA, V.Vector (Matrix Double))
-computeNKS parallelParams initParams model@(MixtureModel n modelVec) invM zs xs
+  -> IO (V.Vector Double, V.Vector Double, MPPCA, V.Vector (Matrix Double))
+computeNKS parallelParams initParams model@(MixtureModel n modelVec) xs
   | V.length zeroKIdx > 0 = do
     putStrLn
       "There are models which have no point assigned to them! Reset them now."
     print zeroKIdx
     newModel <- resetMPPCA initParams model zeroKIdx
-    computeNKS parallelParams initParams newModel (computeInvMS newModel) zs xs
-  | otherwise = return (nks, model, invM)
+    computeNKS parallelParams initParams newModel xs
+  | otherwise = return (zs, nks, model, invM)
   where
     nks =
       parZipWithChunkVector
@@ -114,6 +113,7 @@ computeNKS parallelParams initParams model@(MixtureModel n modelVec) invM zs xs
         (\m im -> VU.sum . V.convert $ assignPointVec m im zs xs)
         modelVec
         invM
+    (zs,invM) = computeZS parallelParams model xs
     zeroKIdx = V.findIndices (\x -> x == 0 || isNaN x) nks
 
 computeInvMS :: MPPCA -> V.Vector (Matrix Double)
@@ -219,10 +219,9 @@ em
   -> MPPCA
   -> IO ()
 em parallelParams filePath initParams xs threshold oldLikelihood oldModel = do
-  let (zs, invM1) = computeZS parallelParams oldModel xs
-  (nks, intermediateModel, invM) <-
-    computeNKS parallelParams initParams oldModel invM1 zs xs
-  let newLikelihood = getLikelihood nks
+  (zs, nks, intermediateModel, invM) <-
+    computeNKS parallelParams initParams oldModel xs
+  let newLikelihood = getLikelihood zs
       (PPCA nD nM _ _ _) = snd . (\(Model x) -> x) . V.head . model $ intermediateModel
       avgLikelihood =
         log

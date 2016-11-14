@@ -44,7 +44,7 @@ main = do
       ppcaInitParams =
         PPCAInitParams
         { numPrincipal = 16
-        , wRange = (0, 1)
+        , wRange = (-10, 10)
         , muRange = (0, 10)
         , sigmaRange = (1, 100)
         }
@@ -85,7 +85,7 @@ main = do
   featureConduit $$
     CL.map
       (V.fromList .
-       P.map (\(PolarSeparableFeaturePoint _ _ vec) -> VU.map (* 10) $ vec)) =$=
+       P.map (\(PolarSeparableFeaturePoint _ _ vec) -> VU.map (*10) $ vec)) =$=
     mppcaSink
       parallelParams
       ppcaInitParams
