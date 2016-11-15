@@ -40,3 +40,4 @@ main
 /Application/GMM/trainFisher1
 /Application/GMM/trainGMM
 /Application/GMM/model
+*.pgm

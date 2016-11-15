@@ -1,4 +1,7 @@
-module CV.Image.ImageUtility where
+module CV.Image.ImageUtility (rotateImage
+                             ,padImage
+                             ,resizeImages
+                             ,resizeConduit) where
 
 import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
@@ -10,20 +13,40 @@ import           Prelude                as P
 
 
 rotateImage :: GrayImage -> Double -> GrayImage
-rotateImage img rotateDeg = makeImage nx ny rotateImageOp
-  where
-    (nx, ny) = dimensions img
-    (centerX, centerY) = ((fromIntegral nx) / 2, (fromIntegral ny) / 2)
-    rotateImageOp :: Int -> Int -> (Pixel GrayImage)
-    rotateImageOp i j = ref' img i' j'
-      where
-        (rad, deg) =
-          cartesian2polar $
-          coordinateCenter (fromIntegral i, fromIntegral j) (centerX, centerY)
-        (i', j') =
-          coordinateCenter'
-            (polar2cartesian (rad, deg + rotateDeg))
-            (centerX, centerY)
+rotateImage img rotateDeg = img1
+  where (nx,ny) = dimensions img
+        theta = deg2Rad rotateDeg
+        (centerX,centerY) = ((fromIntegral nx) / 2,(fromIntegral ny) / 2)
+        mat =
+          P.map (\f -> f theta)
+                [cos,sin,\x -> -(sin x),cos]
+        img1 =
+          makeImage nx
+                    ny
+                    (rotateImageOp img
+                                   mat
+                                   (centerX,centerY))
+
+rotateImageOp :: GrayImage
+              -> [Double]
+              -> (Double,Double)
+              -> Int
+              -> Int
+              -> (Pixel GrayImage)
+rotateImageOp input mat (centerX,centerY) i j =
+  ref' input
+       (i' + centerX)
+       (j' + centerY) -- ref' will check the boundary.
+  where x = fromIntegral i - centerX
+        y = fromIntegral j - centerY
+        (i',j') =
+          vecMatMult (x,y)
+                     mat
+
+vecMatMult
+  :: (Double,Double) -> [Double] -> (Double,Double)
+vecMatMult (x,y) (a:b:c:d:_) = (a * x + c * y,b * x + d * y)
+
 
 padImage
   :: (Monoid a)
