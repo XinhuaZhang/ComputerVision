@@ -44,7 +44,6 @@ resetMPPCA initParams model@(MixtureModel n modelVec) idx = do
       models' =
         V.unfoldrN (V.length idx) (\g -> Just $ randomPPCA initParams nD g) gen
       idxModels = V.zip idx models'
-  print . V.map (\(Model (w,_)) -> w) $ modelVec
   return $!
     MixtureModel
       n
@@ -78,6 +77,10 @@ computeZS parallelParams model@(MixtureModel n modelVec) xs
     error $
     "There is one data point which is assigned to none of the model. Try to increase the initialization range of sigma and to decrease that of mu.\n" P.++
     (show (xs V.! fromJust zeroZIdx))
+  | isJust nanZIdx =
+    error $
+    "Nan found! The variance of One of the models is too smalll." P.++
+    (show (xs V.! fromJust nanZIdx))
   | otherwise = (zs, invM)
   where
     invM = computeInvMS model
@@ -90,6 +93,7 @@ computeZS parallelParams model@(MixtureModel n modelVec) xs
         modelVec
     zs = VU.convert $ V.foldl1' (VU.zipWith (+)) ys
     zeroZIdx = V.findIndex (== 0) zs
+    nanZIdx = V.findIndex (isNaN) zs
 
 computeNKS
   :: ParallelParams
@@ -104,6 +108,12 @@ computeNKS parallelParams initParams model@(MixtureModel n modelVec) xs
     print zeroKIdx
     newModel <- resetMPPCA initParams model zeroKIdx
     computeNKS parallelParams initParams newModel xs
+  | V.length nanKIdx > 0 = do
+    putStrLn
+      "Found NaN! Reset them now."
+    print nanKIdx
+    newModel <- resetMPPCA initParams model nanKIdx
+    computeNKS parallelParams initParams newModel xs
   | otherwise = return (zs, nks, model, invM)
   where
     nks =
@@ -114,7 +124,8 @@ computeNKS parallelParams initParams model@(MixtureModel n modelVec) xs
         modelVec
         invM
     (zs,invM) = computeZS parallelParams model xs
-    zeroKIdx = V.findIndices (\x -> x == 0 || isNaN x) nks
+    zeroKIdx = V.findIndices (\x -> x == 0 ) nks
+    nanKIdx = V.findIndices (\x -> isNaN x) nks
 
 computeInvMS :: MPPCA -> V.Vector (Matrix Double)
 computeInvMS (MixtureModel _ modelVec) =
