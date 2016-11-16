@@ -53,7 +53,7 @@ padImage m n img
               (\i j ->
                  if (i - (div (m - nx) 2)) < 0 ||
                     (i - (div (m - nx) 2)) > (nx - 1) ||
-                    (div (n - ny) 2) < 0 || (j - (div (n - ny) 2)) > (ny - 1)
+                    (j - (div (n - ny) 2)) < 0 || (j - (div (n - ny) 2)) > (ny - 1)
                     then mempty
                     else ref img
                              (i - (div (m - nx) 2))
