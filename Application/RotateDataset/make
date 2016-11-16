@@ -1,0 +1,5 @@
+#/bin/bash
+
+FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3" 
+
+ghc $FLAG $LIBS -i../../ Main.hs -o main
