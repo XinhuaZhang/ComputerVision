@@ -31,12 +31,12 @@ main =
       deg = 36
   in do (trainPath:trainLabelPath:testPath:testLabelPath:outputPath:isColor:_) <-
           getArgs
-        putStrLn $ "trainPath :" P.++ trainPath
-        putStrLn $ "trainLabelPath :" P.++ trainLabelPath
-        putStrLn $ "testPath :" P.++ testPath
-        putStrLn $ "testLabelPath :" P.++ testLabelPath
-        putStrLn $ "outputPath :" P.++ outputPath
-        putStrLn $ "isColor :" P.++ isColor
+        putStrLn $ "trainPath: " P.++ trainPath
+        putStrLn $ "trainLabelPath: " P.++ trainLabelPath
+        putStrLn $ "testPath: " P.++ testPath
+        putStrLn $ "testLabelPath: " P.++ testLabelPath
+        putStrLn $ "outputPath: " P.++ outputPath
+        putStrLn $ "isColor: " P.++ isColor
         let str =
               if read isColor :: Bool
                  then "Color"
