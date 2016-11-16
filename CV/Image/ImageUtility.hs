@@ -2,6 +2,7 @@
 {-# LANGUAGE QuasiQuotes  #-}
 module CV.Image.ImageUtility
   (rotateImage
+  ,rotateImageS
   ,rotateImageP
   ,padImage
   ,resizeImages
@@ -156,7 +157,8 @@ vecMatMult (x,y) vec = (a * x + c * y,b * x + d * y)
         b = vec VU.! 1
         c = vec VU.! 2
         d = vec VU.! 3
-
+        
+-- Only one rotation
 rotateImage :: GrayImage -> Double -> GrayImage
 rotateImage img rotateDeg =
   makeImage nx
@@ -194,6 +196,49 @@ rotateImage img rotateDeg =
           ,[4,-4,-4,4,2,2,-2,-2,2,-2,2,-2,1,1,1,1]]
 
 -- compute all rotations once
+rotateImageS
+  :: GrayImage -> V.Vector Double -> V.Vector GrayImage
+rotateImageS img degs = rotatedImgs
+  where !ds = computeDerivativeS img
+        (ny,nx) = dimensions img
+        (centerX,centerY) = ((fromIntegral nx) / 2,(fromIntegral ny) / 2)
+        !rotatedImgs =
+          V.map (\rad ->
+                   let mat =
+                         VU.fromListN 4 $
+                         P.map (\f -> f rad)
+                               [cos,sin,\x -> -(sin x),cos]
+                       newImg =
+                         makeImage ny
+                                   nx
+                                   (\j i ->
+                                      bicubicInterpolation ds matrixA $
+                                      rotatePixel
+                                        mat
+                                        (centerY,centerX)
+                                        (fromIntegral j,fromIntegral i)) :: GrayImage
+                   in newImg)
+                rads
+        rads = V.map deg2Rad degs
+        matrixA =
+          V.fromListN 16 . P.map (VU.fromListN 16) $
+          [[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+          ,[0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0]
+          ,[-3,3,0,0,-2,-1,0,0,0,0,0,0,0,0,0,0]
+          ,[2,-2,0,0,1,1,0,0,0,0,0,0,0,0,0,0]
+          ,[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0]
+          ,[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0]
+          ,[0,0,0,0,0,0,0,0,-3,3,0,0,-2,-1,0,0]
+          ,[0,0,0,0,0,0,0,0,2,-2,0,0,1,1,0,0]
+          ,[-3,0,3,0,0,0,0,0,-2,0,-1,0,0,0,0,0]
+          ,[0,0,0,0,-3,0,3,0,0,0,0,0,-2,0,-1,0]
+          ,[9,-9,-9,9,6,3,-6,-3,6,-6,3,-3,4,2,2,1]
+          ,[-6,6,6,-6,-3,-3,3,3,-4,4,-2,2,-2,-2,-1,-1]
+          ,[2,0,-2,0,0,0,0,0,1,0,1,0,0,0,0,0]
+          ,[0,0,0,0,2,0,-2,0,0,0,0,0,1,0,1,0]
+          ,[-6,6,6,-6,-4,-2,4,2,-3,3,-3,3,-2,-1,-2,-1]
+          ,[4,-4,-4,4,2,2,-2,-2,2,-2,2,-2,1,1,1,1]]
+
 rotateImageP :: ParallelParams
              -> GrayImage
              -> V.Vector Double
