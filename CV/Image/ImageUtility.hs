@@ -1,8 +1,12 @@
-{-# LANGUAGE QuasiQuotes #-}
-module CV.Image.ImageUtility (rotateImage
-                             ,padImage
-                             ,resizeImages
-                             ,resizeConduit) where
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE QuasiQuotes  #-}
+module CV.Image.ImageUtility
+  (rotateImage
+  ,rotateImageP
+  ,padImage
+  ,resizeImages
+  ,resizeConduit)
+  where
 
 import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
@@ -14,53 +18,12 @@ import           Data.Conduit.List            as CL
 import           Data.Image
 import           Data.Maybe                   as Maybe
 import           Data.Vector                  as V
+import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
-import Data.Vector.Unboxed as VU
 
 type ImageArray = R.Array U DIM2 Double
+
 type ImageDerivative = [ImageArray]
-
-
-rotateImage :: GrayImage -> Double -> GrayImage
-rotateImage img rotateDeg =
-  makeImage nx
-            ny
-            (rotateImageOp img
-                           mat
-                           (centerX,centerY))
-  where (nx,ny) = dimensions img
-        theta = deg2Rad rotateDeg
-        (centerX,centerY) = ((fromIntegral nx) / 2,(fromIntegral ny) / 2)
-        mat =
-          VU.fromListN 4 $
-          P.map (\f -> f theta)
-                [cos,sin,\x -> -(sin x),cos]
-
-
-rotateImageOp :: GrayImage
-              -> VU.Vector Double
-              -> (Double,Double)
-              -> Int
-              -> Int
-              -> (Pixel GrayImage)
-rotateImageOp input mat (centerX,centerY) i j =
-  ref' input
-       (i' + centerX)
-       (j' + centerY) -- ref' will check the boundary.
-  where x = fromIntegral i - centerX
-        y = fromIntegral j - centerY
-        (i',j') =
-          vecMatMult (x,y)
-                     mat
-
-vecMatMult
-  :: (Double,Double) -> VU.Vector Double -> (Double,Double)
-vecMatMult (x,y) vec = (a * x + c * y,b * x + d * y)
-  where a = vec VU.! 0
-        b = vec VU.! 1
-        c = vec VU.! 2
-        d = vec VU.! 3
-
 
 padImage
   :: (Monoid a)
@@ -96,78 +59,139 @@ padImage m n img
                              (j - (div (n - ny) 2)))
   where (nx,ny) = dimensions img
 
-
-resizeImages
-  :: (Monoid a)
-  => ParallelParams -> Int -> Int -> [BoxedImage a] -> [BoxedImage a]
-resizeImages parallelParams m n = parMapChunk parallelParams rseq (resize m n)
-  where
-    resize
-      :: (Monoid a)
-      => Int -> Int -> BoxedImage a -> BoxedImage a
-    resize m n img
-      | m < nx && n < ny = crop (div (nx - m) 2) (div (ny - n) 2) m n img
-      | m > nx && n < ny = padImage m n (crop 0 (div (ny - n) 2) nx n img)
-      | m < nx && n > ny = padImage m n (crop (div (nx - m) 2) 0 m ny img)
-      | otherwise = padImage m n img
-      where
-        (nx, ny) = dimensions img
+resizeImages :: (Monoid a)
+             => ParallelParams
+             -> Int
+             -> Int
+             -> [BoxedImage a]
+             -> [BoxedImage a]
+resizeImages parallelParams m n =
+  parMapChunk parallelParams
+              rseq
+              (resize m n)
+  where resize
+          :: (Monoid a)
+          => Int -> Int -> BoxedImage a -> BoxedImage a
+        resize m n img
+          | m < nx && n < ny =
+            crop (div (nx - m) 2)
+                 (div (ny - n) 2)
+                 m
+                 n
+                 img
+          | m > nx && n < ny = padImage m n (crop 0 (div (ny - n) 2) nx n img)
+          | m < nx && n > ny = padImage m n (crop (div (nx - m) 2) 0 m ny img)
+          | otherwise = padImage m n img
+          where (nx,ny) = dimensions img
 
 resizeConduit
   :: (Monoid a)
   => ParallelParams -> Int -> Int -> Conduit (BoxedImage a) IO (BoxedImage a)
-resizeConduit parallelParams resizeX resizeY = do
-  batch <- CL.take (batchSize parallelParams)
-  if P.length batch > 0
-    then do
-      let resizedImg = resizeImages parallelParams resizeX resizeY batch
-      sourceList resizedImg
-      resizeConduit parallelParams resizeX resizeY
-    else return ()
+resizeConduit parallelParams resizeX resizeY =
+  do batch <- CL.take (batchSize parallelParams)
+     if P.length batch > 0
+        then do let resizedImg =
+                      resizeImages parallelParams resizeX resizeY batch
+                sourceList resizedImg
+                resizeConduit parallelParams resizeX resizeY
+        else return ()
 
-
-computeDerivative'
-  :: GrayImage -> IO (R.Array U DIM2 Double)
-computeDerivative' img =
-  do let stencil =
-           [stencil2| 0 0 0
-                               0 -1 1
-                               0 0 0 |]
-         (ny,nx) = dimensions img
-         imgArr = fromListUnboxed (Z :. ny :. nx) . pixelList $ img
-         stencilArr =
-           mapStencil2 (BoundClamp)
-                       stencil
-                       imgArr
-     arr <- computeP stencilArr
-     return arr
-
-
-computeDerivativeP :: GrayImage
-                   -> IO ImageDerivative
+computeDerivativeP
+  :: GrayImage -> IO ImageDerivative
 computeDerivativeP img =
   do let (ny,nx) = dimensions img
          imgArr = fromListUnboxed (Z :. ny :. nx) . pixelList $ img
          xStencil =
            [stencil2| 0 0 0
-                      0 -1 1
+                      -1 0 1
                       0 0 0 |]
          yStencil =
-           [stencil2| 0 0 0
-                      0 -1 0
+           [stencil2| 0 -1 0
+                      0 0 0
                       0 1 0 |]
          xyStencil =
-           [stencil2| 0 0 0
-                      0 1 -1
-                      0 -1 1 |]
+           [stencil2| 1 0 -1
+                      0 0 0
+                      -1 0 1 |]
          ds =
            P.map (\s ->
+                    R.map (/ 2) $
                     mapStencil2 (BoundClamp)
                                 s
                                 imgArr)
                  [xStencil,yStencil,xyStencil]
-     ds <- P.mapM computeP ds
-     return $! (imgArr : ds)
+     ds' <- P.mapM computeP ds
+     return $! (imgArr : ds')
+
+computeDerivativeS
+  :: GrayImage -> ImageDerivative
+computeDerivativeS img = imgArr : ds'
+  where (ny,nx) = dimensions img
+        imgArr = fromListUnboxed (Z :. ny :. nx) . pixelList $ img
+        xStencil =
+          [stencil2| 0 0 0
+                     -1 0 1
+                     0 0 0 |]
+        yStencil =
+          [stencil2| 0 -1 0
+                     0 0 0
+                     0 1 0 |]
+        xyStencil =
+          [stencil2| 1 0 -1
+                     0 0 0
+                     -1 0 1 |]
+        ds =
+          P.map (\s ->
+                   R.map (/ 2) $
+                   mapStencil2 (BoundClamp)
+                               s
+                               imgArr)
+                [xStencil,yStencil,xyStencil]
+        ds' = P.map computeS ds
+
+vecMatMult
+  :: (Double,Double) -> VU.Vector Double -> (Double,Double)
+vecMatMult (x,y) vec = (a * x + c * y,b * x + d * y)
+  where a = vec VU.! 0
+        b = vec VU.! 1
+        c = vec VU.! 2
+        d = vec VU.! 3
+
+rotateImage :: GrayImage -> Double -> GrayImage
+rotateImage img rotateDeg =
+  makeImage nx
+            ny
+            (\j i ->
+               bicubicInterpolation ds matrixA $
+               rotatePixel mat
+                           (centerY,centerX)
+                           (fromIntegral j,fromIntegral i))
+  where (nx,ny) = dimensions img
+        theta = deg2Rad rotateDeg
+        (centerX,centerY) = ((fromIntegral nx) / 2,(fromIntegral ny) / 2)
+        mat =
+          VU.fromListN 4 $
+          P.map (\f -> f theta)
+                [cos,sin,\x -> -(sin x),cos]
+        !ds = computeDerivativeS img
+        matrixA =
+          V.fromListN 16 . P.map (VU.fromListN 16) $
+          [[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+          ,[0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0]
+          ,[-3,3,0,0,-2,-1,0,0,0,0,0,0,0,0,0,0]
+          ,[2,-2,0,0,1,1,0,0,0,0,0,0,0,0,0,0]
+          ,[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0]
+          ,[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0]
+          ,[0,0,0,0,0,0,0,0,-3,3,0,0,-2,-1,0,0]
+          ,[0,0,0,0,0,0,0,0,2,-2,0,0,1,1,0,0]
+          ,[-3,0,3,0,0,0,0,0,-2,0,-1,0,0,0,0,0]
+          ,[0,0,0,0,-3,0,3,0,0,0,0,0,-2,0,-1,0]
+          ,[9,-9,-9,9,6,3,-6,-3,6,-6,3,-3,4,2,2,1]
+          ,[-6,6,6,-6,-3,-3,3,3,-4,4,-2,2,-2,-2,-1,-1]
+          ,[2,0,-2,0,0,0,0,0,1,0,1,0,0,0,0,0]
+          ,[0,0,0,0,2,0,-2,0,0,0,0,0,1,0,1,0]
+          ,[-6,6,6,-6,-4,-2,4,2,-3,3,-3,3,-2,-1,-2,-1]
+          ,[4,-4,-4,4,2,2,-2,-2,2,-2,2,-2,1,1,1,1]]
 
 -- compute all rotations once
 rotateImageP :: ParallelParams
@@ -175,10 +199,10 @@ rotateImageP :: ParallelParams
              -> V.Vector Double
              -> IO (V.Vector GrayImage)
 rotateImageP parallelParams img degs =
-  do ds <- computeDerivativeP img
+  do !ds <- computeDerivativeP img
      let (ny,nx) = dimensions img
          (centerX,centerY) = ((fromIntegral nx) / 2,(fromIntegral ny) / 2)
-         rotatedImgs =
+         !rotatedImgs =
            parMapChunkVector
              parallelParams
              rseq
@@ -187,13 +211,15 @@ rotateImageP parallelParams img degs =
                       VU.fromListN 4 $
                       P.map (\f -> f rad)
                             [cos,sin,\x -> -(sin x),cos]
-                in makeImage ny
-                             nx
-                             (\j i ->
-                                bicubicInterpolation ds matrixA $
-                                rotatePixel mat
-                                            (centerY,centerX)
-                                            (fromIntegral j,fromIntegral i)) :: GrayImage)
+                    newImg =
+                      makeImage ny
+                                nx
+                                (\j i ->
+                                   bicubicInterpolation ds matrixA $
+                                   rotatePixel mat
+                                               (centerY,centerX)
+                                               (fromIntegral j,fromIntegral i)) :: GrayImage
+                in newImg)
              rads
      return rotatedImgs
   where rads = V.map deg2Rad degs
@@ -216,7 +242,6 @@ rotateImageP parallelParams img degs =
           ,[-6,6,6,-6,-4,-2,4,2,-3,3,-3,3,-2,-1,-2,-1]
           ,[4,-4,-4,4,2,2,-2,-2,2,-2,2,-2,1,1,1,1]]
 
-
 rotatePixel :: VU.Vector Double
             -> (Double,Double)
             -> (Double,Double)
@@ -229,13 +254,15 @@ rotatePixel mat (centerY,centerX) (y,x) = (y3,x3)
                      mat
         x3 = x2 + centerX
         y3 = y2 + centerY
-        
-bicubicInterpolation
-  :: ImageDerivative -> V.Vector (VU.Vector Double) ->  (Double,Double) -> Double
+
+bicubicInterpolation :: ImageDerivative
+                     -> V.Vector (VU.Vector Double)
+                     -> (Double,Double)
+                     -> Double
 bicubicInterpolation ds matrixA (y,x)
   | (x < 1) ||
       (x > (fromIntegral nx - 2)) || (y < 1) || (y > (fromIntegral ny - 2)) = 0
-  | otherwise = sumAllS arr1
+  | otherwise = result
   where (Z :. ny :. nx) = extent . P.head $ ds
         x' = x - (fromIntegral . floor $ x)
         y' = y - (fromIntegral . floor $ y)
@@ -243,8 +270,8 @@ bicubicInterpolation ds matrixA (y,x)
           VU.fromListN
             4
             [(floor y,floor x)
-            ,(ceiling y,floor x)
             ,(floor y,ceiling x)
+            ,(ceiling y,floor x)
             ,(ceiling y,ceiling x)] :: VU.Vector (Int,Int)
         xs =
           VU.concat .
@@ -257,3 +284,4 @@ bicubicInterpolation ds matrixA (y,x)
           R.traverse arr
                      id
                      (\f idx@(Z :. j :. i) -> (f idx) * (x' ^ i) * (y' ^ j))
+        result = sumAllS arr1
