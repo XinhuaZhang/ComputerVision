@@ -9,6 +9,7 @@ module CV.Image.ImageUtility
   ,resizeConduit)
   where
 
+import           Control.Monad                as M
 import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
 import           Data.Array.Repa              as R
@@ -66,14 +67,10 @@ resizeImages :: (Monoid a)
              -> Int
              -> [BoxedImage a]
              -> [BoxedImage a]
-resizeImages parallelParams m n =
-  parMapChunk parallelParams
-              rseq
-              (resize m n)
-  where resize
-          :: (Monoid a)
-          => Int -> Int -> BoxedImage a -> BoxedImage a
-        resize m n img
+resizeImages parallelParams m n = parMapChunk parallelParams rseq resize
+  where resize :: (Monoid a)
+               => BoxedImage a -> BoxedImage a
+        resize img
           | m < nx && n < ny =
             crop (div (nx - m) 2)
                  (div (ny - n) 2)
@@ -90,12 +87,11 @@ resizeConduit
   => ParallelParams -> Int -> Int -> Conduit (BoxedImage a) IO (BoxedImage a)
 resizeConduit parallelParams resizeX resizeY =
   do batch <- CL.take (batchSize parallelParams)
-     if P.length batch > 0
-        then do let resizedImg =
+     unless (P.null batch)
+            (do let resizedImg =
                       resizeImages parallelParams resizeX resizeY batch
                 sourceList resizedImg
-                resizeConduit parallelParams resizeX resizeY
-        else return ()
+                resizeConduit parallelParams resizeX resizeY)
 
 computeDerivativeP
   :: GrayImage -> IO ImageDerivative
@@ -117,7 +113,7 @@ computeDerivativeP img =
          ds =
            P.map (\s ->
                     R.map (/ 2) $
-                    mapStencil2 (BoundClamp)
+                    mapStencil2 BoundClamp
                                 s
                                 imgArr)
                  [xStencil,yStencil,xyStencil]
@@ -144,7 +140,7 @@ computeDerivativeS img = imgArr : ds'
         ds =
           P.map (\s ->
                    R.map (/ 2) $
-                   mapStencil2 (BoundClamp)
+                   mapStencil2 BoundClamp
                                s
                                imgArr)
                 [xStencil,yStencil,xyStencil]
@@ -157,7 +153,7 @@ vecMatMult (x,y) vec = (a * x + c * y,b * x + d * y)
         b = vec VU.! 1
         c = vec VU.! 2
         d = vec VU.! 3
-        
+
 -- Only one rotation
 rotateImage :: GrayImage -> Double -> GrayImage
 rotateImage img rotateDeg =
@@ -170,7 +166,7 @@ rotateImage img rotateDeg =
                            (fromIntegral j,fromIntegral i))
   where (nx,ny) = dimensions img
         theta = deg2Rad rotateDeg
-        (centerX,centerY) = ((fromIntegral nx) / 2,(fromIntegral ny) / 2)
+        (centerX,centerY) = (fromIntegral nx / 2,fromIntegral ny / 2)
         mat =
           VU.fromListN 4 $
           P.map (\f -> f theta)
@@ -201,7 +197,7 @@ rotateImageS
 rotateImageS img degs = rotatedImgs
   where !ds = computeDerivativeS img
         (ny,nx) = dimensions img
-        (centerX,centerY) = ((fromIntegral nx) / 2,(fromIntegral ny) / 2)
+        (centerX,centerY) = (fromIntegral nx / 2,fromIntegral ny / 2)
         !rotatedImgs =
           V.map (\rad ->
                    let mat =
@@ -246,7 +242,7 @@ rotateImageP :: ParallelParams
 rotateImageP parallelParams img degs =
   do !ds <- computeDerivativeP img
      let (ny,nx) = dimensions img
-         (centerX,centerY) = ((fromIntegral nx) / 2,(fromIntegral ny) / 2)
+         (centerX,centerY) = (fromIntegral nx / 2,fromIntegral ny / 2)
          !rotatedImgs =
            parMapChunkVector
              parallelParams
