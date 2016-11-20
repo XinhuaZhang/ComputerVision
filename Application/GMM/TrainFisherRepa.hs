@@ -8,19 +8,15 @@ import           Classifier.LibLinear
 import           Control.Monad.IO.Class
 import qualified Control.Monad.Parallel             as MP
 import           Control.Parallel
-import           CV.CUDA.Context
-import           CV.CUDA.DataType
-import           CV.Feature.PolarSeparable
-import           CV.Feature.PolarSeparableAcc
+import           CV.Feature.PolarSeparableRepa
 import           CV.Filter
-import           CV.Filter.FilterStats
 import           CV.Filter.PolarSeparableFilter
-import           CV.Filter.PolarSeparableFilterAcc
+import           CV.Filter.PolarSeparableFilterRepa
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
-import           Data.Array.Accelerate              as A
-import           Data.Array.Accelerate.Data.Complex as A
+import           Data.Array.Repa                    as R
 import           Data.Binary
+import           Data.Complex                       as C
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.List                          as L
@@ -99,44 +95,22 @@ main =
                              else (2 * getFilterNum filterParams) *
                                   (numModel gmm)
                        ,trainModel = modelName params}
+         filters =
+           makeFilter filterParams :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
      print params
-     ctx <- initializeGPUCtx (Option $ gpuId params)
-     let featureConduit =
-           case (gpuDataType params) of
-             GPUFloat ->
-               let filters =
-                     makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
-               in imagePathSource (inputFile params) =$= grayImageConduit =$=
-                  grayImage2FloatArrayConduit =$=
-                  if isComplex params
-                     then complexConduitFloat parallelParams
-                                              ctx
-                                              filters
-                                              (downsampleFactor params)
-                     else magnitudeConduitFloat parallelParams
-                                                ctx
-                                                filters
-                                                (downsampleFactor params)
-             GPUDouble ->
-               let filters =
-                     makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
-               in imagePathSource (inputFile params) =$= grayImageConduit =$=
-                  grayImage2DoubleArrayConduit =$=
-                  if isComplex params
-                     then complexConduitDouble parallelParams
-                                               ctx
-                                               filters
-                                               (downsampleFactor params)
-                     else magnitudeConduitDouble parallelParams
-                                                 ctx
-                                                 filters
-                                                 (downsampleFactor params)
-     featureConduit =$=
-       CL.map (V.fromList .
-               P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
+     imagePathSource (inputFile params) =$= grayImageConduit =$=
+       grayImage2RepaConduit =$=
+       magnitudeConduit filters
+                        (downsampleFactor params) =$=
+       CL.map (\arr ->
+                 let (Z :. nf :. ny :. nx) = extent arr
+                 in V.fromList .
+                    P.map (\(a,b) ->
+                             toUnboxed . computeS $
+                             R.slice arr (Z :. All :. a :. b)) $
+                    [(i,j)|i <- [0 .. ny - 1],j <- [0 .. nx - 1]]) =$=
        (fisherVectorConduit parallelParams gmm) $$
        trainSink parallelParams
                  (labelFile params)
                  trainParams
-                 (findC params) -- fisherVectorTestSink parallelParams gmm
-     destoryGPUCtx ctx
+                 (findC params)
