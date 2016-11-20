@@ -3,22 +3,13 @@
 {-# LANGUAGE TypeFamilies      #-}
 module CV.Filter.PolarSeparableFilter where
 
-import           Control.DeepSeq
-import           Control.Monad.IO.Class                (liftIO)
-import           Control.Parallel
 import           CV.Filter
-import           CV.Filter.FilterStats                 as FS
 import           CV.Filter.GaussianFilter
 import           CV.Image                              as IM
 import           CV.Utility.Coordinates
-import           CV.Utility.Parallel
 import           Data.Array.Unboxed                    as AU
 import           Data.Complex                          as C
-import           Data.Conduit
-import           Data.Conduit.List                     as CL
-import           Data.List                             as L
 import           Data.Set                              as Set
-import           GHC.Float
 import           Prelude                               as P
 
 data PolarSeparableFilterName

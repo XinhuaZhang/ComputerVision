@@ -4,23 +4,24 @@
 module CV.Filter.PolarSeparableFilterStatisticsAcc where
 
 import           Control.DeepSeq
-import           Control.Monad.IO.Class         (liftIO)
+import           Control.Monad.IO.Class                (liftIO)
 import           Control.Parallel
+import           CV.CUDA.ArrayUtil
+import           CV.CUDA.Context
 import           CV.Filter
-import           CV.Filter.FilterStats          as FS
-import           CV.Filter.GaussianFilter
+import           CV.Filter.FilterStats                 as FS
 import           CV.Filter.PolarSeparableFilter
-import           CV.Image                       as IM
-import           CV.Utility.Coordinates
+import           CV.Filter.PolarSeparableFilterAcc
 import           CV.Utility.Parallel
-import           Data.Array.Unboxed             as AU
-import           Data.Complex                   as C
-import           Data.Conduit
-import           Data.Conduit.List              as CL
-import           Data.List                      as L
-import           Data.Set                       as Set
+import           Data.Array.Accelerate                 as A
+import           Data.Array.Accelerate.Data.Complex    as A
+import           Data.Array.Accelerate.Math.DFT.Centre as A
+import           Data.Array.Accelerate.Math.FFT        as A
+import           Data.Array.Unboxed                    as AU
+import           Data.Conduit.List                     as CL
+import           Data.List                             as L
 import           GHC.Float
-import           Prelude                        as P
+import           Prelude                               as P
 
 instance CUDAStatistics (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) where
   type GPUDataType (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) = Float
@@ -132,7 +133,7 @@ instance CUDAStatistics (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Doub
                              nx >->
                            FS.rotate3D >->
                            filterSum) .
-                        P.map fromIArray)
+                        P.map (\arr -> fromIArray arr :: A.Array DIM2 Double))
                        ys
                    zs2 =
                      P.map

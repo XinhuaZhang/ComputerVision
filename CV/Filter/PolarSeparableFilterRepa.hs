@@ -2,8 +2,7 @@
 {-# LANGUAGE InstanceSigs      #-}
 {-# LANGUAGE TypeFamilies      #-}
 
---module CV.Filter.PolarSeparableFilterRepa where
-module Main where
+module CV.Filter.PolarSeparableFilterRepa where
 
 import           CV.Filter
 import           CV.Filter.PolarSeparableFilter

@@ -3,26 +3,15 @@
 {-# LANGUAGE TypeFamilies      #-}
 module CV.Filter.PolarSeparableFilterAcc where
 
-import           Control.DeepSeq
-import           Control.Monad.IO.Class                (liftIO)
-import           Control.Parallel
-import           CV.CUDA.ArrayUtil
-import           CV.CUDA.Context
 import           CV.CUDA.FFT
 import           CV.Filter
-import           CV.Filter.GaussianFilter
 import           CV.Filter.PolarSeparableFilter
 import           CV.Image                              as IM
-import           CV.Utility.Coordinates
-import           CV.Utility.Parallel
 import           Data.Array.Accelerate                 as A
 import           Data.Array.Accelerate.Data.Complex    as A
 import           Data.Array.Accelerate.Math.DFT.Centre as A
 import           Data.Array.Accelerate.Math.FFT        as A
-import           Data.Array.Unboxed                    as AU
 import           Data.Complex                          as C
-import           Data.Conduit
-import           Data.Conduit.List                     as CL
 import           Data.List                             as L
 import           Data.Set                              as Set
 import           GHC.Float
