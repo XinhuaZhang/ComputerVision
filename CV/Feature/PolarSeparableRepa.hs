@@ -22,9 +22,9 @@ magnitudeConduit filter' factor =
         let (Z :. nf :. ny :. nx) = extent x'
             (nx':ny':_) = P.map (`div` factor) [nx, ny]
             nxNew =
-              nx' - div ((P.round . P.head . S.toDescList $ scale) * 4) factor
+              nx' - div ((P.round . P.head . S.toDescList $ scale) * 4 + 76) factor
             nyNew =
-              ny' - div ((P.round . P.head . S.toDescList $ scale) * 4) factor
+              ny' - div ((P.round . P.head . S.toDescList $ scale) * 4 + 76) factor
         in do y' <- liftIO . applyFilter filter' $ x'
               let z =
                     if factor == 1
