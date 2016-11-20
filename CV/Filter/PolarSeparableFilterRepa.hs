@@ -38,7 +38,7 @@ instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
           cArr =
             listArray ((0,0,0),(nf - 1,size' - 1,size' - 1)) . L.concat $
             filterEleList
-          dftCArr = dftN [0,1] cArr
+          dftCArr = dftN [1,2] cArr
           filterArr = computeS $ threeDCArray2RArray dftCArr
   displayFilter :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
                 -> ColorImage
@@ -48,6 +48,7 @@ instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
     -> R.Array U DIM3 Double
     -> R.Array D DIM3 (C.Complex Double)
   applyFilter (PolarSeparableFilter _params filterArr) inputArr =
+    threeDCArray2RArray . idftN [1,2] . threeDRArray2CArray $
     fromFunction
       (Z :. (n * nf) :. ny :. nx)
       (\(Z :. k :. j :. i) ->
@@ -55,8 +56,8 @@ instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
              k2 = mod k nf
          in (rArr R.! (Z :. k1 :. j :. i)) *
             (filterArr R.! (Z :. k2 :. j :. i)))
-    where cArr = threeDRArray2CArray inputArr
-          dftCArr = dftRCN [0,1] cArr
+    where cArr = threeDRArray2CArray (R.map (\x -> x C.:+ 0) inputArr)
+          dftCArr = dftN [1,2] cArr
           rArr = threeDCArray2RArray dftCArr
           (Z :. nf :. ny :. nx) = extent filterArr
           (Z :. n :. _ :. _) = extent rArr
