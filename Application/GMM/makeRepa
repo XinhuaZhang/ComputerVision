@@ -1,5 +1,7 @@
 #/bin/bash
 
-FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3" 
-
+FLAG="--make -O3 -j4 -XBangPatterns -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3" 
+OBJPATH="../../Classifier/LibLinear/"
+LIBS="-lstdc++ -llapack -lblas"
 ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisherRepa.hs -o trainFisherRepa
+ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherRepa.hs -o predictFisherRepa
