@@ -65,6 +65,7 @@ predict predictModel output =
              -> IO (Int,Int)
         func model (correct,total) (target,featurePtr) =
           do prediction <- c'predict model featurePtr
+             putStrLn $ (show target) P.++ " " P.++ show prediction
              if round target == round prediction
                 then return (correct + 1,total + 1)
                 else return (correct,total + 1)

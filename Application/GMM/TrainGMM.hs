@@ -74,7 +74,7 @@ main =
                                                  (downsampleFactor params)
      featureConduit $$
        CL.map (V.fromList .
-               P.map (\(PolarSeparableFeaturePoint _ _ vec) -> VU.map (*10) vec)) =$=
+               P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
        gmmSink parallelParams
                (numGaussian params)
                (threshold params)

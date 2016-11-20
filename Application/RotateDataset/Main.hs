@@ -25,7 +25,7 @@ labelSource filePath =
 
 main =
   let parallelParams =
-        ParallelParams {numThread = 16
+        ParallelParams {numThread = 8
                        ,batchSize = 800}
       (nx,ny) = (256,256)
       deg = 36

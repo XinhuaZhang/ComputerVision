@@ -248,8 +248,8 @@ magnitudeConduitFloat parallelParams ctx filter factor =
                     nx = nx' + 1
                     ny = ny' + 1
                     scale = getScale . getParams $ filter
-                    nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
+                    nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4   + 76)
+                    nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4   + 76)
                     ys =
                       parMapChunk
                         parallelParams
