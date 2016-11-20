@@ -19,7 +19,7 @@ import           Prelude                        as P
 -- The layout is nf x ny x nx
 instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
   type Input (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) = R.Array U DIM3 Double
-  type Output (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) = R.Array D DIM3 (C.Complex Double)
+  type Output (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) = IO (R.Array D DIM3 (C.Complex Double))
   type FilterParameter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) = PolarSeparableFilterParams
   makeFilter
     :: PolarSeparableFilterParams
@@ -46,16 +46,19 @@ instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
   applyFilter
     :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
     -> R.Array U DIM3 Double
-    -> R.Array D DIM3 (C.Complex Double)
+    -> IO (R.Array D DIM3 (C.Complex Double))
   applyFilter (PolarSeparableFilter _params filterArr) inputArr =
-    threeDCArray2RArray . idftN [1,2] . threeDRArray2CArray $
-    fromFunction
-      (Z :. (n * nf) :. ny :. nx)
-      (\(Z :. k :. j :. i) ->
-         let k1 = div k nf
-             k2 = mod k nf
-         in (rArr R.! (Z :. k1 :. j :. i)) *
-            (filterArr R.! (Z :. k2 :. j :. i)))
+    do multArr <-
+         computeP $
+         fromFunction
+           (Z :. (n * nf) :. ny :. nx)
+           (\(Z :. k :. j :. i) ->
+              let k1 = div k nf
+                  k2 = mod k nf
+              in (rArr R.! (Z :. k1 :. j :. i)) *
+                 (filterArr R.! (Z :. k2 :. j :. i))) :: IO (R.Array U DIM3 (C.Complex Double))
+       return . threeDCArray2RArray . idftN [1,2] . threeDRArray2CArray $
+         multArr
     where cArr = threeDRArray2CArray (R.map (\x -> x C.:+ 0) inputArr)
           dftCArr = dftN [1,2] cArr
           rArr = threeDCArray2RArray dftCArr
