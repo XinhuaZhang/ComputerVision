@@ -9,16 +9,12 @@ import           CV.Filter.PolarSeparableFilter
 import           CV.Image                       as IM
 import           Data.Array.CArray              as CA
 import           Data.Array.Repa                as R
-import           Data.Array.Repa.Algorithms.FFT as R
 import           Data.Complex                   as C
-import           Data.List                      as L
 import           Data.List                      as L
 import           Data.Set                       as Set
 import           Foreign.Storable
 import           Math.FFT
-import           Math.FFT.Base
 import           Prelude                        as P
-
 
 -- The layout is nf x ny x nx
 instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
@@ -28,19 +24,19 @@ instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
   makeFilter
     :: PolarSeparableFilterParams
     -> PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
-  makeFilter params@(PolarSeparableFilterParams r scale rs as name) =
-    (PolarSeparableFilter params filterArr)
-    where size = 2 * r
+  makeFilter params@(PolarSeparableFilterParams r scale rs as _name) =
+    PolarSeparableFilter params filterArr
+    where size' = 2 * r
           filterEleList =
-            [pixelList (IM.makeFilter size
-                                      size
+            [pixelList (IM.makeFilter size'
+                                      size'
                                       (getFilterFunc params s rf af) :: ComplexImage)
             |rf <- Set.toList rs
             ,af <- Set.toList as
             ,s <- Set.toList scale]
           nf = P.length filterEleList
           cArr =
-            listArray ((0,0,0),(nf - 1,size - 1,size - 1)) . L.concat $
+            listArray ((0,0,0),(nf - 1,size' - 1,size' - 1)) . L.concat $
             filterEleList
           dftCArr = dftN [0,1] cArr
           filterArr = computeS $ threeDCArray2RArray dftCArr
@@ -48,10 +44,10 @@ instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
                 -> ColorImage
   displayFilter = undefined
   applyFilter
-    :: (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double)))
+    :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
     -> R.Array U DIM3 Double
     -> R.Array D DIM3 (C.Complex Double)
-  applyFilter (PolarSeparableFilter params@PolarSeparableFilterParams{getRadius = r} filterArr) inputArr =
+  applyFilter (PolarSeparableFilter _params filterArr) inputArr =
     fromFunction
       (Z :. (n * nf) :. ny :. nx)
       (\(Z :. k :. j :. i) ->

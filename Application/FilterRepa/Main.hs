@@ -1,7 +1,7 @@
 module Main where
 
-import           CV.Filter           as F
-import           CV.Filter.PolarSeparableFilter
+import           CV.Filter                          as F
+import           CV.Filter.PolarSeparableFilterAcc
 import           CV.Filter.PolarSeparableFilterRepa
 import           CV.Image
 import           Data.Array.Accelerate              as A
