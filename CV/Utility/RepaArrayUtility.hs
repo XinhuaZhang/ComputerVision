@@ -71,17 +71,18 @@ pad newDims arr =
     (shapeOfList dimList)
     (\sh' ->
        let idx = L.zipWith (-) (listOfShape sh') diff
-       in if L.or (L.zipWith (\i j -> i < 0 || i >= j) idx dimList)
+       in if L.or (L.zipWith (\i j -> i < 0 || i >= j) idx oldDimList)
              then 0
              else arr R.! shapeOfList idx)
-  where dimList = L.zipWith max newDims . listOfShape . extent $ arr
+  where oldDimList = listOfShape . extent $ arr
+        dimList = L.zipWith max newDims oldDimList
         diff =
           L.zipWith (\a b ->
                        if a - b <= 0
                           then 0
                           else div (a - b) 2)
                     newDims
-                    dimList
+                    oldDimList
 
 
 computeDerivativeP
