@@ -38,17 +38,17 @@ plotImage filePath img =
              1 ->
                ImageY8 $
                generateImage
-                 (\j i ->
+                 (\i j ->
                     let v =
                           fromIntegral . round $
                           normalizedImg ! (Z :. 0 :. j :. i)
                     in v)
-                 nyp'
                  nxp'
+                 nyp'
              3 ->
                ImageRGB8 $
                generateImage
-                 (\j i ->
+                 (\i j ->
                     let r =
                           fromIntegral . round $
                           normalizedImg ! (Z :. 0 :. j :. i)
@@ -59,8 +59,8 @@ plotImage filePath img =
                           fromIntegral . round $
                           normalizedImg ! (Z :. 2 :. j :. i)
                     in PixelRGB8 r g b)
-                 nyp'
                  nxp'
+                 nyp'
              _ ->
                error $
                "Image is neither a gray image nor a color image. There are " P.++
