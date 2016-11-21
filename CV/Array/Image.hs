@@ -29,7 +29,7 @@ normalizeImage upperBound img =
 
 plotImage :: FilePath -> Array U DIM3 Double -> IO ()
 plotImage filePath img =
-  do let Z :. nyp' :. nxp' :. nfp' = extent img
+  do let Z :. nfp' :. nyp' :. nxp' = extent img
          normalizedImg =
            normalizeImage (P.fromIntegral (maxBound :: Pixel8))
                           img
