@@ -1,5 +1,4 @@
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE QuasiQuotes  #-}
 module CV.Image.ImageUtility
   (rotateImage
   ,rotateImageS
@@ -12,20 +11,14 @@ module CV.Image.ImageUtility
 import           Control.Monad                as M
 import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
+import           CV.Utility.RepaArrayUtility
 import           Data.Array.Repa              as R
-import           Data.Array.Repa.Stencil      as R
-import           Data.Array.Repa.Stencil.Dim2 as R
 import           Data.Conduit
 import           Data.Conduit.List            as CL
-import           Data.Image
-import           Data.Maybe                   as Maybe
+import           Data.Image                   as IM
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
-
-type ImageArray = R.Array U DIM2 Double
-
-type ImageDerivative = [ImageArray]
 
 padImage
   :: (Monoid a)
@@ -36,29 +29,27 @@ padImage m n img
     makeImage m
               ny
               (\i j ->
-                 if (i - (div (m - nx) 2)) < 0 ||
-                    (i - (div (m - nx) 2)) > (nx - 1)
+                 if i - div (m - nx) 2 < 0 || i - div (m - nx) 2 > (nx - 1)
                     then mempty
-                    else ref img (i - (div (m - nx) 2)) j)
+                    else ref img (i - div (m - nx) 2) j)
   | m <= nx && n > ny =
     makeImage nx
               n
               (\i j ->
-                 if (j - (div (n - ny) 2)) < 0 ||
-                    (j - (div (n - ny) 2)) > (ny - 1)
+                 if j - div (n - ny) 2 < 0 || j - div (n - ny) 2 > (ny - 1)
                     then mempty
-                    else ref img i (j - (div (n - ny) 2)))
+                    else ref img i (j - div (n - ny) 2))
   | otherwise =
     makeImage m
               n
               (\i j ->
-                 if (i - (div (m - nx) 2)) < 0 ||
-                    (i - (div (m - nx) 2)) > (nx - 1) ||
-                    (j - (div (n - ny) 2)) < 0 || (j - (div (n - ny) 2)) > (ny - 1)
+                 if i - div (m - nx) 2 < 0 ||
+                    i - div (m - nx) 2 > (nx - 1) ||
+                    j - div (n - ny) 2 < 0 || j - div (n - ny) 2 > (ny - 1)
                     then mempty
                     else ref img
-                             (i - (div (m - nx) 2))
-                             (j - (div (n - ny) 2)))
+                             (i - div (m - nx) 2)
+                             (j - div (n - ny) 2))
   where (nx,ny) = dimensions img
 
 resizeImages :: (Monoid a)
@@ -72,13 +63,15 @@ resizeImages parallelParams m n = parMapChunk parallelParams rseq resize
                => BoxedImage a -> BoxedImage a
         resize img
           | m < nx && n < ny =
-            crop (div (nx - m) 2)
-                 (div (ny - n) 2)
-                 m
-                 n
-                 img
-          | m > nx && n < ny = padImage m n (crop 0 (div (ny - n) 2) nx n img)
-          | m < nx && n > ny = padImage m n (crop (div (nx - m) 2) 0 m ny img)
+            IM.crop (div (nx - m) 2)
+                    (div (ny - n) 2)
+                    m
+                    n
+                    img
+          | m > nx && n < ny =
+            padImage m n (IM.crop 0 (div (ny - n) 2) nx n img)
+          | m < nx && n > ny =
+            padImage m n (IM.crop (div (nx - m) 2) 0 m ny img)
           | otherwise = padImage m n img
           where (nx,ny) = dimensions img
 
@@ -93,59 +86,6 @@ resizeConduit parallelParams resizeX resizeY =
                 sourceList resizedImg
                 resizeConduit parallelParams resizeX resizeY)
 
-computeDerivativeP
-  :: GrayImage -> IO ImageDerivative
-computeDerivativeP img =
-  do let (ny,nx) = dimensions img
-         imgArr = fromListUnboxed (Z :. ny :. nx) . pixelList $ img
-         xStencil =
-           [stencil2| 0 0 0
-                      -1 0 1
-                      0 0 0 |]
-         yStencil =
-           [stencil2| 0 -1 0
-                      0 0 0
-                      0 1 0 |]
-         xyStencil =
-           [stencil2| 1 0 -1
-                      0 0 0
-                      -1 0 1 |]
-         ds =
-           P.map (\s ->
-                    R.map (/ 2) $
-                    mapStencil2 BoundClamp
-                                s
-                                imgArr)
-                 [xStencil,yStencil,xyStencil]
-     ds' <- P.mapM computeP ds
-     return $! (imgArr : ds')
-
-computeDerivativeS
-  :: GrayImage -> ImageDerivative
-computeDerivativeS img = imgArr : ds'
-  where (ny,nx) = dimensions img
-        imgArr = fromListUnboxed (Z :. ny :. nx) . pixelList $ img
-        xStencil =
-          [stencil2| 0 0 0
-                     -1 0 1
-                     0 0 0 |]
-        yStencil =
-          [stencil2| 0 -1 0
-                     0 0 0
-                     0 1 0 |]
-        xyStencil =
-          [stencil2| 1 0 -1
-                     0 0 0
-                     -1 0 1 |]
-        ds =
-          P.map (\s ->
-                   R.map (/ 2) $
-                   mapStencil2 BoundClamp
-                               s
-                               imgArr)
-                [xStencil,yStencil,xyStencil]
-        ds' = P.map computeS ds
-
 vecMatMult
   :: (Double,Double) -> VU.Vector Double -> (Double,Double)
 vecMatMult (x,y) vec = (a * x + c * y,b * x + d * y)
@@ -157,21 +97,23 @@ vecMatMult (x,y) vec = (a * x + c * y,b * x + d * y)
 -- Only one rotation
 rotateImage :: GrayImage -> Double -> GrayImage
 rotateImage img rotateDeg =
-  makeImage nx
-            ny
+  makeImage ny
+            nx
             (\j i ->
                bicubicInterpolation ds matrixA $
                rotatePixel mat
                            (centerY,centerX)
                            (fromIntegral j,fromIntegral i))
-  where (nx,ny) = dimensions img
+  where (ny,nx) = dimensions img
         theta = deg2Rad rotateDeg
         (centerX,centerY) = (fromIntegral nx / 2,fromIntegral ny / 2)
         mat =
           VU.fromListN 4 $
           P.map (\f -> f theta)
                 [cos,sin,\x -> -(sin x),cos]
-        !ds = computeDerivativeS img
+        !ds =
+          computeDerivativeS . fromListUnboxed (Z :. ny :. nx) . pixelList $
+          img
         matrixA =
           V.fromListN 16 . P.map (VU.fromListN 16) $
           [[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
@@ -195,7 +137,9 @@ rotateImage img rotateDeg =
 rotateImageS
   :: GrayImage -> V.Vector Double -> V.Vector GrayImage
 rotateImageS img degs = rotatedImgs
-  where !ds = computeDerivativeS img
+  where !ds =
+          computeDerivativeS . fromListUnboxed (Z :. ny :. nx) . pixelList $
+          img
         (ny,nx) = dimensions img
         (centerX,centerY) = (fromIntegral nx / 2,fromIntegral ny / 2)
         !rotatedImgs =
@@ -240,9 +184,9 @@ rotateImageP :: ParallelParams
              -> V.Vector Double
              -> IO (V.Vector GrayImage)
 rotateImageP parallelParams img degs =
-  do !ds <- computeDerivativeP img
-     let (ny,nx) = dimensions img
-         (centerX,centerY) = (fromIntegral nx / 2,fromIntegral ny / 2)
+  do !ds <-
+       computeDerivativeP . fromListUnboxed (Z :. ny :. nx) . pixelList $ img
+     let (centerX,centerY) = (fromIntegral nx / 2,fromIntegral ny / 2)
          !rotatedImgs =
            parMapChunkVector
              parallelParams
@@ -263,7 +207,8 @@ rotateImageP parallelParams img degs =
                 in newImg)
              rads
      return rotatedImgs
-  where rads = V.map deg2Rad degs
+  where (ny,nx) = dimensions img
+        rads = V.map deg2Rad degs
         matrixA =
           V.fromListN 16 . P.map (VU.fromListN 16) $
           [[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
@@ -295,34 +240,3 @@ rotatePixel mat (centerY,centerX) (y,x) = (y3,x3)
                      mat
         x3 = x2 + centerX
         y3 = y2 + centerY
-
-bicubicInterpolation :: ImageDerivative
-                     -> V.Vector (VU.Vector Double)
-                     -> (Double,Double)
-                     -> Double
-bicubicInterpolation ds matrixA (y,x)
-  | (x < 1) ||
-      (x > (fromIntegral nx - 2)) || (y < 1) || (y > (fromIntegral ny - 2)) = 0
-  | otherwise = result
-  where (Z :. ny :. nx) = extent . P.head $ ds
-        x' = x - (fromIntegral . floor $ x)
-        y' = y - (fromIntegral . floor $ y)
-        idx =
-          VU.fromListN
-            4
-            [(floor y,floor x)
-            ,(floor y,ceiling x)
-            ,(ceiling y,floor x)
-            ,(ceiling y,ceiling x)] :: VU.Vector (Int,Int)
-        xs =
-          VU.concat .
-          P.map (\arr -> VU.map (\(i,j) -> arr R.! (Z :. i :. j)) idx) $
-          ds
-        alpha = V.map (VU.sum . VU.zipWith (*) xs) matrixA
-        arr =
-          fromListUnboxed (Z :. 4 :. 4) . V.toList $ alpha :: R.Array U DIM2 Double
-        arr1 =
-          R.traverse arr
-                     id
-                     (\f idx@(Z :. j :. i) -> (f idx) * (x' ^ i) * (y' ^ j))
-        result = sumAllS arr1
