@@ -50,51 +50,49 @@ assignGMM
   -> V.Vector GMMData
   -> IO (V.Vector Double,V.Vector Double,Double, GMM) 
 assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
-  | V.length smallVarIdx > 0 =
-    do putStrLn "Variances of some Gaussians are too small. Overfitting could happen. Reset."
-       print smallVarIdx
-       newModel <- resetGMM gmm smallVarIdx
-       assignGMM parallelParams newModel xs
+  | V.length smallVarIdx > 0 = do
+    putStrLn
+      "Variances of some Gaussians are too small. Overfitting could happen. Reset."
+    print smallVarIdx
+    newModel <- resetGMM gmm smallVarIdx
+    assignGMM parallelParams newModel xs
   | isJust zeroZIdx =
     error $
     "There is one data point which is assigned to none of the model. Try to increase the initialization range of sigma and to decrease that of mu.\n" P.++
     (show (xs V.! fromJust zeroZIdx)) P.++
     "\n" P.++
     (show $ probability (xs V.! fromJust zeroZIdx))
-  | V.length zeroKIdx > 0 =
-    do putStrLn "There are models which have no point assigned to them! Reset them now."
-       print zeroKIdx
-       newModel <- resetGMM gmm zeroKIdx
-       assignGMM parallelParams newModel xs
-  | otherwise = return (zs,nks,likelihood,gmm)
-  where !zs =
-          parMapChunkVector
-            parallelParams
-            rdeepseq
-            (\x ->
-               V.foldl' (\s (Model (wj,mj)) -> s + (wj * gaussian mj x)) 0 $
-               modelVec)
-            xs
-        nks =
-          parMapChunkVector
-            parallelParams
-            rdeepseq
-            (\m -> V.sum . V.zipWith (\z x -> assignPoint m z x) zs $ xs)
-            modelVec
-        likelihood = getLikelihood zs
-        zeroZIdx = V.findIndex (== 0) zs
-        zeroKIdx =
-          V.findIndices (\x -> x == 0 || isNaN x)
-                        nks
-        smallVarIdx =
-          V.findIndices
-            (\(Model (w,Gaussian _ _ sigmaVec)) ->
-               case VU.find (< 0.05) sigmaVec of
-                 Nothing -> False
-                 Just _ -> True)
-            modelVec
-        probability y =
-                  V.map (\(Model (wj,mj)) -> (wj * gaussian mj y)) modelVec
+  | V.length zeroKIdx > 0 = do
+    putStrLn
+      "There are models which have no point assigned to them! Reset them now."
+    print zeroKIdx
+    newModel <- resetGMM gmm zeroKIdx
+    assignGMM parallelParams newModel xs
+  | otherwise = return (zs, nks, likelihood, gmm)
+  where
+    !zs =
+      parMapChunkVector
+        parallelParams
+        rdeepseq
+        (\x -> V.foldl' (\s (Model (wj, mj)) -> s + (wj * gaussian mj x)) 0 modelVec)
+        xs
+    nks =
+      parMapChunkVector
+        parallelParams
+        rdeepseq
+        (\m -> V.sum . V.zipWith (assignPoint m) zs $ xs)
+        modelVec
+    likelihood = getLikelihood zs
+    zeroZIdx = V.findIndex (== 0) zs
+    zeroKIdx = V.findIndices (\x -> x == 0 || isNaN x) nks
+    smallVarIdx =
+      V.findIndices
+        (\(Model (w, Gaussian _ _ sigmaVec)) ->
+            case VU.find (< 0.05) sigmaVec of
+              Nothing -> False
+              Just _ -> True)
+        modelVec
+    probability y = V.map (\(Model (wj, mj)) -> (wj * gaussian mj y)) modelVec
 
 resetGMM :: GMM -> V.Vector Int -> IO GMM
 resetGMM gmm@(MixtureModel n modelVec) idx =

@@ -43,7 +43,6 @@ main =
                                            [0 .. (freq params - 1)]
                                       ,getName = Pinwheels}
      print params
-     ctx <- initializeGPUCtx (Option $ gpuId params)
      let featureConduit =
            case (gpuDataType params) of
              GPUFloat ->
@@ -81,4 +80,3 @@ main =
                (numGaussian params)
                (threshold params)
                (gmmFile params)
-     destoryGPUCtx ctx

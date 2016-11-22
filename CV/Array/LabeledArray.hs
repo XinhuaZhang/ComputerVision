@@ -2,19 +2,18 @@
 {-# LANGUAGE InstanceSigs  #-}
 module CV.Array.LabeledArray where
 
+import           Control.Monad          as M
 import           Control.Monad.IO.Class (liftIO)
-import Control.Monad  as M
 import           CV.Array.Image
 import           Data.Array.Repa        as R
-import           Data.Binary
 import           Data.Binary
 import           Data.ByteString.Lazy   as BL
 import           Data.Conduit           as C
 import           Data.Conduit.List      as CL
 import           Data.Vector.Unboxed    as VU
 import           GHC.Generics
+import           Prelude                as P
 import           System.IO
-import Prelude as P
 
 data LabeledArray sh e =
   LabeledArray !Int
@@ -47,10 +46,10 @@ readLabeledImagebinarySource filePath = do
        if count < len
          then do
            bs <- BL.hGet h size
-           if (fromIntegral $ BL.length bs) < size
+           if fromIntegral (BL.length bs) < size
              then error $
-                  "Expect " P.++ (show size) P.++ " images, but only have " P.++
-                  (show count) P.++
+                  "Expect " P.++ show size P.++ " images, but only have " P.++
+                  show count P.++
                   "."
              else let (LabeledArray label arr) =
                         decode bs :: LabeledArray DIM3 Word8
@@ -65,7 +64,7 @@ readLabeledImagebinarySource filePath = do
            if isEoF
              then return Nothing
              else error $
-                  "Expect " P.++ (show size) P.++
+                  "Expect " P.++ show size P.++
                   " images, but there are more images in the file. ")
     (h, 0)
   liftIO $ hClose h
