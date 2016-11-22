@@ -18,13 +18,15 @@ import           Data.Vector                 as V
 import           Data.Vector.Unboxed         as VU
 import           Prelude                     as P
 import           System.IO
+import CV.Utility.Parallel
+import Data.ByteString.Lazy as BL
 
 -- First pading image to be a square image then rotating it
 recaleAndRotate2DImageS
   :: (R.Source s Double)
   => Int -> [Double] -> Array s DIM2 Double -> [Array U DIM2 Double]
 recaleAndRotate2DImageS n degs arr =
-  L.map
+  parMap rseq
     (\deg ->
        computeS $
        fromFunction
@@ -103,15 +105,11 @@ rotateLabeledImageConduit n deg =
     degs = L.map (* deg) [0 .. fromIntegral len - 1]
 
 
-writeLabeledImageSink :: FilePath -> Sink (LabeledArray DIM3 Double) IO ()
-writeLabeledImageSink filePath = do
-  xs <- CL.consume
-  liftIO . encodeFile filePath $
-    P.map
-      (\(LabeledArray label arr) ->
-         LabeledArray label .
-         computeS .
-         R.map (\x -> round x :: Word) .
-         normalizeImage (fromIntegral (maxBound :: Word)) $
-         arr)
-      xs
+writeLabeledImageSink :: FilePath
+                      -> Int
+                      -> Sink (LabeledArray DIM3 Double) IO ()
+writeLabeledImageSink filePath len = do
+  h <- liftIO $ openBinaryFile filePath WriteMode
+  liftIO $ BL.hPut h (encode len)
+  CL.foldMapM (\arr -> BL.hPut h (encode arr))
+  liftIO $ hClose h

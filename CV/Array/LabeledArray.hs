@@ -12,20 +12,15 @@ data LabeledArray sh e =
                (Array U sh e)
   deriving (Show,Generic)
 
-instance (Binary e
-         ,Unbox e
-         ,Shape sh) =>
+instance (Binary e, Unbox e, Shape sh) =>
          Binary (LabeledArray sh e) where
-  put (LabeledArray label arr) =
-    do put label
-       put . listOfShape . extent $ arr
-       put . R.toList $ arr
-  get =
-    do label' <- get
-       shList <- get
-       elemList <- get
-       return $!
-         LabeledArray
-           label'
-           (fromListUnboxed (shapeOfList shList)
-                            elemList)
+  put (LabeledArray label arr) = do
+    put label
+    put . listOfShape . extent $ arr
+    put . R.toList $ arr
+  get = do
+    label' <- get
+    shList <- get
+    elemList <- get
+    return $!
+      LabeledArray label' (fromListUnboxed (shapeOfList shList) elemList)
