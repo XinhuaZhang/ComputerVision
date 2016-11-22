@@ -10,8 +10,8 @@ import           Data.Conduit
 import qualified Data.Conduit.List      as CL
 import           Data.List              as L
 import           Data.Vector            as V
+import           Prelude                as P
 import           System.IO
-import Prelude as P
 
 data LabelImage
   = LabelGrayImage !Int
@@ -77,7 +77,7 @@ outputLabelImage filePath xs =
              hPutStrLn handleLabel (show label)
              writeImage (filePath P.++ "/" P.++ show index P.++ ".ppm")
                         img
-                        
+
 outputLabelImageSink :: FilePath -> Sink LabelImage IO ()
 outputLabelImageSink filePath =
   do xs <- CL.consume
