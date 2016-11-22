@@ -11,6 +11,7 @@ import           CV.Filter.PolarSeparableFilterRepa
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
 import           Data.Array.Repa                    as R
+import           Data.Complex
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.Set                           as S
@@ -18,7 +19,6 @@ import           Data.Vector                        as V
 import           Data.Vector.Unboxed                as VU
 import           Prelude                            as P
 import           System.Environment
-import Data.Complex
 
 main = do
   args <- getArgs
