@@ -8,6 +8,7 @@ import           Classifier.LibLinear
 import           Control.Monad.IO.Class
 import qualified Control.Monad.Parallel             as MP
 import           Control.Parallel
+import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparableRepa
 import           CV.Filter
 import           CV.Filter.PolarSeparableFilter
