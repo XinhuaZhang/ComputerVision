@@ -1,3 +1,4 @@
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DeriveGeneric #-}
 module CV.Array.LabeledArray where
 

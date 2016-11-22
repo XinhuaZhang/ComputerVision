@@ -61,6 +61,12 @@ main = do
       colorSource trainPath trainLabelPath $$ rotateLabeledImageConduit n deg =$=
         writeLabeledImageSink
           (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin")
+      colorSource testPath testLabelPath $$
+        writeLabeledImageSink
+          (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin")
+      colorSource testPath testLabelPath $$ rotateLabeledImageConduit n deg =$=
+        writeLabeledImageSink
+          (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin")
     else do
       graySource trainPath trainLabelPath $$
         writeLabeledImageSink
@@ -68,3 +74,9 @@ main = do
       graySource trainPath trainLabelPath $$ rotateLabeledImageConduit n deg =$=
         writeLabeledImageSink
           (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin")
+      graySource testPath testLabelPath $$
+        writeLabeledImageSink
+          (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin")
+      graySource testPath testLabelPath $$ rotateLabeledImageConduit n deg =$=
+        writeLabeledImageSink
+          (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin")

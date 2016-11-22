@@ -4,6 +4,7 @@ module Application.RotateDataset.RotationRepa where
 
 import           Control.Monad               as M
 import           Control.Monad.IO.Class
+import           CV.Array.Image
 import           CV.Array.LabeledArray
 import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
@@ -50,7 +51,6 @@ recaleAndRotate2DImageS n degs arr =
     theta = atan (fromIntegral nx / fromIntegral ny)
     xx = max (cos theta) (sin theta)
     innerSize = floor (fromIntegral n * xx)
-    --innerSize = floor (fromIntegral n / sqrt (2 :: Double))
     boundaryWith = fromIntegral $ div (n - innerSize) 2
     paddedImg = pad [m, m] arr
     ds = computeDerivativeS (computeUnboxedS paddedImg)
@@ -90,7 +90,7 @@ rotateLabeledImageConduit n deg =
        let (Z :. nf :. _ny :. _nx) = extent arr
        in sourceList .
           L.map
-            (LabeledArray label .
+            (LabeledArray label . 
              fromUnboxed (Z :. nf :. n :. n) . VU.concat . L.map R.toUnboxed) .
           L.transpose .
           L.map
@@ -106,4 +106,12 @@ rotateLabeledImageConduit n deg =
 writeLabeledImageSink :: FilePath -> Sink (LabeledArray DIM3 Double) IO ()
 writeLabeledImageSink filePath = do
   xs <- CL.consume
-  liftIO $ encodeFile filePath xs
+  liftIO . encodeFile filePath $
+    P.map
+      (\(LabeledArray label arr) ->
+         LabeledArray label .
+         computeS .
+         R.map (\x -> round x :: Word) .
+         normalizeImage (fromIntegral (maxBound :: Word)) $
+         arr)
+      xs
