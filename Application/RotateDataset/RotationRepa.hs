@@ -97,24 +97,27 @@ rotateLabeledImageConduit parallelParams n deg = do
                 parallelParams
                 rseq
                 (\(LabeledArray label arr) ->
-                   let (Z :. nf :. _ny :. _nx) = extent arr
-                       !result =
-                         L.map
-                           (LabeledArray label .
-                            fromUnboxed (Z :. nf :. n :. n) .
-                            VU.concat . L.map R.toUnboxed) .
-                         L.transpose .
-                         L.map
-                           (\i ->
-                              recaleAndRotate2DImageS n degs $
-                              R.slice arr (Z :. i :. All :. All)) $
-                         [0 .. nf - 1]
-                   in result)
+                    let (Z :. nf :. _ny :. _nx) = extent arr
+                        !result =
+                          L.map
+                            (LabeledArray label .
+                             fromUnboxed (Z :. nf :. n :. n) .
+                             VU.concat . L.map R.toUnboxed) .
+                          L.transpose .
+                          L.map
+                            (\i ->
+                                recaleAndRotate2DImageS n degs $
+                                R.slice arr (Z :. i :. All :. All)) $
+                          [0 .. nf - 1]
+                    in result)
                 xs
         sourceList . P.concat $ ys
         rotateLabeledImageConduit parallelParams n deg)
   where
-    len = round (360 / deg)
+    len =
+      if deg == 0
+        then 1
+        else round (360 / deg)
     degs = L.map (* deg) [0 .. fromIntegral len - 1]
 
 writeLabeledImageSink :: FilePath
