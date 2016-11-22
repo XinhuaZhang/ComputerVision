@@ -56,30 +56,41 @@ magnitudeConduit parallelParams filter' factor = do
     scale = getScale . getParams $ filter'
     
 
--- complexConduit
---   :: PolarSeparableFilter (R.Array U DIM3 (Complex Double))
---   -> Int
---   -> Conduit (R.Array U DIM3 Double) IO (R.Array U DIM3 (Complex Double))
--- complexConduit filter' factor =
---   awaitForever
---     (\x' ->
---        let (Z :. nf :. ny :. nx) = extent x'
---            (nx':ny':_) = P.map (`div` factor) [nx,ny]
---            nxNew =
---              nx' - div ((P.round . P.head . S.toDescList $ scale) * 4) factor
---            nyNew =
---              ny' - div ((P.round . P.head . S.toDescList $ scale) * 4) factor
---        in do y' <- liftIO . applyFilter filter' $ x'
---              let z =
---                    if factor == 1
---                       then y'
---                       else RU.downsample [factor,factor,1]
---                                          y'
---              result <-
---                liftIO .
---                computeP .
---                crop [div (nx' - nxNew) 2,div (ny' - nyNew) 2,0]
---                     [nxNew,nyNew,nf] $
---                z
---              yield result)
---   where scale = getScale . getParams $ filter'
+complexConduit
+  :: ParallelParams -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
+  -> Int
+  -> Conduit (R.Array U DIM3 Double) IO (R.Array U DIM3 (Complex Double))
+complexConduit parallelParams filter' factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (P.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\x' ->
+                    let (Z :. nf :. ny :. nx) = extent x'
+                        (nx':ny':_) = P.map (`div` factor) [nx, ny]
+                        nxNew =
+                          nx' -
+                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
+                        nyNew =
+                          ny' -
+                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
+                        y' = applyFilter filter' $ x'
+                        z =
+                          if factor == 1
+                            then y'
+                            else RU.downsample [factor, factor, 1] y'
+                        !result =
+                          computeUnboxedS .
+                          crop
+                            [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
+                            [nxNew, nyNew, nf] $
+                          z
+                    in result)
+                xs
+        sourceList ys
+        complexConduit parallelParams filter' factor)
+  where
+    scale = getScale . getParams $ filter'
