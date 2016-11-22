@@ -119,8 +119,8 @@ writeLabeledImageBinarySink filePath len = do
          (encode .
           LabeledArray label .
           computeS .
-          R.map (\x -> round x :: Word) .
-          normalizeImage (fromIntegral (maxBound :: Word)) $
+          R.map (\x -> round x :: Word8) .
+          normalizeImage (fromIntegral (maxBound :: Word8)) $
           arr))
   liftIO $ hClose h
 
@@ -133,7 +133,7 @@ writeLabeledImageSink filePath = do
     (\index (LabeledArray label arr') ->
        let (Z :. nf :. ny :. nx) = extent arr'
            arr =
-             computeUnboxedS . normalizeImage (fromIntegral (maxBound :: Word)) $
+             computeUnboxedS . normalizeImage (fromIntegral (maxBound :: Word8)) $
              arr'
        in case nf of
             1 -> do
