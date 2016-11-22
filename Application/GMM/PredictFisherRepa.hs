@@ -52,7 +52,8 @@ main = do
       filters =
         makeFilter filterParams :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
   print params
-  imagePathSource (inputFile params) =$= grayImageConduit =$= grayImage2RepaConduit =$=
+  readLabeledImagebinarySource (inputFile params) $$
+    CL.map (\(LabeledArray _ arr) -> arr) =$=
     magnitudeConduit parallelParams filters (downsampleFactor params) =$=
     CL.map
       (\arr ->
