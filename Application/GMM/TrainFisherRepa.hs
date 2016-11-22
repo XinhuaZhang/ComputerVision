@@ -62,55 +62,52 @@ trainSink parallelParams filePath trainParams findCFlag =
                 else liftIO $
                      train trainParams label (P.concat . L.reverse $ pss)
 
-main =
-  do args <- getArgs
-     if P.null args
-        then error "run with --help to see options."
-        else return ()
-     params <- parseArgs args
-     gmm <- decodeFile (gmmFile params) :: IO GMM
-     imageList <- readFile (inputFile params)
-     let parallelParams =
-           ParallelParams {Parallel.numThread = Parser.numThread params
-                          ,Parallel.batchSize = Parser.batchSize params}
-         filterParams =
-           PolarSeparableFilterParams {getRadius = 128
-                                      ,getScale =
-                                         S.fromDistinctAscList (scale params)
-                                      ,getRadialFreq =
-                                         S.fromDistinctAscList
-                                           [0 .. (freq params - 1)]
-                                      ,getAngularFreq =
-                                         S.fromDistinctAscList
-                                           [0 .. (freq params - 1)]
-                                      ,getName = Pinwheels}
-         trainParams =
-           TrainParams {trainSolver = L2R_L2LOSS_SVC_DUAL
-                       ,trainC = c params
-                       ,trainNumExamples = P.length . lines $ imageList
-                       ,trainFeatureIndexMax =
-                          if isComplex params
-                             then (4 * getFilterNum filterParams) *
-                                  (numModel gmm)
-                             else (2 * getFilterNum filterParams) *
-                                  (numModel gmm)
-                       ,trainModel = modelName params}
-         filters =
-           makeFilter filterParams :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
-     print params
-     imagePathSource (inputFile params) =$= grayImageConduit =$=
-       grayImage2RepaConduit =$=
-       magnitudeConduit filters
-                        (downsampleFactor params) =$=
-       CL.map (\arr ->
-                 let (Z :. nf :. ny :. nx) = extent arr
-                 in V.fromList .
-                    P.map (\(a,b) ->
-                             toUnboxed . computeS $
-                             R.slice arr (Z :. All :. a :. b)) $
-                    [(i,j)|i <- [0 .. ny - 1],j <- [0 .. nx - 1]]) =$=
-       (fisherVectorConduit parallelParams gmm) $$
-       trainSink parallelParams
-                 (labelFile params)
-                 trainParams
-                 (findC params)
+main = do
+  args <- getArgs
+  if P.null args
+    then error "run with --help to see options."
+    else return ()
+  params <- parseArgs args
+  gmm <- decodeFile (gmmFile params) :: IO GMM
+  imageList <- readFile (inputFile params)
+  let parallelParams =
+        ParallelParams
+        { Parallel.numThread = Parser.numThread params
+        , Parallel.batchSize = Parser.batchSize params
+        }
+      filterParams =
+        PolarSeparableFilterParams
+        { getRadius = 128
+        , getScale = S.fromDistinctAscList (scale params)
+        , getRadialFreq = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getAngularFreq = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getName = Pinwheels
+        }
+      trainParams =
+        TrainParams
+        { trainSolver = L2R_L2LOSS_SVC_DUAL
+        , trainC = c params
+        , trainNumExamples = P.length . lines $ imageList
+        , trainFeatureIndexMax =
+          if isComplex params
+            then (4 * getFilterNum filterParams) * (numModel gmm)
+            else (2 * getFilterNum filterParams) * (numModel gmm)
+        , trainModel = modelName params
+        }
+      filters =
+        makeFilter filterParams :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
+  print params
+  imagePathSource (inputFile params) =$= grayImageConduit =$= grayImage2RepaConduit =$=
+    magnitudeConduit parallelParams filters (downsampleFactor params) =$=
+    CL.map
+      (\arr ->
+          let (Z :. nf :. ny :. nx) = extent arr
+          in V.fromList .
+             P.map
+               (\(a, b) ->
+                   toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
+             [ (i, j)
+             | i <- [0 .. ny - 1]
+             , j <- [0 .. nx - 1] ]) =$=
+    (fisherVectorConduit parallelParams gmm) $$
+    trainSink parallelParams (labelFile params) trainParams (findC params)
