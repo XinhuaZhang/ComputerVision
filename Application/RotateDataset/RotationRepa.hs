@@ -8,19 +8,19 @@ import           CV.Array.Image
 import           CV.Array.LabeledArray
 import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
+import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           Data.Array.Repa             as R
 import           Data.Binary
+import           Data.ByteString.Lazy        as BL
 import           Data.Conduit
 import           Data.Conduit.List           as CL
+import qualified Data.Image                  as IM
 import           Data.List                   as L
 import           Data.Vector                 as V
 import           Data.Vector.Unboxed         as VU
 import           Prelude                     as P
 import           System.IO
-import CV.Utility.Parallel
-import Data.ByteString.Lazy as BL
-import qualified Data.Image as IM
 
 -- First pading image to be a square image then rotating it
 recaleAndRotate2DImageS
@@ -104,25 +104,6 @@ rotateLabeledImageConduit n deg =
   where
     len = round (360 / deg)
     degs = L.map (* deg) [0 .. fromIntegral len - 1]
-
-
-writeLabeledImageBinarySink :: FilePath
-                            -> Int
-                            -> Sink (LabeledArray DIM3 Double) IO ()
-writeLabeledImageBinarySink filePath len = do
-  h <- liftIO $ openBinaryFile filePath WriteMode
-  liftIO $ BL.hPut h (encode len)
-  CL.foldMapM
-    (\(LabeledArray label arr) ->
-       BL.hPut
-         h
-         (encode .
-          LabeledArray label .
-          computeS .
-          R.map (\x -> round x :: Word8) .
-          normalizeImage (fromIntegral (maxBound :: Word8)) $
-          arr))
-  liftIO $ hClose h
 
 writeLabeledImageSink :: FilePath
                       -> Sink (LabeledArray DIM3 Double) IO ()
