@@ -64,31 +64,31 @@ main = do
   if read isColor :: Bool
     then do
       colorSource trainPath trainLabelPath $$
-        writeLabeledImageSink
+        writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Original/" P.++ str P.++ ".bin")
           trainLen
       colorSource trainPath trainLabelPath $$ rotateLabeledImageConduit n deg =$=
-        writeLabeledImageSink
+        writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin")
           (trainLen * rotationLen)
       colorSource testPath testLabelPath $$
-        writeLabeledImageSink
+        writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin")
           testLen
       colorSource testPath testLabelPath $$ rotateLabeledImageConduit n deg =$=
-        writeLabeledImageSink
+        writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin")
           (testLen * rotationLen)
     else do
       graySource trainPath trainLabelPath $$
-        writeLabeledImageSink
+        writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Original/" P.++ str P.++ ".bin") trainLen
       graySource trainPath trainLabelPath $$ rotateLabeledImageConduit n deg =$=
-        writeLabeledImageSink
+        writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin") (trainLen * rotationLen)
       graySource testPath testLabelPath $$
-        writeLabeledImageSink
+        writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin") testLen
       graySource testPath testLabelPath $$ rotateLabeledImageConduit n deg =$=
-        writeLabeledImageSink
+        writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin") (testLen * rotationLen)

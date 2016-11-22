@@ -20,6 +20,7 @@ import           Prelude                     as P
 import           System.IO
 import CV.Utility.Parallel
 import Data.ByteString.Lazy as BL
+import qualified Data.Image as IM
 
 -- First pading image to be a square image then rotating it
 recaleAndRotate2DImageS
@@ -105,11 +106,55 @@ rotateLabeledImageConduit n deg =
     degs = L.map (* deg) [0 .. fromIntegral len - 1]
 
 
-writeLabeledImageSink :: FilePath
-                      -> Int
-                      -> Sink (LabeledArray DIM3 Double) IO ()
-writeLabeledImageSink filePath len = do
+writeLabeledImageBinarySink :: FilePath
+                            -> Int
+                            -> Sink (LabeledArray DIM3 Double) IO ()
+writeLabeledImageBinarySink filePath len = do
   h <- liftIO $ openBinaryFile filePath WriteMode
   liftIO $ BL.hPut h (encode len)
-  CL.foldMapM (\arr -> BL.hPut h (encode arr))
+  CL.foldMapM
+    (\(LabeledArray label arr) ->
+       BL.hPut
+         h
+         (encode .
+          LabeledArray label .
+          computeS .
+          R.map (\x -> round x :: Word) .
+          normalizeImage (fromIntegral (maxBound :: Word)) $
+          arr))
   liftIO $ hClose h
+
+writeLabeledImageSink :: FilePath
+                      -> Sink (LabeledArray DIM3 Double) IO ()
+writeLabeledImageSink filePath = do
+  hImg <- liftIO $ openFile (filePath P.++ "/ImageList.txt") WriteMode
+  hLabel <- liftIO $ openFile (filePath P.++ "/label.txt") WriteMode
+  CL.foldM
+    (\index (LabeledArray label arr') ->
+       let (Z :. nf :. ny :. nx) = extent arr'
+           arr =
+             computeUnboxedS . normalizeImage (fromIntegral (maxBound :: Word)) $
+             arr'
+       in case nf of
+            1 -> do
+              hPutStrLn hImg (filePath P.++ "/" P.++ (show index) P.++ ".pgm")
+              hPutStrLn hLabel (show label)
+              IM.writeImage (filePath P.++ "/" P.++ show index P.++ ".pgm") $
+                (IM.makeImage ny nx (\j i -> arr R.! (Z :. 0 :. ny :. nx)) :: IM.GrayImage)
+              return $ index + 1
+            3 -> do
+              hPutStrLn hImg (filePath P.++ "/" P.++ (show index) P.++ ".pgm")
+              hPutStrLn hLabel (show label)
+              IM.writeImage (filePath P.++ "/" P.++ show index P.++ ".pgm") $
+                (let r =
+                       IM.makeImage ny nx (\j i -> arr R.! (Z :. 0 :. ny :. nx)) :: IM.GrayImage
+                     g =
+                       IM.makeImage ny nx (\j i -> arr R.! (Z :. 1 :. ny :. nx)) :: IM.GrayImage
+                     b =
+                       IM.makeImage ny nx (\j i -> arr R.! (Z :. 2 :. ny :. nx)) :: IM.GrayImage
+                 in IM.rgbToColorImage (r, g, b))
+              return $ index + 1
+            _ -> error "Image channels are neither 1 nor 3.")
+    0
+  liftIO $ hClose hImg
+  liftIO $ hClose hLabel
