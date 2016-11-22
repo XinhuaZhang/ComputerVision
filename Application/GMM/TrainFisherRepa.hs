@@ -111,5 +111,5 @@ main = do
              [ (i, j)
              | i <- [0 .. ny - 1]
              , j <- [0 .. nx - 1] ]) =$=
-    (fisherVectorConduit parallelParams gmm) $$
+    (fisherVectorConduit parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)
