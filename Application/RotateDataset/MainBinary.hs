@@ -5,6 +5,7 @@ import           Control.Monad.IO.Class                 (liftIO)
 import           CV.Array.Image
 import           CV.Array.LabeledArray
 import           CV.IO.ImageIO
+import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility            as RAU
 import           Data.Array.Repa                        as R
 import           Data.Conduit                           as C
@@ -23,7 +24,7 @@ labelSource :: FilePath -> C.Source IO Int
 labelSource filePath =
   do labels <- liftIO . readLabelFile $ filePath
      sourceList labels
-     
+
 fileLineCount :: FilePath -> IO Int
 fileLineCount filePath = do
   xs <- readFile filePath
@@ -38,7 +39,8 @@ main = do
   putStrLn $ "testLabelPath: " P.++ testLabelPath
   putStrLn $ "outputPath: " P.++ outputPath
   putStrLn $ "isColor: " P.++ isColor
-  let str =
+  let parallelParams = ParallelParams {numThread = 4, batchSize = 400}
+      str =
         if read isColor :: Bool
           then "Color"
           else "Gray"
@@ -67,7 +69,7 @@ main = do
         writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Original/" P.++ str P.++ ".bin")
           trainLen
-      colorSource trainPath trainLabelPath $$ rotateLabeledImageConduit n deg =$=
+      colorSource trainPath trainLabelPath $$ rotateLabeledImageConduit parallelParams n deg =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin")
           (trainLen * rotationLen)
@@ -75,7 +77,7 @@ main = do
         writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin")
           testLen
-      colorSource testPath testLabelPath $$ rotateLabeledImageConduit n deg =$=
+      colorSource testPath testLabelPath $$ rotateLabeledImageConduit parallelParams n deg =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin")
           (testLen * rotationLen)
@@ -83,12 +85,12 @@ main = do
       graySource trainPath trainLabelPath $$
         writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Original/" P.++ str P.++ ".bin") trainLen
-      graySource trainPath trainLabelPath $$ rotateLabeledImageConduit n deg =$=
+      graySource trainPath trainLabelPath $$ rotateLabeledImageConduit parallelParams n deg =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin") (trainLen * rotationLen)
       graySource testPath testLabelPath $$
         writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin") testLen
-      graySource testPath testLabelPath $$ rotateLabeledImageConduit n deg =$=
+      graySource testPath testLabelPath $$ rotateLabeledImageConduit parallelParams n deg =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin") (testLen * rotationLen)

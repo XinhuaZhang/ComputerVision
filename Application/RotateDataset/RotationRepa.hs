@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Application.RotateDataset.RotationRepa where
@@ -7,7 +8,6 @@ import           Control.Monad.IO.Class
 import           CV.Array.Image
 import           CV.Array.LabeledArray
 import           CV.Utility.Coordinates
-import           CV.Utility.Parallel
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           Data.Array.Repa             as R
@@ -84,23 +84,35 @@ vecMatMult (x, y) vec = (a * x + c * y, b * x + d * y)
     d = vec VU.! 3
 
 rotateLabeledImageConduit
-  :: Int
+  :: ParallelParams
+  -> Int
   -> Double
   -> Conduit (LabeledArray DIM3 Double) IO (LabeledArray DIM3 Double)
-rotateLabeledImageConduit n deg =
-  awaitForever
-    (\(LabeledArray label arr) ->
-       let (Z :. nf :. _ny :. _nx) = extent arr
-       in sourceList .
-          L.map
-            (LabeledArray label . 
-             fromUnboxed (Z :. nf :. n :. n) . VU.concat . L.map R.toUnboxed) .
-          L.transpose .
-          L.map
-            (\i ->
-               recaleAndRotate2DImageS n degs $
-               R.slice arr (Z :. i :. All :. All)) $
-          [0 .. nf - 1])
+rotateLabeledImageConduit parallelParams n deg = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label arr) ->
+                   let (Z :. nf :. _ny :. _nx) = extent arr
+                       !result =
+                         L.map
+                           (LabeledArray label .
+                            fromUnboxed (Z :. nf :. n :. n) .
+                            VU.concat . L.map R.toUnboxed) .
+                         L.transpose .
+                         L.map
+                           (\i ->
+                              recaleAndRotate2DImageS n degs $
+                              R.slice arr (Z :. i :. All :. All)) $
+                         [0 .. nf - 1]
+                   in result)
+                xs
+        sourceList . P.concat $ ys
+        rotateLabeledImageConduit parallelParams n deg)
   where
     len = round (360 / deg)
     degs = L.map (* deg) [0 .. fromIntegral len - 1]
