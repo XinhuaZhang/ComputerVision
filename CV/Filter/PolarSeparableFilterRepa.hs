@@ -19,51 +19,49 @@ import           Prelude                        as P
 -- The layout is nf x ny x nx
 instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
   type Input (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) = R.Array U DIM3 Double
-  type Output (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) = IO (R.Array D DIM3 (C.Complex Double))
+  type Output (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) = R.Array D DIM3 (C.Complex Double)
   type FilterParameter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) = PolarSeparableFilterParams
   makeFilter
     :: PolarSeparableFilterParams
     -> PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
   makeFilter params@(PolarSeparableFilterParams r scale rs as _name) =
     PolarSeparableFilter params filterArr
-    where size' = 2 * r
-          filterEleList =
-            [pixelList (IM.makeFilter size'
-                                      size'
-                                      (getFilterFunc params s rf af) :: ComplexImage)
-            |rf <- Set.toList rs
-            ,af <- Set.toList as
-            ,s <- Set.toList scale]
-          nf = P.length filterEleList
-          cArr =
-            listArray ((0,0,0),(nf - 1,size' - 1,size' - 1)) . L.concat $
-            filterEleList
-          dftCArr = dftN [1,2] cArr
-          filterArr = computeS $ threeDCArray2RArray dftCArr
-  displayFilter :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
-                -> ColorImage
+    where
+      size' = 2 * r
+      filterEleList =
+        [ pixelList
+           (IM.makeFilter size' size' (getFilterFunc params s rf af) :: ComplexImage)
+        | rf <- Set.toList rs
+        , af <- Set.toList as
+        , s <- Set.toList scale ]
+      nf = P.length filterEleList
+      cArr =
+        listArray ((0, 0, 0), (nf - 1, size' - 1, size' - 1)) . L.concat $ filterEleList
+      dftCArr = dftN [1, 2] cArr
+      filterArr = computeS $ threeDCArray2RArray dftCArr
+  displayFilter :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double)) -> ColorImage
   displayFilter = undefined
   applyFilter
     :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
     -> R.Array U DIM3 Double
-    -> IO (R.Array D DIM3 (C.Complex Double))
+    -> R.Array D DIM3 (C.Complex Double)
   applyFilter (PolarSeparableFilter _params filterArr) inputArr =
-    do multArr <-
-         computeP $
-         fromFunction
-           (Z :. (n * nf) :. ny :. nx)
-           (\(Z :. k :. j :. i) ->
+    threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
+    where
+      cArr = threeDRArray2CArray (R.map (C.:+ 0) inputArr)
+      dftCArr = dftN [1, 2] cArr
+      rArr = threeDCArray2RArray dftCArr
+      (Z :. nf :. ny :. nx) = extent filterArr
+      (Z :. n :. _ :. _) = extent rArr
+      multArr =
+        computeS $
+        fromFunction
+          (Z :. (n * nf) :. ny :. nx)
+          (\(Z :. k :. j :. i) ->
               let k1 = div k nf
                   k2 = mod k nf
               in (rArr R.! (Z :. k1 :. j :. i)) *
-                 (filterArr R.! (Z :. k2 :. j :. i))) :: IO (R.Array U DIM3 (C.Complex Double))
-       return . threeDCArray2RArray . idftN [1,2] . threeDRArray2CArray $
-         multArr
-    where cArr = threeDRArray2CArray (R.map (\x -> x C.:+ 0) inputArr)
-          dftCArr = dftN [1,2] cArr
-          rArr = threeDCArray2RArray dftCArr
-          (Z :. nf :. ny :. nx) = extent filterArr
-          (Z :. n :. _ :. _) = extent rArr
+                 (filterArr R.! (Z :. k2 :. j :. i))) :: (R.Array U DIM3 (C.Complex Double))
 
 twoDCArray2RArray
   :: (Num a
