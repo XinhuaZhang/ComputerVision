@@ -8,7 +8,7 @@ import           Data.Image
 
 main =
   do img <-
-       readImage "/Users/xzhang/WorkSpace/ComputerVision/Application/RotateDataset/image_0001.pgm"
+       readImage "/home/xinhua/Workspace/ComputerVision/Application/RotateDataset/image_0001.pgm"
      let arr = grayImage2Array img
          (Z :. nf :. ny :. nx) = extent arr
          m = max ny nx
@@ -18,7 +18,7 @@ main =
                                    36
                                    (slice arr (Z :. (0 :: Int) :. All :. All))
      -- plotImage "/Users/xzhang/WorkSpace/ComputerVision/Application/RotateDataset/test.png" (computeUnboxedS paddImg)
-     plotImage "/Users/xzhang/WorkSpace/ComputerVision/Application/RotateDataset/test.png"
+     plotImage "/home/xinhua/Workspace/ComputerVision/Application/RotateDataset/test.png"
                (computeUnboxedS . extend (Z :. (1 :: Int) :. All :. All) $
                 result) 
   
