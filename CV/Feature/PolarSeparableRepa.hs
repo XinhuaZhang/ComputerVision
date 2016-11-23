@@ -46,7 +46,7 @@ magnitudeConduit parallelParams filter' factor = do
                           R.map C.magnitude .
                           crop
                             [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
-                            [nxNew, nyNew, nf] $
+                            [nxNew, nyNew, newNF] $
                           z
                     in result)
                 xs
@@ -54,7 +54,8 @@ magnitudeConduit parallelParams filter' factor = do
         magnitudeConduit parallelParams filter' factor)
   where
     scale = getScale . getParams $ filter'
-    
+    newNF = getFilterNum . getParams $ filter'
+
 
 complexConduit
   :: ParallelParams -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
