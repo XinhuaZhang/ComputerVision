@@ -43,31 +43,30 @@ readLabeledImagebinarySource filePath = do
       size = fromIntegral (decode sizeBS :: Word32) :: Int
   CL.unfoldM
     (\(handle, count) ->
-       if count < len
-         then do
-           bs <- BL.hGet h size
-           if fromIntegral (BL.length bs) < size
-             then error $
-                  "Expect " P.++ show size P.++ " images, but only have " P.++
-                  show count P.++
-                  "."
-             else let (LabeledArray label arr) =
-                        decode bs :: LabeledArray DIM3 Word8
-                  in return $
-                     Just
-                       ( LabeledArray label .
-                         computeUnboxedS . R.map fromIntegral $
-                         arr
-                       , (handle, count + 1))
-         else do
-           isEoF <- hIsEOF handle
-           if isEoF
-             then return Nothing
-             else error $
-                  "Expect " P.++ show size P.++
-                  " images, but there are more images in the file. ")
+        if count < len
+          then do
+            bs <- BL.hGet h size
+            if fromIntegral (BL.length bs) < size
+              then error $
+                   "Expect " P.++ show size P.++ " images, but only have " P.++
+                   show count P.++
+                   "."
+              else let (LabeledArray label arr) =
+                         decode bs :: LabeledArray DIM3 Word8
+                   in return $
+                      Just
+                        ( LabeledArray label . computeUnboxedS . R.map fromIntegral $
+                          arr
+                        , (handle, count + 1))
+          else do
+            isEoF <- hIsEOF handle
+            hClose handle
+            if isEoF
+              then return Nothing
+              else error $
+                   "Expect " P.++ show size P.++
+                   " images, but there are more images in the file. ")
     (h, 0)
-  liftIO $ hClose h
 
 writeLabeledImageBinarySink :: FilePath
                             -> Int
