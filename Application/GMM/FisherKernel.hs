@@ -25,7 +25,7 @@ fisherVectorW
 fisherVectorW gmm@(MixtureModel n modelVec) zs xs = VU.convert newW
   where !numData = P.fromIntegral . V.length $ xs
         !w1 = (\(Model y) -> P.fst y) . V.head $ modelVec
-        !gm1 = V.head $ modelVec
+        !gm1 = V.head modelVec
         !z1 = V.head zs
         !newW =
           V.map (\gmk@(Model (wk,_)) ->

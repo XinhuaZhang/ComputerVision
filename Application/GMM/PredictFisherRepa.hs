@@ -36,7 +36,6 @@ main = do
     else return ()
   params <- parseArgs args
   gmm <- decodeFile (gmmFile params) :: IO GMM
-  imageList <- readFile (inputFile params)
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params

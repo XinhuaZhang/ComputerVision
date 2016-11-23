@@ -92,3 +92,13 @@ writeLabeledImageBinarySink filePath len = do
       R.map (\x -> round x :: Word8) .
       normalizeImage (fromIntegral (maxBound :: Word8)) $
       arr
+
+getArrayNumFile :: FilePath -> IO Int
+getArrayNumFile filePath =
+  withBinaryFile
+    filePath
+    ReadMode
+    (\h -> do
+       lenBS <- liftIO $ BL.hGet h 4
+       let len = fromIntegral (decode lenBS :: Word32) :: Int
+       return len)

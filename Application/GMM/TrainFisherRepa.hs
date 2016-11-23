@@ -70,7 +70,7 @@ main = do
     else return ()
   params <- parseArgs args
   gmm <- decodeFile (gmmFile params) :: IO GMM
-  imageList <- readFile (inputFile params)
+  imageListLen <- getArrayNumFile (inputFile params)
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
@@ -88,7 +88,7 @@ main = do
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
         , trainC = c params
-        , trainNumExamples = P.length . lines $ imageList
+        , trainNumExamples = imageListLen
         , trainFeatureIndexMax =
           if isComplex params
             then (4 * getFilterNum filterParams) * (numModel gmm)

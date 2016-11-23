@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 module CV.Feature.PolarSeparableRepa where
 
+import           Control.Monad                      as M
 import           Control.Monad.IO.Class             (liftIO)
 import           CV.Filter
 import           CV.Filter.PolarSeparableFilter
@@ -10,10 +11,9 @@ import           CV.Utility.RepaArrayUtility        as RU
 import           Data.Array.Repa                    as R
 import           Data.Complex                       as C
 import           Data.Conduit
-import            Data.Conduit.List as CL
+import           Data.Conduit.List                  as CL
 import           Data.Set                           as S
 import           Prelude                            as P
-import Control.Monad as M
 
 magnitudeConduit
   :: ParallelParams -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
@@ -36,7 +36,7 @@ magnitudeConduit parallelParams filter' factor = do
                         nyNew =
                           ny' -
                           div ((P.round . P.head . S.toDescList $ scale) * 4) factor
-                        y' = applyFilter filter' $ x'
+                        y' = applyFilter filter' x'
                         (Z :. newNF :. _ :. _) = extent y'
                         z =
                           if factor == 1
@@ -78,7 +78,7 @@ complexConduit parallelParams filter' factor = do
                         nyNew =
                           ny' -
                           div ((P.round . P.head . S.toDescList $ scale) * 4) factor
-                        y' = applyFilter filter' $ x'
+                        y' = applyFilter filter' x'
                         z =
                           if factor == 1
                             then y'
