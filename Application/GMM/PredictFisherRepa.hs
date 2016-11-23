@@ -61,7 +61,7 @@ main = do
           in V.fromList .
              P.map
                (\(a, b) ->
-                   toUnboxed $ R.slice arr (Z :. All :. a :. b)) $
+                   toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
              [ (i, j)
              | i <- [0 .. ny - 1]
              , j <- [0 .. nx - 1] ]) =$=
