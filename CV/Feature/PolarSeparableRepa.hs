@@ -37,6 +37,7 @@ magnitudeConduit parallelParams filter' factor = do
                           ny' -
                           div ((P.round . P.head . S.toDescList $ scale) * 4) factor
                         y' = applyFilter filter' $ x'
+                        (Z :. newNF :. _ :. _) = extent y'
                         z =
                           if factor == 1
                             then y'
@@ -54,7 +55,6 @@ magnitudeConduit parallelParams filter' factor = do
         magnitudeConduit parallelParams filter' factor)
   where
     scale = getScale . getParams $ filter'
-    newNF = getFilterNum . getParams $ filter'
 
 
 complexConduit
