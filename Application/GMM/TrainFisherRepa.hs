@@ -5,6 +5,7 @@ import           Application.GMM.FisherKernel
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
+import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Control.Monad.Parallel             as MP
 import           Control.Parallel
@@ -15,6 +16,7 @@ import           CV.Filter.PolarSeparableFilter
 import           CV.Filter.PolarSeparableFilterRepa
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
+import           CV.Utility.Time
 import           Data.Array.Repa                    as R
 import           Data.Binary
 import           Data.Complex                       as C
@@ -31,37 +33,32 @@ import           System.Environment
 
 trainSink
   :: ParallelParams -> FilePath -> TrainParams -> Bool -> Sink (VU.Vector Double) IO ()
-trainSink parallelParams filePath trainParams findCFlag =
-  do xs <- consume
-     if ((VU.length . P.head $ xs) /= (trainFeatureIndexMax trainParams))
-        then error $
-             "Number of feature in trainParams is not correct. (" P.++
-             (show . VU.length . P.head $ xs) P.++
-             " vs " P.++
-             (show $ trainFeatureIndexMax trainParams) P.++
-             ")"
-        else return ()
-     featurePtrs <-
-       xs `pseq` liftIO $ MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
-     label <- liftIO $ readLabelFile filePath
-     if findCFlag
-        then liftIO $ findParameterC trainParams label featurePtrs
-        else liftIO $ train trainParams label featurePtrs -- go label []
-  where go :: [Double]
-           -> [[Ptr C'feature_node]]
-           -> Sink (VU.Vector Double) IO ()
-        go label pss =
-          do xs <- CL.take (Parallel.batchSize parallelParams)
-             if P.length xs > 0
-                then do ps <-
-                          liftIO $
-                          P.mapM (getFeatureVecPtr . Dense . VU.toList) xs
-                        time <- liftIO getZonedTime
-                        liftIO $
-                          print . localTimeOfDay . zonedTimeToLocalTime $ time
-                        go label $! (ps : pss)
-                else liftIO $
-                     train trainParams label (P.concat . L.reverse $ pss)
+trainSink parallelParams filePath trainParams findCFlag = do
+  xs <- consume
+  if ((VU.length . P.head $ xs) /= (trainFeatureIndexMax trainParams))
+    then error $
+         "Number of feature in trainParams is not correct. (" P.++
+         (show . VU.length . P.head $ xs) P.++
+         " vs " P.++
+         (show $ trainFeatureIndexMax trainParams) P.++
+         ")"
+    else return ()
+  -- featurePtrs <-
+  --   xs `pseq` liftIO $ MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
+  label <- liftIO $ readLabelFile filePath
+  if findCFlag
+    then liftIO $ findParameterC trainParams label featurePtrs
+    else liftIO $ train trainParams label $ go label []
+  where
+    go :: [Double] -> [[Ptr C'feature_node]] -> Sink (VU.Vector Double) IO ()
+    go label pss = do
+      xs <- CL.take (Parallel.batchSize parallelParams)
+      if P.length xs > 0
+        then do
+          ps <- P.mapM (getFeatureVecPtr . Dense . VU.toList) xs
+          printCurrentTime
+          go label $! (ps : pss)
+        else train trainParams label (P.concat . L.reverse $ pss)
 
 main = do
   args <- getArgs
