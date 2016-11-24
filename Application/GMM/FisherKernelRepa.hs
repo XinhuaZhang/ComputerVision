@@ -30,8 +30,8 @@ computeAssignmentP
   :: (R.Source s Double)
   => GMM -> R.Array s DIM3 Double -> IO (R.Array U DIM3 Double)
 computeAssignmentP gmm@(MixtureModel n modelVec) arr = do
-  let khwArr = sumS khwcArr
-      weightedProbArr =
+  khwArr <- sumP khwcArr
+  let weightedProbArr =
         R.traverse
           khwArr
           id
@@ -70,14 +70,16 @@ fisherVectorMuP gmm@(MixtureModel n modelVec) assignment arr = do
           (\f1 f2 idx@(Z :. k :. c :. h :. w) ->
               let (Model (_, Gaussian _ mu' sigma')) = modelVec V.! k
               in f2 (Z :. k :. h :. w) * (f1 idx - mu' VU.! c) / (sigma' VU.! c))
-  s <- sumP . sumS $ fisherDerivativeMu
-  return . toUnboxed . computeS $
-    R.traverse
-      s
-      id
-      (\f idx@(Z :. k :. c) ->
-          let (Model (w, _)) = modelVec V.! k
-          in f idx / sqrt (fromIntegral (nx * ny) * w))
+  s1 <- sumP fisherDerivativeMu
+  s <- sumP s1 
+  result <- computeP $
+                                                                  R.traverse
+                                                                    s
+                                                                    id
+                                                                    (\f idx@(Z :. k :. c) ->
+                                                                        let (Model (w, _)) = modelVec V.! k
+                                                                        in f idx / sqrt (fromIntegral (nx * ny) * w))
+  return . toUnboxed $ result
   where
     kchwArr =
       R.fromFunction
@@ -105,14 +107,16 @@ fisherVectorSigmaP gmm@(MixtureModel n modelVec) assignment arr = do
               let (Model (_, Gaussian _ mu' sigma')) = modelVec V.! k
               in f2 (Z :. k :. h :. w) *
                  (((f1 idx - mu' VU.! c) / (sigma' VU.! c)) ^ 2 - 1))
-  s <- sumP . sumS $ fisherDerivativeSigma
-  return . toUnboxed . computeS $
-    R.traverse
-      s
-      id
-      (\f idx@(Z :. k :. c) ->
-          let (Model (w, _)) = modelVec V.! k
-          in f idx / sqrt (fromIntegral (nx * ny) * w * 2))
+  s1 <- sumP $ fisherDerivativeSigma
+  s <- sumP s1
+  result <- computeP $
+              R.traverse
+                s
+                id
+                (\f idx@(Z :. k :. c) ->
+                    let (Model (w, _)) = modelVec V.! k
+                    in f idx / sqrt (fromIntegral (nx * ny) * w * 2))
+  return . toUnboxed $ result 
   where
     kchwArr =
       R.fromFunction

@@ -1,7 +1,7 @@
 module Main where
 
 import           Application.GMM.ArgsParser         as Parser
-import           Application.GMM.FisherKernel
+import           Application.GMM.FisherKernelRepa
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
@@ -34,31 +34,32 @@ import           System.Environment
 trainSink
   :: ParallelParams -> FilePath -> TrainParams -> Bool -> Sink (VU.Vector Double) IO ()
 trainSink parallelParams filePath trainParams findCFlag = do
-  xs <- consume
-  if ((VU.length . P.head $ xs) /= (trainFeatureIndexMax trainParams))
-    then error $
-         "Number of feature in trainParams is not correct. (" P.++
-         (show . VU.length . P.head $ xs) P.++
-         " vs " P.++
-         (show $ trainFeatureIndexMax trainParams) P.++
-         ")"
-    else return ()
+  --xs <- consume
+  -- if ((VU.length . P.head $ xs) /= (trainFeatureIndexMax trainParams))
+  --   then error $
+  --        "Number of feature in trainParams is not correct. (" P.++
+  --        (show . VU.length . P.head $ xs) P.++
+  --        " vs " P.++
+  --        (show $ trainFeatureIndexMax trainParams) P.++
+  --        ")"
+  --   else return ()
   -- featurePtrs <-
   --   xs `pseq` liftIO $ MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
   label <- liftIO $ readLabelFile filePath
-  if findCFlag
-    then liftIO $ findParameterC trainParams label featurePtrs
-    else liftIO $ train trainParams label $ go label []
+  -- if findCFlag
+  --   then liftIO $ findParameterC trainParams label featurePtrs
+  --   else liftIO $ train trainParams label $ 
+  go label []
   where
     go :: [Double] -> [[Ptr C'feature_node]] -> Sink (VU.Vector Double) IO ()
     go label pss = do
       xs <- CL.take (Parallel.batchSize parallelParams)
       if P.length xs > 0
         then do
-          ps <- P.mapM (getFeatureVecPtr . Dense . VU.toList) xs
-          printCurrentTime
+          ps <- liftIO $ P.mapM (getFeatureVecPtr . Dense . VU.toList) xs
+          liftIO $ printCurrentTime
           go label $! (ps : pss)
-        else train trainParams label (P.concat . L.reverse $ pss)
+        else liftIO $ train trainParams label (P.concat . L.reverse $ pss)
 
 main = do
   args <- getArgs
@@ -98,15 +99,15 @@ main = do
   readLabeledImagebinarySource (inputFile params) $$
     CL.map (\(LabeledArray _ arr) -> arr) =$=
     magnitudeConduit parallelParams filters (downsampleFactor params) =$=
-    CL.map
-      (\arr ->
-          let (Z :. nf :. ny :. nx) = extent arr
-          in V.fromList .
-             P.map
-               (\(a, b) ->
-                   toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
-             [ (i, j)
-             | i <- [0 .. ny - 1]
-             , j <- [0 .. nx - 1] ]) =$=
-    (fisherVectorConduit parallelParams gmm) =$=
+    -- CL.map
+    --   (\arr ->
+    --       let (Z :. nf :. ny :. nx) = extent arr
+    --       in V.fromList .
+    --          P.map
+    --            (\(a, b) ->
+    --                toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
+    --          [ (i, j)
+    --          | i <- [0 .. ny - 1]
+    --          , j <- [0 .. nx - 1] ]) =$=
+    (fisherVectorConduit gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)
