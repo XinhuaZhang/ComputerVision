@@ -65,7 +65,7 @@ main = do
     --          [ (i, j)
     --          | i <- [0 .. ny - 1]
     --          , j <- [0 .. nx - 1] ]) =$=
-    (fisherVectorConduit  gmm) =$=
+    (fisherVectorConduitP parallelParams  gmm) =$=
     CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
     mergeSource (labelSource $ labelFile params) =$=
     predict (modelName params) ((modelName params) P.++ ".out")

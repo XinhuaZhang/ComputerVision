@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Application.GMM.FisherKernelRepa where
@@ -15,6 +16,7 @@ import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
 import Control.Monad
+import qualified Control.Monad.Parallel as MP
 
 -- chw -> hwc
 rotateArr
@@ -70,8 +72,7 @@ fisherVectorMuP gmm@(MixtureModel n modelVec) assignment arr = do
           assignment
           const
           (\f1 f2 idx@(Z :. k :. c :. h :. w) ->
-              let (Model (_, Gaussian _ mu' sigma')) = modelVec V.! k
-              in f2 (Z :. k :. h :. w) * (f1 idx - mu' VU.! c) / (sigma' VU.! c))
+              f2 (Z :. k :. h :. w) * f1 idx)
   s1 <- sumP fisherDerivativeMu
   s <- sumP s1
   result <-
@@ -90,7 +91,7 @@ fisherVectorMuP gmm@(MixtureModel n modelVec) assignment arr = do
         (\(Z :. k :. c :. h :. w) ->
             let (Model (_, Gaussian _ mu' sigma')) = modelVec V.! k
                 a = arr R.! (Z :. c :. h :. w)
-            in ((a - mu' VU.! c) / (sigma' VU.! c)) ^ 2)
+            in (a - mu' VU.! c) / (sigma' VU.! c))
     (Z :. nf :. ny :. nx) = extent arr
 
 fisherVectorSigmaP
@@ -108,7 +109,7 @@ fisherVectorSigmaP gmm@(MixtureModel n modelVec) assignment arr = do
           (\f1 f2 idx@(Z :. k :. c :. h :. w) ->
               let (Model (_, Gaussian _ mu' sigma')) = modelVec V.! k
               in f2 (Z :. k :. h :. w) *
-                 (((f1 idx - mu' VU.! c) / (sigma' VU.! c)) ^ 2 - 1))
+                 f1 idx - 1)
   s1 <- sumP $ fisherDerivativeSigma
   s <- sumP s1
   result <-
@@ -130,10 +131,10 @@ fisherVectorSigmaP gmm@(MixtureModel n modelVec) assignment arr = do
             in ((a - mu' VU.! c) / (sigma' VU.! c)) ^ 2)
     (Z :. nf :. ny :. nx) = extent arr
 
-fisherVectorConduit
+fisherVectorConduitP
   :: (R.Source s Double)
-  => GMM -> Conduit (R.Array s DIM3 Double) IO (VU.Vector Double)
-fisherVectorConduit gmm =
+  => ParallelParams -> GMM -> Conduit (R.Array s DIM3 Double) IO (VU.Vector Double)
+fisherVectorConduitP parallelParams gmm = 
   awaitForever
     (\x -> do
        assignment <- liftIO $ computeAssignmentP gmm x
@@ -171,9 +172,10 @@ computeAssignmentS gmm@(MixtureModel n modelVec) arr =
         khwArr
         id
         (\f idx@(Z :. k :. h :. w) ->
-            let (Model (a, Gaussian _ mu' sigma')) = modelVec V.! k
-            in a * (exp (-0.5 * f idx)) / (VU.product sigma'))
+            let (Model (a, _)) = modelVec V.! k
+            in a * (exp (-0.5 * f idx)) / (sigmaVec V.! k))
     zArr = sumS . rotateArr $ weightedProbArr
+    sigmaVec = V.map (\(Model (_, Gaussian _ _ sigma')) -> VU.product sigma') modelVec
 
 fisherVectorMuS
   :: (R.Source s Double)
@@ -196,7 +198,7 @@ fisherVectorMuS gmm@(MixtureModel n modelVec) assignment arr =
         (\(Z :. k :. c :. h :. w) ->
             let (Model (_, Gaussian _ mu' sigma')) = modelVec V.! k
                 a = arr R.! (Z :. c :. h :. w)
-            in ((a - mu' VU.! c) / (sigma' VU.! c)) ^ 2)
+            in (a - mu' VU.! c) / (sigma' VU.! c))
     (Z :. nf :. ny :. nx) = extent arr
     fisherDerivativeMu =
       R.traverse2
@@ -204,8 +206,7 @@ fisherVectorMuS gmm@(MixtureModel n modelVec) assignment arr =
         assignment
         const
         (\f1 f2 idx@(Z :. k :. c :. h :. w) ->
-            let (Model (_, Gaussian _ mu' sigma')) = modelVec V.! k
-            in f2 (Z :. k :. h :. w) * (f1 idx - mu' VU.! c) / (sigma' VU.! c))
+             f2 (Z :. k :. h :. w) * f1 idx )
     s = sumS . sumS $ fisherDerivativeMu
 
 fisherVectorSigmaS
@@ -237,9 +238,8 @@ fisherVectorSigmaS gmm@(MixtureModel n modelVec) assignment arr =
         assignment
         const
         (\f1 f2 idx@(Z :. k :. c :. h :. w) ->
-            let (Model (_, Gaussian _ mu' sigma')) = modelVec V.! k
-            in f2 (Z :. k :. h :. w) *
-               (((f1 idx - mu' VU.! c) / (sigma' VU.! c)) ^ 2 - 1))
+            f2 (Z :. k :. h :. w) *
+               (f1 idx - 1))
     s = sumS . sumS $ fisherDerivativeSigma
 
 fisherVectorConduitS
@@ -261,15 +261,8 @@ fisherVectorConduitS parallelParams gmm = do
                         sigmaVec = fisherVectorSigmaS gmm assignment x
                         vec = muVec VU.++ sigmaVec
                         l2Norm = sqrt (VU.foldl' (\a b -> a + b ^ 2) 0 vec)
-                    in VU.map (/ l2Norm) vec)
+                        !result = VU.map (/ l2Norm) vec
+                    in result)
                 xs
         sourceList ys
         fisherVectorConduitS parallelParams gmm)
--- awaitForever
---   (\x -> do
---      assignment <- liftIO $ computeAssignmentP gmm x
---      muVec <- liftIO $ fisherVectorMuP gmm assignment x
---      sigmaVec <- liftIO $ fisherVectorSigmaP gmm assignment x
---      let vec = muVec VU.++ sigmaVec
---          l2Norm = sqrt (VU.foldl' (\a b -> a + b ^ 2) 0 vec)
---      yield $ VU.map (/ l2Norm) vec)
