@@ -62,7 +62,34 @@ recaleAndRotate2DImageS n degs arr =
     inRange :: Double -> Bool
     inRange x =
       x >= boundaryWith && x <= (boundaryWith + fromIntegral innerSize - 1)
+      
 
+rotate2DImageS
+  :: (R.Source s Double)
+  => [Double] -> Array s DIM2 Double -> [Array U DIM2 Double]
+rotate2DImageS degs arr =
+  parMap
+    rseq
+    (\deg ->
+        computeS $
+        fromFunction
+          (Z :. n :. n)
+          (\(Z :. j :. i) ->
+              bicubicInterpolation ds .
+              rotatePixel
+                (VU.fromListN 4 $
+                 P.map (\f -> f (deg2Rad deg)) [cos, sin, \x -> -(sin x), cos])
+                (center, center) $
+              (fromIntegral j, fromIntegral i)))
+    degs
+  where
+    (Z :. ny :. nx) = extent arr
+    !n = round . sqrt . fromIntegral $ (nx ^ 2 + ny ^ 2)
+    paddedImg = pad [n, n] arr
+    ds = computeDerivativeS (computeUnboxedS paddedImg)
+    !center = fromIntegral n / 2
+
+{-# INLINE rotatePixel #-}
 rotatePixel :: VU.Vector Double
             -> (Double, Double)
             -> (Double, Double)
@@ -75,6 +102,7 @@ rotatePixel mat (centerY, centerX) (y, x) = (y3, x3)
     x3 = x2 + centerX
     y3 = y2 + centerY
 
+{-# INLINE vecMatMult #-}
 vecMatMult :: (Double, Double) -> VU.Vector Double -> (Double, Double)
 vecMatMult (x, y) vec = (a * x + c * y, b * x + d * y)
   where
@@ -83,12 +111,12 @@ vecMatMult (x, y) vec = (a * x + c * y, b * x + d * y)
     c = vec VU.! 2
     d = vec VU.! 3
 
-rotateLabeledImageConduit
+rescaleRotateLabeledImageConduit
   :: ParallelParams
   -> Int
   -> Double
   -> Conduit (LabeledArray DIM3 Double) IO (LabeledArray DIM3 Double)
-rotateLabeledImageConduit parallelParams n deg = do
+rescaleRotateLabeledImageConduit parallelParams n deg = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -112,45 +140,47 @@ rotateLabeledImageConduit parallelParams n deg = do
                     in result)
                 xs
         sourceList . P.concat $ ys
-        rotateLabeledImageConduit parallelParams n deg)
+        rescaleRotateLabeledImageConduit parallelParams n deg)
   where
-    len =
+    !len =
       if deg == 0
         then 1
         else round (360 / deg)
-    degs = L.map (* deg) [0 .. fromIntegral len - 1]
+    !degs = L.map (* deg) [0 .. fromIntegral len - 1]
+    
 
-writeLabeledImageSink :: FilePath
-                      -> Sink (LabeledArray DIM3 Double) IO ()
-writeLabeledImageSink filePath = do
-  hImg <- liftIO $ openFile (filePath P.++ "/ImageList.txt") WriteMode
-  hLabel <- liftIO $ openFile (filePath P.++ "/label.txt") WriteMode
-  CL.foldM
-    (\index (LabeledArray label arr') ->
-       let (Z :. nf :. ny :. nx) = extent arr'
-           arr =
-             computeUnboxedS . normalizeImage (fromIntegral (maxBound :: Word8)) $
-             arr'
-       in case nf of
-            1 -> do
-              hPutStrLn hImg (filePath P.++ "/" P.++ (show index) P.++ ".pgm")
-              hPutStrLn hLabel (show label)
-              IM.writeImage (filePath P.++ "/" P.++ show index P.++ ".pgm") $
-                (IM.makeImage ny nx (\j i -> arr R.! (Z :. 0 :. ny :. nx)) :: IM.GrayImage)
-              return $ index + 1
-            3 -> do
-              hPutStrLn hImg (filePath P.++ "/" P.++ (show index) P.++ ".pgm")
-              hPutStrLn hLabel (show label)
-              IM.writeImage (filePath P.++ "/" P.++ show index P.++ ".pgm") $
-                (let r =
-                       IM.makeImage ny nx (\j i -> arr R.! (Z :. 0 :. ny :. nx)) :: IM.GrayImage
-                     g =
-                       IM.makeImage ny nx (\j i -> arr R.! (Z :. 1 :. ny :. nx)) :: IM.GrayImage
-                     b =
-                       IM.makeImage ny nx (\j i -> arr R.! (Z :. 2 :. ny :. nx)) :: IM.GrayImage
-                 in IM.rgbToColorImage (r, g, b))
-              return $ index + 1
-            _ -> error "Image channels are neither 1 nor 3.")
-    0
-  liftIO $ hClose hImg
-  liftIO $ hClose hLabel
+rotateLabeledImageConduit
+  :: ParallelParams
+  -> Double
+  -> Conduit (LabeledArray DIM3 Double) IO (LabeledArray DIM3 Double)
+rotateLabeledImageConduit parallelParams deg = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label arr) ->
+                    let (Z :. nf :. ny :. nx) = extent arr
+                        !result =
+                          L.map
+                            (LabeledArray label .
+                             fromUnboxed (Z :. nf :. ny :. nx) .
+                             VU.concat . L.map R.toUnboxed) .
+                          L.transpose .
+                          L.map
+                            (\i ->
+                                rotate2DImageS degs $
+                                R.slice arr (Z :. i :. All :. All)) $
+                          [0 .. nf - 1]
+                    in result)
+                xs
+        sourceList . P.concat $ ys
+        rotateLabeledImageConduit parallelParams deg)
+  where
+    !len =
+      if deg == 0
+        then 1
+        else round (360 / deg)
+    !degs = L.map (* deg) [0 .. fromIntegral len - 1]

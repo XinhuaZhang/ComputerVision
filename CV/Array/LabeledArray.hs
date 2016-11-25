@@ -38,13 +38,13 @@ readLabeledImagebinarySource :: FilePath -> C.Source IO (LabeledArray DIM3 Doubl
 readLabeledImagebinarySource filePath = do
   h <- liftIO $ openBinaryFile filePath ReadMode
   lenBS <- liftIO $ BL.hGet h 4
-  sizeBS <- liftIO $ BL.hGet h 4
   let len = fromIntegral (decode lenBS :: Word32) :: Int
-      size = fromIntegral (decode sizeBS :: Word32) :: Int
   CL.unfoldM
     (\(handle, count) ->
         if count < len
           then do
+            sizeBS <- liftIO $ BL.hGet h 4
+            let size = fromIntegral (decode sizeBS :: Word32) :: Int
             bs <- BL.hGet h size
             if fromIntegral (BL.length bs) < size
               then error $
@@ -64,7 +64,7 @@ readLabeledImagebinarySource filePath = do
             if isEoF
               then return Nothing
               else error $
-                   "Expect " P.++ show size P.++
+                   "Expect " P.++ show len P.++
                    " images, but there are more images in the file. ")
     (h, 0)
 
@@ -74,15 +74,12 @@ writeLabeledImageBinarySink :: FilePath
 writeLabeledImageBinarySink filePath len = do
   h <- liftIO $ openBinaryFile filePath WriteMode
   liftIO $ BL.hPut h (encode (fromIntegral len :: Word32))
-  x <- await
-  case x of
-    Nothing -> return ()
-    Just y ->
-      let encodedY = encodeLabeledImg y
-          len = fromIntegral . BL.length $ encodedY :: Word32
-      in do liftIO . BL.hPut h . encode $ len
-            liftIO $ BL.hPut h encodedY
-  CL.foldMapM (BL.hPut h . encodeLabeledImg)
+  CL.foldMapM
+    (\x ->
+        let encodedX = encodeLabeledImg x
+            len = fromIntegral . BL.length $ encodedX :: Word32
+        in do BL.hPut h . encode $ len
+              BL.hPut h encodedX)
   liftIO $ hClose h
   where
     encodeLabeledImg (LabeledArray label arr) =
