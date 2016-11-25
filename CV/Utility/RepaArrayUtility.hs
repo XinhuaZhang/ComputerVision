@@ -126,7 +126,7 @@ computeDerivativeS arr = arr : ds'
                 [xStencil,yStencil,xyStencil]
         ds' = L.map computeS ds
 
-
+{-# INLINE bicubicInterpolation #-}
 bicubicInterpolation
   :: [Array U DIM2 Double] ->  (Double,Double) -> Double
 bicubicInterpolation ds (y,x)

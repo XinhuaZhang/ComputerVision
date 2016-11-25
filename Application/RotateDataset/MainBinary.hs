@@ -40,7 +40,7 @@ main = do
   putStrLn $ "isColor: " P.++ isColor
   let parallelParams =
         ParallelParams
-        { numThread = 4
+        { numThread = 14
         , batchSize = 400
         }
       str =
