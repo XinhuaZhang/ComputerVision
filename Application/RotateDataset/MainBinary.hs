@@ -69,43 +69,43 @@ main = do
   if read isColor :: Bool
     then do
       colorSource trainPath trainLabelPath $$
-        rotateLabeledImageConduit parallelParams n 0 =$=
+        rotateLabeledImageConduit parallelParams 0 =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Original/" P.++ str P.++ ".bin")
           trainLen
       colorSource trainPath trainLabelPath $$
-        rotateLabeledImageConduit parallelParams n deg =$=
+        rotateLabeledImageConduit parallelParams deg =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin")
           (trainLen * rotationLen)
       colorSource testPath testLabelPath $$
-        rotateLabeledImageConduit parallelParams n 0 =$=
+        rotateLabeledImageConduit parallelParams 0 =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin")
           testLen
       colorSource testPath testLabelPath $$
-        rotateLabeledImageConduit parallelParams n deg =$=
+        rotateLabeledImageConduit parallelParams deg =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin")
           (testLen * rotationLen)
     else do
       graySource trainPath trainLabelPath $$
-        rotateLabeledImageConduit parallelParams n 0 =$=
+        rotateLabeledImageConduit parallelParams 0 =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Original/" P.++ str P.++ ".bin")
           trainLen
       graySource trainPath trainLabelPath $$
-        rotateLabeledImageConduit parallelParams n deg =$=
+        rotateLabeledImageConduit parallelParams deg =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin")
           (trainLen * rotationLen)
       graySource testPath testLabelPath $$
-        rotateLabeledImageConduit parallelParams n 0 =$=
+        rotateLabeledImageConduit parallelParams 0 =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin")
           testLen
       graySource testPath testLabelPath $$
-        rotateLabeledImageConduit parallelParams n deg =$=
+        rotateLabeledImageConduit parallelParams deg =$=
         writeLabeledImageBinarySink
           (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin")
           (testLen * rotationLen)
