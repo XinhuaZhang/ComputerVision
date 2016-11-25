@@ -5,12 +5,12 @@ module CV.Filter.PolarSeparableFilter where
 
 import           CV.Filter
 import           CV.Filter.GaussianFilter
-import           CV.Image                              as IM
+import           CV.Image                 as IM
 import           CV.Utility.Coordinates
-import           Data.Array.Unboxed                    as AU
-import           Data.Complex                          as C
-import           Data.Set                              as Set
-import           Prelude                               as P
+import           Data.Array.Unboxed       as AU
+import           Data.Complex             as C
+import           Data.Set                 as Set
+import           Prelude                  as P
 
 data PolarSeparableFilterName
   = Fans
@@ -31,56 +31,59 @@ data PolarSeparableFilter a = PolarSeparableFilter
   , getFilter :: a
   }
 
-{- e^jx -}
+{-# INLINE ejx #-}
 ejx
   :: (RealFloat a)
   => a -> C.Complex a
 ejx x = exp (0 C.:+ x)
 
+{-# INLINE real2Complex #-}
 real2Complex
   :: (RealFloat a)
   => a -> C.Complex a
 real2Complex x = x C.:+ 0
 
+{-# INLINE angularFunc #-}
 angularFunc :: Int -> PixelOp (Pixel ComplexImage)
-angularFunc freq =
-  \x y ->
-     ejx
-       ((P.fromIntegral freq) *
-        (angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)))
+angularFunc freq x y =
+  ejx
+    (P.fromIntegral freq *
+     angleFunctionRad (P.fromIntegral x) (P.fromIntegral y))
 
+{-# INLINE radialFunc #-}
 radialFunc :: Int -> PixelOp (Pixel ComplexImage)
-radialFunc freq =
-  \x y ->
-     ejx
-       ((1 - exp (-1 * P.fromIntegral freq / 8)) *
-        (sqrt . P.fromIntegral $ x ^ 2 + y ^ 2) *
-        pi)
+radialFunc freq x y =
+  ejx
+    ((1 - exp (-1 * P.fromIntegral freq / 8)) *
+     (sqrt . P.fromIntegral $ x ^ 2 + y ^ 2) *
+     pi)
 
+{-# INLINE fans #-}
 fans :: Double -> Int -> Int -> PixelOp (C.Complex Double)
 fans scale _rf af x y
-  | scale == 0 = (angularFunc af x y)
-  | otherwise = (angularFunc af x y) * (real2Complex (gaussian2D scale x y))
+  | scale == 0 = angularFunc af x y
+  | otherwise = angularFunc af x y * real2Complex (gaussian2D scale x y)
 
+{-# INLINE bullseye #-}
 bullseye :: Double
          -> Int
          -> Int
          -> PixelOp (C.Complex Double)
 bullseye scale rf _af x y
-  | scale == 0 = (radialFunc rf x y)
-  | otherwise = (radialFunc rf x y) * (real2Complex (gaussian2D scale x y))
+  | scale == 0 = radialFunc rf x y
+  | otherwise = radialFunc rf x y * real2Complex (gaussian2D scale x y)
 
+{-# INLINE pinwheels #-}
 pinwheels :: Double
           -> Int
           -> Int
           -> PixelOp (C.Complex Double)
 pinwheels scale rf af x y
-  | scale == 0 = (real2Complex (gaussian2D scale x y)) * (angularFunc af x y)
+  | scale == 0 = real2Complex (gaussian2D scale x y) * angularFunc af x y
   | otherwise =
-    (real2Complex (gaussian2D scale x y)) * 
-    (angularFunc af x y) *
-    (radialFunc rf x y)
+    real2Complex (gaussian2D scale x y) * angularFunc af x y * radialFunc rf x y
 
+{-# INLINE getFilterFunc #-}
 getFilterFunc :: PolarSeparableFilterParams
               -> (Double  -> Int -> Int -> PixelOp (C.Complex Double))
 getFilterFunc PolarSeparableFilterParams {getName = Fans}      = fans

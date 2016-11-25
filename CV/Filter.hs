@@ -11,3 +11,4 @@ class Filter a  where
   displayFilter
     :: a -> ColorImage
   applyFilter :: a -> Input a -> Output a
+  applyFilter' :: a -> Input a -> Output a

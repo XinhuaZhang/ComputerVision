@@ -57,7 +57,33 @@ instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
       !multArr =
         computeUnboxedS $
         fromFunction (Z :. (n * nf) :. ny :. nx) (multArrFunc rArr filterArr nf)
-
+  applyFilter'
+    :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
+    -> R.Array U DIM3 Double
+    -> R.Array D DIM3 (C.Complex Double)
+  applyFilter' (PolarSeparableFilter params@(PolarSeparableFilterParams r scale rs as _name) _filterArr) inputArr =
+    threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
+    where
+      !cArr = threeDRArray2CArray (R.map real2ComplexFunc inputArr)
+      !dftCArr = dftN [1, 2] cArr
+      !rArr = threeDCArray2RArray dftCArr
+      !(Z :. n :. ny :. nx) = extent rArr
+      !filterEleList =
+        [ pixelList
+           (IM.makeFilter ny nx (getFilterFunc params s rf af) :: ComplexImage)
+        | rf <- Set.toList rs
+        , af <- Set.toList as
+        , s <- Set.toList scale ]
+      !nf = P.length filterEleList
+      !filterArr =
+        computeUnboxedS .
+        threeDCArray2RArray .
+        dftN [1, 2] . listArray ((0, 0, 0), (nf - 1, ny - 1, nx - 1)) . L.concat $
+        filterEleList
+      !multArr =
+        computeUnboxedS $
+        fromFunction (Z :. (n * nf) :. ny :. nx) (multArrFunc rArr filterArr nf)
+        
 {-# INLINE real2ComplexFunc #-}          
 real2ComplexFunc :: Double -> C.Complex Double
 real2ComplexFunc = (C.:+ 0)
