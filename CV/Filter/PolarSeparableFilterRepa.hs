@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE InstanceSigs      #-}
 {-# LANGUAGE TypeFamilies      #-}
@@ -48,21 +49,30 @@ instance Filter (PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))) where
   applyFilter (PolarSeparableFilter _params filterArr) inputArr =
     threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
     where
-      cArr = threeDRArray2CArray (R.map (C.:+ 0) inputArr)
-      dftCArr = dftN [1, 2] cArr
-      rArr = threeDCArray2RArray dftCArr
-      (Z :. nf :. ny :. nx) = extent filterArr
-      (Z :. n :. _ :. _) = extent rArr
-      multArr =
-        computeS $
-        fromFunction
-          (Z :. (n * nf) :. ny :. nx)
-          (\(Z :. k :. j :. i) ->
-              let k1 = div k nf
-                  k2 = mod k nf
-              in (rArr R.! (Z :. k1 :. j :. i)) *
-                 (filterArr R.! (Z :. k2 :. j :. i))) :: (R.Array U DIM3 (C.Complex Double))
+      !cArr = threeDRArray2CArray (R.map real2ComplexFunc inputArr)
+      !dftCArr = dftN [1, 2] cArr
+      !rArr = threeDCArray2RArray dftCArr
+      !(Z :. nf :. ny :. nx) = extent filterArr
+      !(Z :. n :. _ :. _) = extent rArr
+      !multArr =
+        computeUnboxedS $
+        fromFunction (Z :. (n * nf) :. ny :. nx) (multArrFunc rArr filterArr nf)
 
+{-# INLINE real2ComplexFunc #-}          
+real2ComplexFunc :: Double -> C.Complex Double
+real2ComplexFunc = (C.:+ 0)
+
+{-# INLINE multArrFunc #-}
+multArrFunc
+  :: (Source s1 e, Source s2 e, Num e)
+  => R.Array s1 DIM3 e -> R.Array s2 DIM3 e -> Int -> DIM3 -> e
+multArrFunc rArr filterArr nf (Z :. k :. j :. i) =
+  (rArr R.! (Z :. k1 :. j :. i)) * (filterArr R.! (Z :. k2 :. j :. i))
+  where
+    k1 = div k nf
+    k2 = mod k nf
+
+{-# INLINE twoDCArray2RArray #-}
 twoDCArray2RArray
   :: (Num a
      ,Storable a)
@@ -72,6 +82,7 @@ twoDCArray2RArray cArr =
                (\(Z :. j :. i) -> cArr CA.! (j,i))
   where ((_,_),(ny',nx')) = bounds cArr
 
+{-# INLINE threeDRArray2CArray #-}
 threeDRArray2CArray
   :: (Num a
      ,Storable a
@@ -81,6 +92,7 @@ threeDRArray2CArray rArr =
   listArray ((0,0,0),(nf - 1,ny - 1,nx - 1)) . R.toList $ rArr
   where (Z :. nf :. ny :. nx) = extent rArr
 
+{-# INLINE threeDCArray2RArray #-}
 threeDCArray2RArray
   :: (Num a
      ,Storable a)
