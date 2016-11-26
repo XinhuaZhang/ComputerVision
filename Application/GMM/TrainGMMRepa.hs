@@ -44,7 +44,7 @@ main = do
   print params
   readLabeledImagebinarySource (inputFile params) $$
     CL.map (\(LabeledArray _ arr) -> arr) =$=
-    magnitudeConduit parallelParams filters (downsampleFactor params) =$=
+    magnitudeConduit' parallelParams filters (downsampleFactor params) =$=
     CL.map
       (\arr ->
           let (Z :. nf :. ny :. nx) = extent arr

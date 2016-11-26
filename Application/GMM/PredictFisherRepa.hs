@@ -1,7 +1,7 @@
 module Main where
 
 import           Application.GMM.ArgsParser         as Parser
-import           Application.GMM.FisherKernelRepa
+import           Application.GMM.FisherKernel
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
@@ -54,18 +54,18 @@ main = do
   print params
   readLabeledImagebinarySource (inputFile params) $$
     CL.map (\(LabeledArray _ arr) -> arr) =$=
-    magnitudeConduit parallelParams filters (downsampleFactor params) =$=
-    -- CL.map
-    --   (\arr ->
-    --       let (Z :. nf :. ny :. nx) = extent arr
-    --       in V.fromList .
-    --          P.map
-    --            (\(a, b) ->
-    --                toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
-    --          [ (i, j)
-    --          | i <- [0 .. ny - 1]
-    --          , j <- [0 .. nx - 1] ]) =$=
-    (fisherVectorConduitP parallelParams  gmm) =$=
+    magnitudeConduit' parallelParams filters (downsampleFactor params) =$=
+    CL.map
+      (\arr ->
+          let (Z :. nf :. ny :. nx) = extent arr
+          in V.fromList .
+             P.map
+               (\(a, b) ->
+                   toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
+             [ (i, j)
+             | i <- [0 .. ny - 1]
+             , j <- [0 .. nx - 1] ]) =$=
+    (fisherVectorConduit parallelParams  gmm) =$=
     CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
     mergeSource (labelSource $ labelFile params) =$=
     predict (modelName params) ((modelName params) P.++ ".out")
