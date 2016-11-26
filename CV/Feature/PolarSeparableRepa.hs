@@ -16,7 +16,8 @@ import           Data.Set                           as S
 import           Prelude                            as P
 
 magnitudeConduit
-  :: ParallelParams -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
+  :: ParallelParams
+  -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
   -> Int
   -> Conduit (R.Array U DIM3 Double) IO (R.Array U DIM3 Double)
 magnitudeConduit parallelParams filter' factor = do
@@ -53,6 +54,49 @@ magnitudeConduit parallelParams filter' factor = do
                 xs
         sourceList ys
         magnitudeConduit parallelParams filter' factor)
+  where
+    scale = getScale . getParams $ filter'
+    
+
+magnitudeConduit'
+  :: ParallelParams
+  -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
+  -> Int
+  -> Conduit (R.Array U DIM3 Double) IO (R.Array U DIM3 Double)
+magnitudeConduit' parallelParams filter' factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (P.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\x' ->
+                    let (Z :. nf :. ny :. nx) = extent x'
+                        (nx':ny':_) = P.map (`div` factor) [nx, ny]
+                        nxNew =
+                          nx' -
+                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
+                        nyNew =
+                          ny' -
+                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
+                        y' = applyFilter' filter' x'
+                        (Z :. newNF :. _ :. _) = extent y'
+                        z =
+                          if factor == 1
+                            then y'
+                            else RU.downsample [factor, factor, 1] y'
+                        !result =
+                          computeUnboxedS .
+                          R.map C.magnitude .
+                          crop
+                            [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
+                            [nxNew, nyNew, newNF] $
+                          z
+                    in result)
+                xs
+        sourceList ys
+        magnitudeConduit' parallelParams filter' factor)
   where
     scale = getScale . getParams $ filter'
 
