@@ -132,6 +132,7 @@ bicubicInterpolation
 bicubicInterpolation ds (y,x)
   | (x < 1) ||
       (x > (fromIntegral nx - 2)) || (y < 1) || (y > (fromIntegral ny - 2)) = 0
+  | result < 0 = 0
   | otherwise = result
   where (Z :. ny :. nx) = extent . P.head $ ds
         x' = x - (fromIntegral . floor $ x)
