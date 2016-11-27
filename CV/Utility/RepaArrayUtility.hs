@@ -128,11 +128,12 @@ computeDerivativeS arr = arr : ds'
 
 {-# INLINE bicubicInterpolation #-}
 bicubicInterpolation
-  :: [Array U DIM2 Double] ->  (Double,Double) -> Double
-bicubicInterpolation ds (y,x)
+  :: [Array U DIM2 Double] -> (Double,Double) ->  (Double,Double) -> Double
+bicubicInterpolation ds (minVal,maxVal) (y,x)
   | (x < 1) ||
       (x > (fromIntegral nx - 2)) || (y < 1) || (y > (fromIntegral ny - 2)) = 0
-  | result < 0 = 0
+  | result < minVal = minVal
+  | result > maxVal = maxVal
   | otherwise = result
   where (Z :. ny :. nx) = extent . P.head $ ds
         x' = x - (fromIntegral . floor $ x)

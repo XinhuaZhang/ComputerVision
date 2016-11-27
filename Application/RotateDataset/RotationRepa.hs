@@ -44,11 +44,14 @@ recaleAndRotate2DImageS n degs arr =
             in if inRange j' && inRange i'
                  then bicubicInterpolation
                         ds
+                        (minVal,maxVal)
                         ( (j' - boundaryWith) * ratio
                         , (i' - boundaryWith) * ratio)
                  else 0))
     degs
   where
+    minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
     (Z :. ny :. nx) = extent arr
     m = max ny nx
     theta = atan (fromIntegral nx / fromIntegral ny)
@@ -75,7 +78,7 @@ rotate2DImageS degs arr =
         fromFunction
           (Z :. n :. n)
           (\(Z :. j :. i) ->
-              bicubicInterpolation ds .
+              bicubicInterpolation ds (minVal,maxVal) .
               rotatePixel
                 (VU.fromListN 4 $
                  P.map (\f -> f (deg2Rad deg)) [cos, sin, \x -> -(sin x), cos])
@@ -83,6 +86,8 @@ rotate2DImageS degs arr =
               (fromIntegral j, fromIntegral i)))
     degs
   where
+    minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
     (Z :. ny :. nx) = extent arr
     !n = round . sqrt . fromIntegral $ (nx ^ 2 + ny ^ 2)
     paddedImg = pad [n, n] arr
