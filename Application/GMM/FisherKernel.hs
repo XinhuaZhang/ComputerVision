@@ -87,11 +87,12 @@ fisherVectorSigma gmm@(MixtureModel n modelVec) zs xs =
                 modelVec
 
 fisherVectorConduit
-  :: ParallelParams -> GMM -> Conduit (V.Vector GMMData) IO (VU.Vector Double)
+  :: ParallelParams -> GMM -> Conduit (Int,V.Vector GMMData) IO (Int,VU.Vector Double)
 fisherVectorConduit parallelParams gmm =
   do xs <- CL.take (batchSize parallelParams)
      if P.length xs > 0
-        then let !ys =
+        then let (as,bs) = P.unzip xs
+                 !ys =
                    parMapChunk
                      parallelParams
                      rdeepseq
@@ -115,8 +116,8 @@ fisherVectorConduit parallelParams gmm =
                             !l2Norm =
                               sqrt (VU.foldl' (\a b -> a + b ^ 2) 0 vec)
                         in VU.map (/ l2Norm) vec)
-                     xs
-             in do sourceList ys
+                     bs
+             in do sourceList $ P.zip as ys
                    fisherVectorConduit parallelParams gmm
         else return ()
 

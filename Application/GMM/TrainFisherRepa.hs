@@ -32,7 +32,7 @@ import           Prelude                            as P
 import           System.Environment
 
 trainSink
-  :: ParallelParams -> FilePath -> TrainParams -> Bool -> Sink (VU.Vector Double) IO ()
+  :: ParallelParams -> FilePath -> TrainParams -> Bool -> Sink (Int,VU.Vector Double) IO ()
 trainSink parallelParams filePath trainParams findCFlag = do
   --xs <- consume
   -- if ((VU.length . P.head $ xs) /= (trainFeatureIndexMax trainParams))
@@ -45,21 +45,22 @@ trainSink parallelParams filePath trainParams findCFlag = do
   --   else return ()
   -- featurePtrs <-
   --   xs `pseq` liftIO $ MP.mapM (getFeatureVecPtr . Dense . VU.toList) xs
-  label <- liftIO $ readLabelFile filePath
+  -- label <- liftIO $ readLabelFile filePath
   -- if findCFlag
   --   then liftIO $ findParameterC trainParams label featurePtrs
   --   else liftIO $ train trainParams label $ 
-  go label []
+  go [] []
   where
-    go :: [Double] -> [[Ptr C'feature_node]] -> Sink (VU.Vector Double) IO ()
+    go :: [[Double]] -> [[Ptr C'feature_node]] -> Sink (Int,VU.Vector Double) IO ()
     go label pss = do
       xs <- CL.take (Parallel.batchSize parallelParams)
       if P.length xs > 0
-        then do
-          ps <- liftIO $ P.mapM (getFeatureVecPtr . Dense . VU.toList) xs
+        then do 
+          let (ls,ys) = P.unzip xs
+          ps <- liftIO $ P.mapM (getFeatureVecPtr . Dense . VU.toList) ys
           liftIO $ printCurrentTime
-          go label $! (ps : pss)
-        else liftIO $ train trainParams label (P.concat . L.reverse $ pss)
+          go ((P.map fromIntegral ls) : label)  $! (ps : pss)
+        else liftIO $ train trainParams (P.concat . L.reverse $ label) (P.concat . L.reverse $ pss)
 
 main = do
   args <- getArgs
@@ -97,17 +98,17 @@ main = do
         makeFilter filterParams :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
   print params
   readLabeledImagebinarySource (inputFile params) $$
-    CL.map (\(LabeledArray _ arr) -> arr) =$=
-    magnitudeConduit' parallelParams filters (downsampleFactor params) =$=
+    magnitudeLabeledArrayConduit' parallelParams filters (downsampleFactor params) =$=
     CL.map
-      (\arr ->
+      (\(LabeledArray label arr) ->
           let (Z :. nf :. ny :. nx) = extent arr
-          in V.fromList .
-             P.map
-               (\(a, b) ->
-                   toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
-             [ (i, j)
-             | i <- [0 .. ny - 1]
-             , j <- [0 .. nx - 1] ]) =$=
+              vec = V.fromList .
+                    P.map
+                      (\(a, b) ->
+                          toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
+                    [ (i, j)
+                    | i <- [0 .. ny - 1]
+                    , j <- [0 .. nx - 1] ]
+          in (label,vec)) =$=
     (fisherVectorConduit parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)

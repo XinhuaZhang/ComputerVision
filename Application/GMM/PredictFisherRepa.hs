@@ -53,19 +53,19 @@ main = do
         makeFilter filterParams :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
   print params
   readLabeledImagebinarySource (inputFile params) $$
-    CL.map (\(LabeledArray _ arr) -> arr) =$=
-    magnitudeConduit' parallelParams filters (downsampleFactor params) =$=
+    magnitudeLabeledArrayConduit' parallelParams filters (downsampleFactor params) =$=
     CL.map
-      (\arr ->
+      (\(LabeledArray label arr) ->
           let (Z :. nf :. ny :. nx) = extent arr
-          in V.fromList .
-             P.map
-               (\(a, b) ->
-                   toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
-             [ (i, j)
-             | i <- [0 .. ny - 1]
-             , j <- [0 .. nx - 1] ]) =$=
+              vec = V.fromList .
+                    P.map
+                      (\(a, b) ->
+                          toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
+                    [ (i, j)
+                    | i <- [0 .. ny - 1]
+                    , j <- [0 .. nx - 1] ]
+          in (label,vec)) =$=
     (fisherVectorConduit parallelParams  gmm) =$=
-    CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
-    mergeSource (labelSource $ labelFile params) =$=
+    CL.mapM (\(label, xs) ->  do ptr <- getFeatureVecPtr . Dense . VU.toList $ xs
+                                 return (fromIntegral label , ptr)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")
