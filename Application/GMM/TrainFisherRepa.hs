@@ -110,16 +110,15 @@ main = do
               centerX = fromIntegral nx / 2
               centerY = fromIntegral ny / 2
               vec =
-                V.fromList .
                 P.map
                   (\(a, b) ->
-                      if (nx - b) ^ 2 + (ny - a) ^ 2 < r
+                      if (fromIntegral b - centerX) ^ 2 + (fromIntegral a - centerY) ^ 2 < r
                         then Just . toUnboxed . computeS $
                              R.slice arr (Z :. All :. a :. b)
                         else Nothing) $
                 [ (i, j)
                 | i <- [0 .. ny - 1]
                 , j <- [0 .. nx - 1] ]
-          in (label, Maybe.catMaybes vec)) =$=
+          in (label, V.fromList . Maybe.catMaybes $ vec)) =$=
     (fisherVectorConduit parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)

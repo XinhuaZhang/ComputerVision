@@ -88,7 +88,7 @@ assignGMM parallelParams gmm@(MixtureModel n modelVec) xs
     smallVarIdx =
       V.findIndices
         (\(Model (w, Gaussian _ _ sigmaVec)) ->
-            case VU.find (< 0.05) sigmaVec of
+            case VU.find (< 0.025) sigmaVec of
               Nothing -> False
               Just _ -> True)
         modelVec
