@@ -21,6 +21,7 @@ import           Data.Complex                       as C
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.List                          as L
+import           Data.Maybe                         as Maybe
 import           Data.Set                           as S
 import           Data.Time.LocalTime
 import           Data.Vector                        as V
@@ -57,14 +58,21 @@ main = do
     CL.map
       (\(LabeledArray label arr) ->
           let (Z :. nf :. ny :. nx) = extent arr
-              vec = V.fromList .
-                    P.map
-                      (\(a, b) ->
-                          toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
-                    [ (i, j)
-                    | i <- [0 .. ny - 1]
-                    , j <- [0 .. nx - 1] ]
-          in (label,vec)) =$=
+              r = (fromIntegral $ nx ^ 2 + ny ^ 2) / 4
+              centerX = fromIntegral nx / 2
+              centerY = fromIntegral ny / 2
+              vec =
+                V.fromList .
+                P.map
+                  (\(a, b) ->
+                      if (nx - b) ^ 2 + (ny - a) ^ 2 < r
+                        then Just . toUnboxed . computeS $
+                             R.slice arr (Z :. All :. a :. b)
+                        else Nothing) $
+                [ (i, j)
+                | i <- [0 .. ny - 1]
+                , j <- [0 .. nx - 1] ]
+          in (label, Maybe.catMaybes vec)) =$=
     (fisherVectorConduit parallelParams  gmm) =$=
     CL.mapM (\(label, xs) ->  do ptr <- getFeatureVecPtr . Dense . VU.toList $ xs
                                  return (fromIntegral label , ptr)) =$=

@@ -23,6 +23,7 @@ import           Data.Complex                       as C
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.List                          as L
+import           Data.Maybe                         as Maybe
 import           Data.Set                           as S
 import           Data.Time.LocalTime
 import           Data.Vector                        as V
@@ -48,14 +49,14 @@ trainSink parallelParams filePath trainParams findCFlag = do
   -- label <- liftIO $ readLabelFile filePath
   -- if findCFlag
   --   then liftIO $ findParameterC trainParams label featurePtrs
-  --   else liftIO $ train trainParams label $ 
+  --   else liftIO $ train trainParams label $
   go [] []
   where
     go :: [[Double]] -> [[Ptr C'feature_node]] -> Sink (Int,VU.Vector Double) IO ()
     go label pss = do
       xs <- CL.take (Parallel.batchSize parallelParams)
       if P.length xs > 0
-        then do 
+        then do
           let (ls,ys) = P.unzip xs
           ps <- liftIO $ P.mapM (getFeatureVecPtr . Dense . VU.toList) ys
           liftIO $ printCurrentTime
@@ -98,17 +99,27 @@ main = do
         makeFilter filterParams :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
   print params
   readLabeledImagebinarySource (inputFile params) $$
-    magnitudeLabeledArrayConduit' parallelParams filters (downsampleFactor params) =$=
+    magnitudeLabeledArrayConduit'
+      parallelParams
+      filters
+      (downsampleFactor params) =$=
     CL.map
       (\(LabeledArray label arr) ->
           let (Z :. nf :. ny :. nx) = extent arr
-              vec = V.fromList .
-                    P.map
-                      (\(a, b) ->
-                          toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
-                    [ (i, j)
-                    | i <- [0 .. ny - 1]
-                    , j <- [0 .. nx - 1] ]
-          in (label,vec)) =$=
+              r = (fromIntegral $ nx ^ 2 + ny ^ 2) / 4
+              centerX = fromIntegral nx / 2
+              centerY = fromIntegral ny / 2
+              vec =
+                V.fromList .
+                P.map
+                  (\(a, b) ->
+                      if (nx - b) ^ 2 + (ny - a) ^ 2 < r
+                        then Just . toUnboxed . computeS $
+                             R.slice arr (Z :. All :. a :. b)
+                        else Nothing) $
+                [ (i, j)
+                | i <- [0 .. ny - 1]
+                , j <- [0 .. nx - 1] ]
+          in (label, Maybe.catMaybes vec)) =$=
     (fisherVectorConduit parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)
