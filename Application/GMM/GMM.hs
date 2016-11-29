@@ -255,6 +255,7 @@ em parallelParams filePath xs threshold oldLikelihood oldModel = do
 
 initializeGMM :: Int -> Int -> IO GMM
 initializeGMM numModel' numDimension = do
+  putStrLn "initializeGMM"
   time <- getCurrentTime
   let gen = mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $ time
       (w', gen1) = randomRList numModel' (1, 100) gen
@@ -318,7 +319,9 @@ gmmSink parallelParams numM threshold filePath = do
       then do
         fileSize <- liftIO $ getFileSize filePath
         if fileSize > 0
-          then decodeFile filePath
+          then do
+            putStrLn $ "Read GMM data file: " P.++ filePath
+            decodeFile filePath
           else initializeGMM numM (VU.length . V.head . P.head $ xs)
       else initializeGMM numM (VU.length . V.head . P.head $ xs)
   let !ys = V.concat xs
