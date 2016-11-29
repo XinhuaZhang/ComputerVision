@@ -46,10 +46,11 @@ magnitudeConduit parallelParams filter' factor = do
                             else RU.downsample [factor, factor, 1] y'
                         !result =
                           computeUnboxedS .
-                          R.map C.magnitude .
-                          crop
-                            [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
-                            [nxNew, nyNew, newNF] $
+                          R.map C.magnitude 
+                          -- crop
+                          --   [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
+                          --   [nxNew, nyNew, newNF]
+                          $
                           z
                     in result)
                 xs
@@ -88,10 +89,11 @@ magnitudeConduit' parallelParams filter' factor = do
                             else RU.downsample [factor, factor, 1] y'
                         !result = 
                           computeUnboxedS .
-                          R.map C.magnitude .
-                          crop
-                            [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
-                            [nxNew, nyNew, newNF] $
+                          R.map C.magnitude 
+                          -- crop
+                          --   [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
+                          --   [nxNew, nyNew, newNF] 
+                          $
                           z
                     in result)
                 xs
@@ -172,10 +174,11 @@ complexConduit parallelParams filter' factor = do
                             then y'
                             else RU.downsample [factor, factor, 1] y'
                         !result =
-                          computeUnboxedS .
-                          crop
-                            [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
-                            [nxNew, nyNew, nf] $
+                          computeUnboxedS 
+                          -- crop
+                          --   [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
+                          --   [nxNew, nyNew, nf]
+                          $
                           z
                     in result)
                 xs
