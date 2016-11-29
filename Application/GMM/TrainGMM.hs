@@ -5,9 +5,11 @@ import           Application.GMM.GMM
 import           CV.CUDA.Context
 import           CV.CUDA.DataType
 import           CV.Feature.PolarSeparable
+import           CV.Feature.PolarSeparableAcc
 import           CV.Filter
 import           CV.Filter.FilterStats
 import           CV.Filter.PolarSeparableFilter
+import           CV.Filter.PolarSeparableFilterAcc
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
 import           Data.Array.Accelerate              as A
@@ -16,6 +18,7 @@ import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.Set                           as S
 import           Data.Vector                        as V
+import           Data.Vector.Unboxed                as VU
 import           Prelude                            as P
 import           System.Environment
 
@@ -40,7 +43,6 @@ main =
                                            [0 .. (freq params - 1)]
                                       ,getName = Pinwheels}
      print params
-     ctx <- initializeGPUCtx (Option $ gpuId params)
      let featureConduit =
            case (gpuDataType params) of
              GPUFloat ->
@@ -78,4 +80,3 @@ main =
                (numGaussian params)
                (threshold params)
                (gmmFile params)
-     destoryGPUCtx ctx

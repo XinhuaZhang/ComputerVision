@@ -7,11 +7,7 @@ import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Control.DeepSeq              as DS
 import           Control.Monad.IO.Class
-import           CV.CUDA.ArrayUtil
-import           CV.CUDA.Context
 import           CV.Utility.Parallel
-import           Data.Array.Accelerate        as A
-import           Data.Array.Accelerate.CUDA   as A
 import           Data.Binary
 import           Data.ByteString.Lazy         as BL
 import           Data.Conduit
@@ -29,7 +25,7 @@ fisherVectorW
 fisherVectorW gmm@(MixtureModel n modelVec) zs xs = VU.convert newW
   where !numData = P.fromIntegral . V.length $ xs
         !w1 = (\(Model y) -> P.fst y) . V.head $ modelVec
-        !gm1 = V.head $ modelVec
+        !gm1 = V.head modelVec
         !z1 = V.head zs
         !newW =
           V.map (\gmk@(Model (wk,_)) ->
@@ -91,11 +87,12 @@ fisherVectorSigma gmm@(MixtureModel n modelVec) zs xs =
                 modelVec
 
 fisherVectorConduit
-  :: ParallelParams -> GMM -> Conduit (V.Vector GMMData) IO (VU.Vector Double)
+  :: ParallelParams -> GMM -> Conduit (Int,V.Vector GMMData) IO (Int,VU.Vector Double)
 fisherVectorConduit parallelParams gmm =
   do xs <- CL.take (batchSize parallelParams)
      if P.length xs > 0
-        then let !ys =
+        then let (as,bs) = P.unzip xs
+                 !ys =
                    parMapChunk
                      parallelParams
                      rdeepseq
@@ -119,8 +116,8 @@ fisherVectorConduit parallelParams gmm =
                             !l2Norm =
                               sqrt (VU.foldl' (\a b -> a + b ^ 2) 0 vec)
                         in VU.map (/ l2Norm) vec)
-                     xs
-             in do sourceList ys
+                     bs
+             in do sourceList $ P.zip as ys
                    fisherVectorConduit parallelParams gmm
         else return ()
 
@@ -196,86 +193,3 @@ fisherVectorTestSink parallelParams gmm =
                liftIO $
                  print $
                   haha * (V.sum hehe)
-
-
-fisherVectorAcc :: (Elt a
-                   ,IsFloating a)
-                => Acc (A.Array DIM1 a)
-                -> Acc (A.Array DIM2 a)
-                -> Acc (A.Array DIM2 a)
-                -> Acc (A.Array DIM2 a)
-                -> Acc (A.Array DIM2 (a,a))
-fisherVectorAcc w mu sigma x = A.zip fisherVecterMuNK fisherVectorSigmaNK
-  where (Z :. n :. d) = unlift $ shape x :: Z :. Exp Int :. Exp Int
-        (Z :. k) = unlift $ shape w :: Z :. Exp Int
-        xNKD =
-          A.replicate (lift (Z :. All :. k :. All))
-                      x
-        wNK =
-          A.replicate (lift (Z :. n :. All))
-                      w
-        muNKD =
-          A.replicate (lift (Z :. n :. All :. All))
-                      mu
-        sigmaNKD =
-          A.replicate (lift (Z :. n :. All :. All))
-                      sigma
-        normalizedXNKD =
-          A.zipWith3 (\a b c -> (a - b) / c)
-                     xNKD
-                     muNKD
-                     sigmaNKD
-        normalizedXNKD2 = A.map (^ 2) normalizedXNKD
-        gaussianENK =
-          A.map (\y -> exp (-0.5 * y)) . A.fold1 (+) $ normalizedXNKD2
-        gaussianZNK = A.replicate (lift (Z :. n :. All)) . A.fold1 (*) $ sigma
-        wpNK =
-          A.zipWith3 (\a b c -> a * b / c)
-                     wNK
-                     gaussianENK
-                     gaussianZNK
-        assignmentZNK = A.replicate (lift (Z :. All :. k)) . A.fold1 (+) $ wpNK
-        assignmentNK = A.zipWith (/) wpNK assignmentZNK
-        assignmentNKD =
-          A.replicate (lift (Z :. All :. All :. d))
-                      assignmentNK
-        fisherVecterMuNK =
-          A.zipWith (\w y -> y / (sqrt (A.fromIntegral n * w))) wNK .
-          A.fold1 (+) . rotate3D $
-          A.zipWith (*) assignmentNKD normalizedXNKD
-        fisherVectorSigmaNK =
-          A.zipWith (\w y -> y / (sqrt (A.fromIntegral n * w * 2))) wNK .
-          A.fold1 (+) . rotate3D $
-          A.zipWith (\a b -> a * (b - 1)) assignmentNKD normalizedXNKD2
-
-
-fisherVectorConduitFloatAcc
-  :: ParallelParams
-  -> [Context]
-  -> GMM
-  -> Acc (A.Array DIM1 Float)
-  -> Acc (A.Array DIM2 Float)
-  -> Acc (A.Array DIM2 Float)
-  -> Conduit (V.Vector GMMData) IO (VU.Vector Double)
-fisherVectorConduitFloatAcc parallelParams ctx gmm@(MixtureModel k modelVec) wAcc muAcc sigmaAcc =
-  do xs <- CL.take (batchSize parallelParams)
-     if P.length xs > 0
-        then let d = (\(Model (w,(Gaussian d' _ _))) -> d') $ V.head modelVec
-                 !xArr =
-                   parMapChunk
-                     parallelParams
-                     rseq
-                     (A.fromList (Z :. ((V.length . P.head $ xs)) :. d) .
-                      P.map double2Float . VU.toList . VU.concat . V.toList)
-                     xs :: [A.Array DIM2 Float]
-                 !yArr =
-                   multiGPUStream ctx
-                                  (fisherVectorAcc wAcc muAcc sigmaAcc)
-                                  xArr
-             in do sourceList .
-                     P.map (VU.fromList .
-                            P.map float2Double .
-                            (\(a,b) -> a P.++ b) . P.unzip . A.toList) $
-                     yArr
-                   fisherVectorConduitFloatAcc parallelParams ctx gmm wAcc muAcc sigmaAcc
-        else return ()

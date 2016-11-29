@@ -11,9 +11,11 @@ import           Control.Parallel
 import           CV.CUDA.Context
 import           CV.CUDA.DataType
 import           CV.Feature.PolarSeparable
+import           CV.Feature.PolarSeparableAcc
 import           CV.Filter
 import           CV.Filter.FilterStats
 import           CV.Filter.PolarSeparableFilter
+import           CV.Filter.PolarSeparableFilterAcc
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
 import           Data.Array.Accelerate              as A
