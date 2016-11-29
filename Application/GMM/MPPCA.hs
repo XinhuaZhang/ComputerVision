@@ -27,6 +27,7 @@ type MPPCAParameter = Matrix Double
 
 initializeMPPCA :: PPCAInitParams -> Int -> Int -> IO MPPCA
 initializeMPPCA initParams numModel' numDimension = do
+  putStrLn "initializeMPPCA"
   time <- getCurrentTime
   let gen = mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $ time
       models' =
@@ -269,20 +270,21 @@ mppcaSink
   -> Double
   -> FilePath
   -> Sink (V.Vector MPPCAData) IO ()
-mppcaSink parallelParams initParams numModel' threshold filePath = do
-  xs <- CL.take 10
-  fileFlag <- liftIO $ doesFileExist filePath
-  models <-
-    liftIO $
-    if fileFlag
-      then do
-        fileSize <- liftIO $ getFileSize filePath
-        if fileSize > 0
-          then decodeFile filePath
-          else initializeMPPCA
-                 initParams
-                 numModel'
-                 (VU.length . V.head . P.head $ xs)
-      else initializeMPPCA initParams numModel' (VU.length . V.head . P.head $ xs)
-  let ys = V.concat xs
-  liftIO $ em parallelParams filePath initParams ys threshold 0 models
+mppcaSink parallelParams initParams numModel' threshold filePath =
+  do xs <- CL.take 10
+     fileFlag <- liftIO $ doesFileExist filePath
+     models <-
+       liftIO $
+       if fileFlag
+          then do fileSize <- liftIO $ getFileSize filePath
+                  if fileSize > 0
+                     then do putStrLn $ "Read MPPCA data file: " P.++ filePath
+                             decodeFile filePath
+                     else initializeMPPCA initParams
+                                          numModel'
+                                          (VU.length . V.head . P.head $ xs)
+          else initializeMPPCA initParams
+                               numModel'
+                               (VU.length . V.head . P.head $ xs)
+     let ys = V.concat xs
+     liftIO $ em parallelParams filePath initParams ys threshold 0 models
