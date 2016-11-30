@@ -13,7 +13,7 @@ import           System.Environment
 
 gaussian' :: Gaussian -> Int -> Double -> Double
 gaussian' (Gaussian numDims' mu' sigma') ind x =
-  exp (-(x - m) ^ 2 / 2 / s) / (s * sqrt (2 * pi))
+  exp (-(x - m) ^ 2 / 2 / s) / (sqrt (2 * pi * s))
   where
     s = sigma' VU.! ind
     m = mu' VU.! ind
@@ -24,15 +24,16 @@ getProb modelVec ind x =
 
 main = do
   (filePath:_) <- getArgs
-  (MixtureModel n modelVec) <- decodeFile filePath :: IO GMM
+  (MixtureModel _ modelVec) <- decodeFile filePath :: IO GMM
+  let (Model (_,(Gaussian n _ _))) = V.head modelVec
   V.mapM_
     (\i ->
         toFile def (show i P.++ ".png") $
-        do layout_title .= "PDF"
+        do layout_title .= "Feature " P.++ show i
            plot
              (line
                 ""
                 [ [ (x, getProb modelVec i x)
-                  | x <- [-10,-9.9 .. 10] ]
+                  | x <- [0,0.05 .. 20] ]
                 ])) $
     V.generate n id
