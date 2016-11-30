@@ -169,3 +169,11 @@ computeInvC (PPCA nD _nM w' mu' sigma') invM =
     (elementwiseUnsafe (-) (identity nD) (w' * invM * wt))
   where
     wt = transpose w'
+
+
+checkSmallVar :: PPCA -> Bool
+checkSmallVar (PPCA nd _nzd w' _mu' sigma') = isInfinite $ detLU c ** (-0.5)
+  where c =
+          elementwiseUnsafe (+)
+                            (diagonal 0 (V.replicate nd sigma'))
+                            (w' * transpose w')

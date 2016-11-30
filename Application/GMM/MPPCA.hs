@@ -72,7 +72,7 @@ computeZS
   -> MPPCA
   -> V.Vector MPPCAData
   -> (V.Vector Double, V.Vector (Matrix Double))
-computeZS parallelParams model@(MixtureModel n modelVec) xs
+computeZS parallelParams model'@(MixtureModel n modelVec) xs
   | isJust zeroZIdx =
     error $
     "There is one data point which is assigned to none of the model. Try to increase the initialization range of sigma and to decrease that of mu.\n" P.++
@@ -80,20 +80,22 @@ computeZS parallelParams model@(MixtureModel n modelVec) xs
   | isJust nanZIdx =
     error $
     "Nan found! The variance of One of the models is too smalll." P.++
-    (show (xs V.! fromJust nanZIdx))
-  | otherwise = (zs, invM)
-  where
-    invM = computeInvMS model
-    ys =
-      parZipWithChunkVector
-        parallelParams
-        rdeepseq
-        (\im (Model (wj, mj)) -> VU.map (* wj) . V.convert $ ppcaPVec' mj im xs)
-        invM
-        modelVec
-    zs = VU.convert $ V.foldl1' (VU.zipWith (+)) ys
-    zeroZIdx = V.findIndex (== 0) zs
-    nanZIdx = V.findIndex (isNaN) zs
+    show ys
+--    show (xs V.! fromJust nanZIdx)
+  | otherwise = (zs,invM)
+  where invM = computeInvMS model'
+        ys =
+          parZipWithChunkVector
+            parallelParams
+            rdeepseq
+            (\im (Model (wj,mj)) ->
+               VU.map (* wj) . V.convert $ ppcaPVec' mj im xs)
+            invM
+            modelVec
+        zs = VU.convert $ V.foldl1' (VU.zipWith (+)) ys
+        zeroZIdx = V.findIndex (== 0) zs
+        nanZIdx = V.findIndex isNaN zs
+
 
 computeNKS
   :: ParallelParams
@@ -101,31 +103,37 @@ computeNKS
   -> MPPCA
   -> V.Vector MPPCAData
   -> IO (V.Vector Double, V.Vector Double, MPPCA, V.Vector (Matrix Double))
-computeNKS parallelParams initParams model@(MixtureModel n modelVec) xs
-  | V.length zeroKIdx > 0 = do
-    putStrLn
-      "There are models which have no point assigned to them! Reset them now."
-    print zeroKIdx
-    newModel <- resetMPPCA initParams model zeroKIdx
-    computeNKS parallelParams initParams newModel xs
-  | V.length nanKIdx > 0 = do
-    putStrLn
-      "Found NaN! Reset them now."
-    print nanKIdx
-    newModel <- resetMPPCA initParams model nanKIdx
-    computeNKS parallelParams initParams newModel xs
-  | otherwise = return (zs, nks, model, invM)
-  where
-    nks =
-      parZipWithChunkVector
-        parallelParams
-        rdeepseq
-        (\m im -> VU.sum . V.convert $ assignPointVec m im zs xs)
-        modelVec
-        invM
-    (zs,invM) = computeZS parallelParams model xs
-    zeroKIdx = V.findIndices (\x -> x == 0 ) nks
-    nanKIdx = V.findIndices (\x -> isNaN x) nks
+computeNKS parallelParams initParams model'@(MixtureModel _n modelVec) xs
+  | V.length smallVarIdx > 0 =
+    do putStrLn "Variances of some Gaussians are too small. Overfitting could happen. Reset."
+       print smallVarIdx
+       newModel <- resetMPPCA initParams model' smallVarIdx
+       computeNKS parallelParams initParams newModel xs
+  | V.length zeroKIdx > 0 =
+    do putStrLn "There are models which have no point assigned to them! Reset them now."
+       print zeroKIdx
+       newModel <- resetMPPCA initParams model' zeroKIdx
+       computeNKS parallelParams initParams newModel xs
+  | V.length nanKIdx > 0 =
+    do putStrLn "Found NaN! Reset them now."
+       print nanKIdx
+       newModel <- resetMPPCA initParams model' nanKIdx
+       computeNKS parallelParams initParams newModel xs
+  | otherwise = return (zs,nks,model',invM)
+  where nks =
+          parZipWithChunkVector
+            parallelParams
+            rdeepseq
+            (\m im -> VU.sum . V.convert $ assignPointVec m im zs xs)
+            modelVec
+            invM
+        (zs,invM) = computeZS parallelParams model' xs
+        zeroKIdx = V.findIndices (== 0) nks
+        nanKIdx = V.findIndices isNaN nks
+        smallVarIdx =
+          V.findIndices (\(Model (_,ppcaModel)) -> checkSmallVar ppcaModel)
+                        modelVec
+
 
 computeInvMS :: MPPCA -> V.Vector (Matrix Double)
 computeInvMS (MixtureModel _ modelVec) =
