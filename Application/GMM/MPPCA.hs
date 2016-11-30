@@ -81,7 +81,8 @@ computeZS parallelParams model'@(MixtureModel _n modelVec) xs
   | isJust nanZIdx =
     error $
     "Nan found! The variance of One of the models is too smalll." P.++
-    show (xs V.! fromJust nanZIdx)
+    show ys
+--    show (xs V.! fromJust nanZIdx)
   | otherwise = (zs,invM)
   where invM = computeInvMS model'
         ys =
@@ -103,6 +104,11 @@ computeNKS
   -> V.Vector MPPCAData
   -> IO (V.Vector Double, V.Vector Double, MPPCA, V.Vector (Matrix Double))
 computeNKS parallelParams initParams model'@(MixtureModel _n modelVec) xs
+  | V.length smallVarIdx > 0 =
+    do putStrLn "Variances of some Gaussians are too small. Overfitting could happen. Reset."
+       print smallVarIdx
+       newModel <- resetMPPCA initParams model' smallVarIdx
+       computeNKS parallelParams initParams newModel xs
   | V.length zeroKIdx > 0 =
     do putStrLn "There are models which have no point assigned to them! Reset them now."
        print zeroKIdx
@@ -122,12 +128,11 @@ computeNKS parallelParams initParams model'@(MixtureModel _n modelVec) xs
             modelVec
             invM
         (zs,invM) = computeZS parallelParams model' xs
-        zeroKIdx =
-          V.findIndices (== 0)
-                        nks
-        nanKIdx =
-          V.findIndices isNaN
-                        nks
+        zeroKIdx = V.findIndices (== 0) nks
+        nanKIdx = V.findIndices isNaN nks
+        smallVarIdx =
+          V.findIndices (\(Model (_,ppcaModel)) -> checkSmallVar ppcaModel)
+                        modelVec
 
 computeInvMS :: MPPCA -> V.Vector (Matrix Double)
 computeInvMS (MixtureModel _ modelVec) =
