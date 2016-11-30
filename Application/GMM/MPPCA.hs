@@ -72,7 +72,7 @@ computeZS
   -> MPPCA
   -> V.Vector MPPCAData
   -> (V.Vector Double, V.Vector (Matrix Double))
-computeZS parallelParams model@(MixtureModel n modelVec) xs
+computeZS parallelParams model'@(MixtureModel n modelVec) xs
   | isJust zeroZIdx =
     error $
     "There is one data point which is assigned to none of the model. Try to increase the initialization range of sigma and to decrease that of mu.\n" P.++
