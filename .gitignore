@@ -41,3 +41,5 @@ main
 /Application/GMM/trainGMM
 /Application/GMM/model
 *.pgm
+*.dat*
+*model
