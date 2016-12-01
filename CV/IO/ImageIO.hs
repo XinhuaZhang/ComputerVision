@@ -3,6 +3,7 @@ module CV.IO.ImageIO where
 import           Control.Monad          (liftM)
 import           Control.Monad.IO.Class (liftIO)
 import           CV.Image
+import           Data.Array.Repa        as R
 import           Data.Array.Unboxed     as AU
 import           Data.Conduit           as C
 import           Data.Conduit.List      as CL
@@ -33,7 +34,7 @@ readImagePathList filePath = do
   return $ P.map (ImagePath imageType) pathList
 
 
-imagePathSource :: FilePath -> Source IO ImagePath
+imagePathSource :: FilePath -> C.Source IO ImagePath
 imagePathSource filePath = do
   pathList <- liftIO $ readImagePathList filePath
   sourceList pathList
@@ -67,3 +68,11 @@ grayImage2DoubleArrayConduit =
     (\img ->
         let (nx, ny) = dimensions img
         in yield . AU.listArray ((0, 0, 0), (nx - 1, ny - 1, 0)) . pixelList $ img)
+
+grayImage2RepaConduit
+  :: Conduit GrayImage IO (R.Array U DIM3 Double)
+grayImage2RepaConduit =
+  awaitForever
+    (\img ->
+       let (ny,nx) = dimensions img
+       in yield . R.fromListUnboxed (Z :. 1 :. ny :. nx) . pixelList $ img)

@@ -17,10 +17,9 @@ module CV.CUDA.FFT
   , coveriance25D
   , concatComplex
   , gaussianNormalize
-  , rotate3D
-  , rotate3D2
   ) where
 
+import           CV.CUDA.ArrayUtil
 import           Data.Array.Accelerate              as A
 import           Data.Array.Accelerate.Array.Sugar  as S (EltRepr, shape,
                                                           shapeToList)
@@ -154,34 +153,6 @@ signOfMode m =
     Forward -> -1
     Reverse -> 1
     Inverse -> 1
-
-rotate3D
-  :: Elt e
-  => Acc (Array DIM3 e) -> Acc (Array DIM3 e)
-rotate3D arr = backpermute (swap1 (A.shape arr)) swap2 arr
-  where
-    swap1 :: Exp DIM3 -> Exp DIM3
-    swap1 ix =
-      let Z :. m :. k :. l = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
-      in lift $ Z :. k :. l :. m
-    swap2 :: Exp DIM3 -> Exp DIM3
-    swap2 ix =
-      let Z :. m :. k :. l = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
-      in lift $ Z :. l :. m :. k
-
-rotate3D2
-  :: Elt e
-  => Acc (Array DIM3 e) -> Acc (Array DIM3 e)
-rotate3D2 arr = backpermute (swap1 (A.shape arr)) swap2 arr
-  where
-    swap1 :: Exp DIM3 -> Exp DIM3
-    swap1 ix =
-      let Z :. m :. k :. l = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
-      in lift $ Z :. l :. m :. k
-    swap2 :: Exp DIM3 -> Exp DIM3
-    swap2 ix =
-      let Z :. m :. k :. l = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
-      in lift $ Z :. k :. l :. m
 
 cudaFFT
   :: forall e sh.

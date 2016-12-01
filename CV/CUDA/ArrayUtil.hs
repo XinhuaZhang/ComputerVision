@@ -48,3 +48,32 @@ downsample25D factor arr =
   where
     (Z :. ny :. nx :. nf) =
       unlift $ A.shape arr :: Z :. Exp Int :. Exp Int :. Exp Int
+
+
+rotate3D
+  :: Elt e
+  => Acc (Array DIM3 e) -> Acc (Array DIM3 e)
+rotate3D arr = backpermute (swap1 (A.shape arr)) swap2 arr
+  where
+    swap1 :: Exp DIM3 -> Exp DIM3
+    swap1 ix =
+      let Z :. m :. k :. l = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
+      in lift $ Z :. k :. l :. m
+    swap2 :: Exp DIM3 -> Exp DIM3
+    swap2 ix =
+      let Z :. m :. k :. l = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
+      in lift $ Z :. l :. m :. k
+
+rotate3D2
+  :: Elt e
+  => Acc (Array DIM3 e) -> Acc (Array DIM3 e)
+rotate3D2 arr = backpermute (swap1 (A.shape arr)) swap2 arr
+  where
+    swap1 :: Exp DIM3 -> Exp DIM3
+    swap1 ix =
+      let Z :. m :. k :. l = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
+      in lift $ Z :. l :. m :. k
+    swap2 :: Exp DIM3 -> Exp DIM3
+    swap2 ix =
+      let Z :. m :. k :. l = unlift ix :: Z :. Exp Int :. Exp Int :. Exp Int
+      in lift $ Z :. k :. l :. m
