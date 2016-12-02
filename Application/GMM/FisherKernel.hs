@@ -43,48 +43,51 @@ fisherVectorMu :: GMM
                -> V.Vector Double
                -> V.Vector GMMData
                -> VU.Vector Double
-fisherVectorMu gmm@(MixtureModel n modelVec) zs xs =
-  VU.concat . V.toList $ newMuK
-  where !numData = P.fromIntegral . V.length $ xs
-        !newMuK =
-          V.map (\gmk@(Model (wk,(Gaussian _nd muK sigmaK))) ->
-                   VU.map (* ((numData * wk) ** (-0.5))) .
-                   V.foldl1' (VU.zipWith (+)) .
-                   V.zipWith (\z x ->
-                                let !assignment = assignPoint gmk z x
-                                in VU.zipWith3
-                                     (\xd muKd sigmaKd ->
-                                        assignment * ((xd - muKd) / sigmaKd))
-                                     x
-                                     muK
-                                     sigmaK)
-                             zs $
-                   xs)
-                modelVec
+fisherVectorMu gmm@(MixtureModel n modelVec) zs xs = VU.concat . V.toList $ newMuK
+  where
+    !numData = P.fromIntegral . V.length $ xs
+    !newMuK =
+      V.map
+        (\gmk@(Model (wk, (Gaussian _nd muK sigmaK))) ->
+            VU.zipWith (\s x -> x / sqrt s) sigmaK .
+            VU.map (* ((numData * wk) ** (-0.5))) .
+            V.foldl1' (VU.zipWith (+)) .
+            V.zipWith
+              (\z x ->
+                  let !assignment = assignPoint gmk z x
+                  in VU.zipWith3
+                       (\xd muKd sigmaKd -> assignment * ((xd - muKd) / sigmaKd))
+                       x
+                       muK
+                       sigmaK)
+              zs $
+            xs)
+        modelVec
 
 fisherVectorSigma :: GMM
                   -> V.Vector Double
                   -> V.Vector GMMData
                   -> VU.Vector Double
-fisherVectorSigma gmm@(MixtureModel n modelVec) zs xs =
-  VU.concat . V.toList $ newSigmaK
-  where !numData = P.fromIntegral . V.length $ xs
-        !newSigmaK =
-          V.map (\gmk@(Model (wk,(Gaussian _nd muK sigmaK))) ->
-                   VU.map (* ((2 * numData * wk) ** (-0.5))) .
-                   V.foldl1' (VU.zipWith (+)) .
-                   V.zipWith (\z x ->
-                                let !assignment = assignPoint gmk z x
-                                in VU.zipWith3
-                                     (\xd muKd sigmaKd ->
-                                        assignment *
-                                        (((xd - muKd) / sigmaKd) ^ 2 - 1))
-                                     x
-                                     muK
-                                     sigmaK)
-                             zs $
-                   xs)
-                modelVec
+fisherVectorSigma gmm@(MixtureModel n modelVec) zs xs = VU.concat . V.toList $ newSigmaK
+  where
+    !numData = P.fromIntegral . V.length $ xs
+    !newSigmaK =
+      V.map
+        (\gmk@(Model (wk, (Gaussian _nd muK sigmaK))) ->
+            VU.map (* ((2 * numData * wk) ** (-0.5))) .
+            V.foldl1' (VU.zipWith (+)) .
+            V.zipWith
+              (\z x ->
+                  let !assignment = assignPoint gmk z x
+                  in VU.zipWith3
+                       (\xd muKd sigmaKd ->
+                           assignment * ((xd - muKd) ^ (2 :: Int) / sigmaKd - 1))
+                       x
+                       muK
+                       sigmaK)
+              zs $
+            xs)
+        modelVec
 
 fisherVectorConduit
   :: ParallelParams -> GMM -> Conduit (Int,V.Vector GMMData) IO (Int,VU.Vector Double)
