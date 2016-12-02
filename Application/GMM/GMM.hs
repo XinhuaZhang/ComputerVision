@@ -2,6 +2,8 @@
 
 module Application.GMM.GMM
   ( GMM
+  , AssignmentVec
+  , getAssignmentVec
   , gmmSink
   ) where
 
@@ -25,7 +27,7 @@ import           Text.Printf
 
 data ResetOption
   = ResetAll
-  | ResetIndex (V.Vector Int)
+  | ResetIndex !(V.Vector Int)
   deriving (Show)
 
 instance NFData ResetOption where
@@ -33,13 +35,13 @@ instance NFData ResetOption where
   rnf _              = ()
 
 data EMState a
-  = EMDone Double
-           a
+  = EMDone !Double
+           !a
   | EMContinue AssignmentVec
                Double
-               a
-  | EMReset ResetOption
-            a
+               !a
+  | EMReset !ResetOption
+            !a
 
 instance NFData a =>
          NFData (EMState a) where
@@ -170,12 +172,12 @@ em parallelParams filePath bound threshold gmms xs =
             fromIntegral (P.length gmms)
       printCurrentTime
       printf "%0.2f\n" avgLikelihood
-      encodeFile filePath (P.map (\(EMDone m _) -> m) gmms)
+      encodeFile filePath (P.map getModelDone gmms)
     else do
       printCurrentTime
       when
         (P.all checkStateContinue gmms)
-        (encodeFile filePath (P.map (\(EMDone m _) -> m) gmms))
+        (encodeFile filePath (P.map getModelDone gmms))
       gmms1 <- resetGMMList bound gmms
       let !gmms2 =
             parZipWithChunk
@@ -216,6 +218,8 @@ em parallelParams filePath bound threshold gmms xs =
     getStateLikelihood _ =
       error
         "getStateLikelihood: All reset state shold have been removed by now."
+    getModelDone (EMDone _ m) = m
+    getModelDone _ = error "getModelDone: There are states which are not done yet."
 
 gmmSink
   :: ParallelParams
