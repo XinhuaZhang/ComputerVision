@@ -32,6 +32,28 @@ import           Foreign.Ptr
 import           Prelude                            as P
 import           System.Environment
 
+
+sliceConduit :: ParallelParams
+             -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
+sliceConduit parallelParams = do
+  xs <- CL.take (Parallel.batchSize parallelParams)
+  unless
+    (P.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\arr ->
+                    let (Z :. nf :. ny :. nx) = extent arr
+                    in P.map
+                         (\i ->
+                             toUnboxed . computeS $
+                             R.slice arr (Z :. i :. All :. All)) $
+                       [0 .. nf - 1])
+                xs
+        sourceList ys
+        sliceConduit parallelParams)
+
 trainSink
   :: ParallelParams -> FilePath -> TrainParams -> Bool -> Sink (Int,VU.Vector Double) IO ()
 trainSink parallelParams filePath trainParams findCFlag = do
@@ -103,22 +125,23 @@ main = do
       parallelParams
       filters
       (downsampleFactor params) =$=
-    CL.map
-      (\(LabeledArray label arr) ->
-          let (Z :. nf :. ny :. nx) = extent arr
-              r = (fromIntegral $ nx ^ 2 + ny ^ 2) / 4
-              centerX = fromIntegral nx / 2
-              centerY = fromIntegral ny / 2
-              vec =
-                P.map
-                  (\(a, b) ->
-                      if (fromIntegral b - centerX) ^ 2 + (fromIntegral a - centerY) ^ 2 < r
-                        then Just . toUnboxed . computeS $
-                             R.slice arr (Z :. All :. a :. b)
-                        else Nothing) $
-                [ (i, j)
-                | i <- [0 .. ny - 1]
-                , j <- [0 .. nx - 1] ]
-          in (label, V.fromList . Maybe.catMaybes $ vec)) =$=
+  -- CL.map
+  --   (\(LabeledArray label arr) ->
+  --       let (Z :. nf :. ny :. nx) = extent arr
+  --           r = (fromIntegral $ nx ^ 2 + ny ^ 2) / 4
+  --           centerX = fromIntegral nx / 2
+  --           centerY = fromIntegral ny / 2
+  --           vec =
+  --             P.map
+  --               (\(a, b) ->
+  --                   if (fromIntegral b - centerX) ^ 2 + (fromIntegral a - centerY) ^ 2 < r
+  --                     then Just . toUnboxed . computeS $
+  --                          R.slice arr (Z :. All :. a :. b)
+  --                     else Nothing) $
+  --             [ (i, j)
+  --             | i <- [0 .. ny - 1]
+  --             , j <- [0 .. nx - 1] ]
+  --       in (label, V.fromList . Maybe.catMaybes $ vec))
+    sliceConduit parallelParams =$=
     (fisherVectorConduit parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)

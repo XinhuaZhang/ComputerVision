@@ -30,6 +30,27 @@ import           Foreign.Ptr
 import           Prelude                            as P
 import           System.Environment
 
+sliceConduit :: ParallelParams
+             -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
+sliceConduit parallelParams = do
+  xs <- CL.take (Parallel.batchSize parallelParams)
+  unless
+    (P.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\arr ->
+                    let (Z :. nf :. ny :. nx) = extent arr
+                    in P.map
+                         (\i ->
+                             toUnboxed . computeS $
+                             R.slice arr (Z :. i :. All :. All)) $
+                       [0 .. nf - 1])
+                xs
+        sourceList ys
+        sliceConduit parallelParams)
+
 main = do
   args <- getArgs
   if P.null args
@@ -54,25 +75,31 @@ main = do
         makeFilter filterParams :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
   print params
   readLabeledImagebinarySource (inputFile params) $$
-    magnitudeLabeledArrayConduit' parallelParams filters (downsampleFactor params) =$=
-    CL.map
-      (\(LabeledArray label arr) ->
-          let (Z :. nf :. ny :. nx) = extent arr
-              r = (fromIntegral $ nx ^ 2 + ny ^ 2) / 4
-              centerX = fromIntegral nx / 2
-              centerY = fromIntegral ny / 2
-              vec =
-                P.map
-                  (\(a, b) ->
-                      if (fromIntegral b - centerX) ^ 2 + (fromIntegral a - centerY) ^ 2 < r
-                        then Just . toUnboxed . computeS $
-                             R.slice arr (Z :. All :. a :. b)
-                        else Nothing) $
-                [ (i, j)
-                | i <- [0 .. ny - 1]
-                , j <- [0 .. nx - 1] ]
-          in (label, V.fromList . Maybe.catMaybes $ vec)) =$=
-    (fisherVectorConduit parallelParams  gmm) =$=
-    CL.mapM (\(label, xs) ->  do ptr <- getFeatureVecPtr . Dense . VU.toList $ xs
-                                 return (fromIntegral label , ptr)) =$=
+    magnitudeLabeledArrayConduit'
+      parallelParams
+      filters
+      (downsampleFactor params) =$=
+  -- CL.map
+  --   (\(LabeledArray label arr) ->
+  --       let (Z :. nf :. ny :. nx) = extent arr
+  --           r = (fromIntegral $ nx ^ 2 + ny ^ 2) / 4
+  --           centerX = fromIntegral nx / 2
+  --           centerY = fromIntegral ny / 2
+  --           vec =
+  --             P.map
+  --               (\(a, b) ->
+  --                   if (fromIntegral b - centerX) ^ 2 + (fromIntegral a - centerY) ^ 2 < r
+  --                     then Just . toUnboxed . computeS $
+  --                          R.slice arr (Z :. All :. a :. b)
+  --                     else Nothing) $
+  --             [ (i, j)
+  --             | i <- [0 .. ny - 1]
+  --             , j <- [0 .. nx - 1] ]
+  --       in (label, V.fromList . Maybe.catMaybes $ vec))
+    sliceConduit parallelParams =$=
+    (fisherVectorConduit parallelParams gmm) =$=
+    CL.mapM
+      (\(label, xs) -> do
+         ptr <- getFeatureVecPtr . Dense . VU.toList $ xs
+         return (fromIntegral label, ptr)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")
