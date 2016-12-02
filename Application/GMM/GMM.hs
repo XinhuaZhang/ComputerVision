@@ -100,8 +100,20 @@ getAssignmentVec gmm = V.map (getAssignment gmm) . VU.convert
 getNks :: AssignmentVec -> VU.Vector Double
 getNks = V.foldl1' (VU.zipWith (+))
 
-getLikelihood :: AssignmentVec -> Double
-getLikelihood = V.foldl' (\s x -> s + (log . VU.sum $ x)) 0
+getAvgLikelihood :: GMM -> VU.Vector Double -> Double
+getAvgLikelihood gmm xs =
+  VU.foldl' (\ss x ->
+               ss +
+               (log .
+                V.foldl' (\s (Model (weight,gaussianModel)) ->
+                            s + weight * gaussian gaussianModel x)
+                         0 .
+                model $
+                gmm))
+            0
+            xs /
+  fromIntegral (VU.length xs)
+
 
 updateMu :: AssignmentVec -> VU.Vector Double -> VU.Vector Double -> VU.Vector Double
 updateMu assignmentVec nks =
@@ -134,25 +146,25 @@ emOneStep threshold (EMContinue oldAssignmentVec _ oldGMM) xs
   | isJust zeroZIdx = EMReset ResetAll oldGMM
   | newAvgLikelihood > threshold = EMDone newAvgLikelihood oldGMM
   | otherwise = EMContinue newAssignmentVec newAvgLikelihood newGMM
-  where
-    !nks = getNks oldAssignmentVec
-    !newMu = updateMu oldAssignmentVec nks xs
-    !newSigma = updateSigma oldAssignmentVec nks newMu xs
-    !newW = updateW (VU.length xs) nks
-    !zs = V.map VU.sum oldAssignmentVec
-    !zeroZIdx = V.findIndex (== 0) zs
-    !zeroNaNNKIdx = VU.convert $ VU.findIndices (\x -> x == 0 || isNaN x) nks
-    !newGMM =
-      MixtureModel
-        (numModel oldGMM)
-        (V.zipWith3
-           (\w mu sigma -> Model (w, Gaussian mu sigma))
-           (VU.convert newW)
-           (VU.convert newMu)
-           (VU.convert newSigma))
-    !newAssignmentVec = getAssignmentVec newGMM xs
-    !newAvgLikelihood =
-      getLikelihood newAssignmentVec / fromIntegral (V.length newAssignmentVec)
+  where !nks = getNks oldAssignmentVec
+        !newMu = updateMu oldAssignmentVec nks xs
+        !newSigma = updateSigma oldAssignmentVec nks newMu xs
+        !newW = updateW (VU.length xs) nks
+        !zs = V.map VU.sum oldAssignmentVec
+        !zeroZIdx = V.findIndex (== 0) zs
+        !zeroNaNNKIdx =
+          VU.convert $
+          VU.findIndices (\x -> x == 0 || isNaN x)
+                         nks
+        !newGMM =
+          MixtureModel
+            (numModel oldGMM)
+            (V.zipWith3 (\w mu sigma -> Model (w,Gaussian mu sigma))
+                        (VU.convert newW)
+                        (VU.convert newMu)
+                        (VU.convert newSigma))
+        !newAssignmentVec = getAssignmentVec newGMM xs
+        !newAvgLikelihood = getAvgLikelihood newGMM xs
 emOneStep _ (EMReset _ _) _ =
   error "emOneStep: There models needed to be reset!"
 
@@ -194,8 +206,8 @@ em parallelParams filePath bound threshold gmms xs =
               gmms2
               xs
           !avgLikelihood =
-            (P.sum . P.map getStateLikelihood $ gmms2) /
-            fromIntegral (P.length gmms2)
+            (P.sum . P.map getStateLikelihood $ gmms) /
+            fromIntegral (P.length gmms)
       if isNaN avgLikelihood
         then putStrLn "Reset"
         else printf "%0.2f\n" avgLikelihood
@@ -207,7 +219,7 @@ em parallelParams filePath bound threshold gmms xs =
     checkStateContinue _             = False
     computeStateAssignmentLikelihood (EMContinue _ _ m) x =
       let !assignment = getAssignmentVec m x
-          !avgLikelihood = getLikelihood assignment
+          !avgLikelihood = getAvgLikelihood m x
       in EMContinue assignment avgLikelihood m
     computeStateAssignmentLikelihood EMReset {} _ =
       error
@@ -230,31 +242,31 @@ gmmSink
   -> ((Double, Double),(Double, Double))
   -> Double
   -> Sink [VU.Vector Double] IO ()
-gmmSink parallelParams filePath numM bound threshold = do
-  xs <- consume
-  fileFlag <- liftIO $ doesFileExist filePath
-  models <-
-    liftIO $
-    if fileFlag
-      then do
-        fileSize <- liftIO $ getFileSize filePath
-        if fileSize > 0
-          then do
-            putStrLn $ "Read GMM data file: " P.++ filePath
-            decodeFile filePath
-          else M.replicateM numM $
-               initializeGMM (VU.length . P.head . P.head $ xs) bound
-      else M.replicateM numM $
-           initializeGMM (VU.length . P.head . P.head $ xs) bound
-  let !ys = P.map VU.concat . L.transpose $ xs
-      !stateGMM =
-        parZipWithChunk
-          parallelParams
-          rdeepseq
-          (\gmm y ->
-              let !assignment = getAssignmentVec gmm y
-                  !likelihood = getLikelihood assignment
-              in EMContinue assignment likelihood gmm)
-          models
-          ys
-  liftIO $ em parallelParams filePath bound threshold stateGMM ys
+gmmSink parallelParams filePath numM bound threshold =
+  do xs <- CL.take (batchSize parallelParams)
+     fileFlag <- liftIO $ doesFileExist filePath
+     models <-
+       liftIO $
+       if fileFlag
+          then do fileSize <- liftIO $ getFileSize filePath
+                  if fileSize > 0
+                     then do putStrLn $ "Read GMM data file: " P.++ filePath
+                             decodeFile filePath
+                     else M.replicateM (P.length . P.head $ xs)  $
+                          initializeGMM numM
+                                        bound
+          else M.replicateM (P.length . P.head $ xs) $
+               initializeGMM numM
+                             bound
+     let !ys = P.map VU.concat . L.transpose $ xs
+         !stateGMM =
+           parZipWithChunk
+             parallelParams
+             rdeepseq
+             (\gmm y ->
+                let !assignment = getAssignmentVec gmm y
+                    !likelihood = getAvgLikelihood gmm y
+                in EMContinue assignment likelihood gmm)
+             models
+             ys
+     liftIO $ em parallelParams filePath bound threshold stateGMM ys
