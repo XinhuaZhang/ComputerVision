@@ -73,6 +73,6 @@ main = do
       parallelParams
       (gmmFile params)
       (numGaussian params)
-      (-2,2)
+      ((0,10),(0.1,100))
       (threshold params)
 

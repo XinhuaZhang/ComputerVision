@@ -53,12 +53,12 @@ type GMM = MixtureModel Gaussian
 
 type AssignmentVec = V.Vector (VU.Vector Double)
 
-initializeGMM :: Int -> (Double, Double) -> IO GMM
+initializeGMM :: Int -> ((Double, Double),(Double, Double)) -> IO GMM
 initializeGMM numModel' bound = do
   gs <- V.replicateM numModel' (randomGaussian bound)
   initializeMixture numModel' gs
 
-resetGMM :: ResetOption -> GMM -> (Double, Double) -> IO GMM
+resetGMM :: ResetOption -> GMM -> ((Double, Double),(Double, Double)) -> IO GMM
 resetGMM ResetAll gmm bound = initializeGMM (numModel gmm) bound
 resetGMM (ResetIndex vec) (MixtureModel n modelVec) bound = do
   gs <- V.replicateM (V.length vec) (randomGaussian bound)
@@ -74,7 +74,7 @@ resetGMM (ResetIndex vec) (MixtureModel n modelVec) bound = do
                   Nothing      -> mi
                   Just (_, gm) -> Model (wi, gm)))
 
-resetGMMList :: (Double, Double) -> [EMState GMM] -> IO [EMState GMM]
+resetGMMList :: ((Double, Double),(Double, Double)) -> [EMState GMM] -> IO [EMState GMM]
 resetGMMList bound = P.mapM reset
   where
     reset (EMReset option gmm) = do
@@ -159,7 +159,7 @@ emOneStep _ (EMReset _ _) _ =
 em
   :: ParallelParams
   -> FilePath
-  -> (Double, Double)
+  -> ((Double, Double),(Double, Double))
   -> Double
   -> [EMState GMM]
   -> [VU.Vector Double]
@@ -227,7 +227,7 @@ gmmSink
   :: ParallelParams
   -> FilePath
   -> Int
-  -> (Double, Double)
+  -> ((Double, Double),(Double, Double))
   -> Double
   -> Sink [VU.Vector Double] IO ()
 gmmSink parallelParams filePath numM bound threshold = do

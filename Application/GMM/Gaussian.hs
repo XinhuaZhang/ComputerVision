@@ -29,8 +29,9 @@ gaussian (Gaussian mu' sigma') x =
   exp (-(x - mu') / 2 / sigma') / sqrt (2 * pi * sigma')
 
 {-# INLINE randomGaussian #-}
-randomGaussian :: (Double, Double) -> IO Gaussian
-randomGaussian bound = do
-  mu <- randomRIO bound
-  sigma <- randomRIO bound
-  return $! Gaussian mu sigma
+randomGaussian
+  :: ((Double,Double),(Double,Double)) -> IO Gaussian
+randomGaussian (boundMu,boundSigma) =
+  do mu <- randomRIO boundMu
+     sigma <- randomRIO boundSigma
+     return $! Gaussian mu sigma
