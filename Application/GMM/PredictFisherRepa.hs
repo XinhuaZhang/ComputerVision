@@ -5,7 +5,7 @@ import           Application.GMM.FisherKernel
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
-import           Control.Monad.IO.Class
+import           Control.Monad
 import qualified Control.Monad.Parallel             as MP
 import           Control.Parallel
 import           CV.Array.LabeledArray
@@ -30,26 +30,26 @@ import           Foreign.Ptr
 import           Prelude                            as P
 import           System.Environment
 
+
 sliceConduit :: ParallelParams
-             -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
-sliceConduit parallelParams = do
-  xs <- CL.take (Parallel.batchSize parallelParams)
-  unless
-    (P.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\arr ->
-                    let (Z :. nf :. ny :. nx) = extent arr
-                    in P.map
-                         (\i ->
-                             toUnboxed . computeS $
-                             R.slice arr (Z :. i :. All :. All)) $
-                       [0 .. nf - 1])
-                xs
-        sourceList ys
-        sliceConduit parallelParams)
+             -> Conduit (LabeledArray DIM3 Double) IO (Int, [VU.Vector Double])
+sliceConduit parallelParams =
+  do xs <- CL.take (Parallel.batchSize parallelParams)
+     unless (P.null xs)
+            (do let ys =
+                      parMapChunk
+                        parallelParams
+                        rdeepseq
+                        (\(LabeledArray label arr) ->
+                           let (Z :. nf :. ny :. nx) = extent arr
+                           in (label
+                              ,P.map (\i ->
+                                        toUnboxed . computeS $
+                                        R.slice arr (Z :. i :. All :. All)) $
+                               [0 .. nf - 1]))
+                        xs
+                sourceList ys
+                sliceConduit parallelParams)
 
 main = do
   args <- getArgs
@@ -57,7 +57,7 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  gmm <- decodeFile (gmmFile params) :: IO GMM
+  gmm <- decodeFile (gmmFile params) :: IO [GMM]
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params

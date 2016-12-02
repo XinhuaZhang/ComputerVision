@@ -34,25 +34,24 @@ import           System.Environment
 
 
 sliceConduit :: ParallelParams
-             -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
-sliceConduit parallelParams = do
-  xs <- CL.take (Parallel.batchSize parallelParams)
-  unless
-    (P.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\arr ->
-                    let (Z :. nf :. ny :. nx) = extent arr
-                    in P.map
-                         (\i ->
-                             toUnboxed . computeS $
-                             R.slice arr (Z :. i :. All :. All)) $
-                       [0 .. nf - 1])
-                xs
-        sourceList ys
-        sliceConduit parallelParams)
+             -> Conduit (LabeledArray DIM3 Double) IO (Int, [VU.Vector Double])
+sliceConduit parallelParams =
+  do xs <- CL.take (Parallel.batchSize parallelParams)
+     unless (P.null xs)
+            (do let ys =
+                      parMapChunk
+                        parallelParams
+                        rdeepseq
+                        (\(LabeledArray label arr) ->
+                           let (Z :. nf :. ny :. nx) = extent arr
+                           in (label
+                              ,P.map (\i ->
+                                        toUnboxed . computeS $
+                                        R.slice arr (Z :. i :. All :. All)) $
+                               [0 .. nf - 1]))
+                        xs
+                sourceList ys
+                sliceConduit parallelParams)
 
 trainSink
   :: ParallelParams -> FilePath -> TrainParams -> Bool -> Sink (Int,VU.Vector Double) IO ()
@@ -91,7 +90,7 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  gmm <- decodeFile (gmmFile params) :: IO GMM
+  gmm <- decodeFile (gmmFile params) :: IO [GMM]
   imageListLen <- getArrayNumFile (inputFile params)
   let parallelParams =
         ParallelParams
@@ -113,8 +112,8 @@ main = do
         , trainNumExamples = imageListLen
         , trainFeatureIndexMax =
           if isComplex params
-            then (4 * getFilterNum filterParams) * (numModel gmm)
-            else (2 * getFilterNum filterParams) * (numModel gmm)
+            then (4 * getFilterNum filterParams) * (numModel $ P.head gmm)
+            else (2 * getFilterNum filterParams) * (numModel $ P.head gmm)
         , trainModel = modelName params
         }
       filters =

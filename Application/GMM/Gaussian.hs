@@ -7,8 +7,8 @@ import           GHC.Generics
 import           System.Random
 
 data Gaussian = Gaussian
-  { gaussianMu    :: Double
-  , gaussianSigma :: Double
+  { gaussianMu    :: !Double
+  , gaussianSigma :: !Double
   } deriving (Show, Generic)
 
 instance Binary Gaussian where
