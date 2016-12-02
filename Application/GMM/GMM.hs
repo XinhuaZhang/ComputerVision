@@ -178,62 +178,56 @@ em
   -> IO ()
 em parallelParams filePath bound threshold gmms xs =
   if P.all checkStateDone gmms
-    then do
-      let !avgLikelihood =
-            (P.sum . P.map getStateLikelihood $ gmms) /
-            fromIntegral (P.length gmms)
-      printCurrentTime
-      printf "%0.2f\n" avgLikelihood
-      encodeFile filePath (P.map getModelDone gmms)
-    else do
-      printCurrentTime
-      when
-        (P.all checkStateContinue gmms)
-        (encodeFile filePath (P.map getModelContinue gmms))
-      gmms1 <- resetGMMList bound gmms
-      let !gmms2 =
-            parZipWithChunk
-              parallelParams
-              rdeepseq
-              computeStateAssignmentLikelihood
-              gmms1
-              xs
-          !newGMMs =
-            parZipWithChunk
-              parallelParams
-              rdeepseq
-              (emOneStep threshold)
-              gmms2
-              xs
-          !avgLikelihood =
-            (P.sum . P.map getStateLikelihood $ gmms) /
-            fromIntegral (P.length gmms)
-      if isNaN avgLikelihood
-        then putStrLn "Reset"
-        else printf "%0.2f\n" avgLikelihood
-      em parallelParams filePath bound threshold newGMMs xs
-  where
-    checkStateDone EMDone {} = True
-    checkStateDone _         = False
-    checkStateContinue EMContinue {} = True
-    checkStateContinue _             = False
-    computeStateAssignmentLikelihood (EMContinue _ _ m) x =
-      let !assignment = getAssignmentVec m x
-          !avgLikelihood = getAvgLikelihood m x
-      in EMContinue assignment avgLikelihood m
-    computeStateAssignmentLikelihood EMReset {} _ =
-      error
-        "computeStateAssignment: All reset state shold have been removed by now."
-    computeStateAssignmentLikelihood state _ = state
-    getStateLikelihood (EMContinue _ x _) = x
-    getStateLikelihood (EMDone x _) = x
-    getStateLikelihood _ =
-      error
-        "getStateLikelihood: All reset state shold have been removed by now."
-    getModelDone (EMDone _ m) = m
-    getModelDone _ = error "getModelDone: There are states which are not done yet."
-    getModelContinue (EMContinue _ _ m) = m
-    getModelContinue _ = error "getModelDone: There are states which are not EMContinue."
+     then do let !avgLikelihood =
+                   (P.sum . P.map getStateLikelihood $ gmms) /
+                   fromIntegral (P.length gmms)
+             printCurrentTime
+             printf "%0.2f\n" avgLikelihood
+             encodeFile filePath
+                        (P.map getModelDone gmms)
+     else do printCurrentTime
+             when (P.all checkStateContinueDone gmms)
+                  (encodeFile filePath
+                              (P.map getModelContinueDone gmms))
+             gmms1 <- resetGMMList bound gmms
+             let !gmms2 =
+                   parZipWithChunk parallelParams rdeepseq computeStateAssignmentLikelihood gmms1 xs
+                 !newGMMs =
+                   parZipWithChunk parallelParams
+                                   rdeepseq
+                                   (emOneStep threshold)
+                                   gmms2
+                                   xs
+                 !avgLikelihood =
+                   (P.sum . P.map getStateLikelihood $ gmms) /
+                   fromIntegral (P.length gmms)
+             if isNaN avgLikelihood
+                then putStrLn "Reset"
+                else printf "%0.2f\n" avgLikelihood
+             em parallelParams filePath bound threshold newGMMs xs
+  where checkStateDone EMDone{} = True
+        checkStateDone _        = False
+        checkStateContinueDone EMContinue{} = True
+        checkStateContinueDone EMDone{}     = True
+        checkStateContinueDone _            = False
+        computeStateAssignmentLikelihood (EMContinue _ _ m) x =
+          let !assignment = getAssignmentVec m x
+              !avgLikelihood = getAvgLikelihood m x
+          in EMContinue assignment avgLikelihood m
+        computeStateAssignmentLikelihood EMReset{} _ =
+          error "computeStateAssignment: All reset state shold have been removed by now."
+        computeStateAssignmentLikelihood state _ = state
+        getStateLikelihood (EMContinue _ x _) = x
+        getStateLikelihood (EMDone x _) = x
+        getStateLikelihood _ =
+          error "getStateLikelihood: All reset state shold have been removed by now."
+        getModelDone (EMDone _ m) = m
+        getModelDone _ =
+          error "getModelDone: There are states which are not done yet."
+        getModelContinueDone (EMContinue _ _ m) = m
+        getModelContinueDone (EMDone _ m) = m
+        getModelContinueDone _ =
+          error "getModelContinueDone: There are states which are not EMContinue."
 
 gmmSink
   :: ParallelParams
