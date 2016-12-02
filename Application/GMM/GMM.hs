@@ -177,7 +177,7 @@ em parallelParams filePath bound threshold gmms xs =
       printCurrentTime
       when
         (P.all checkStateContinue gmms)
-        (encodeFile filePath (P.map getModelDone gmms))
+        (encodeFile filePath (P.map getModelContinue gmms))
       gmms1 <- resetGMMList bound gmms
       let !gmms2 =
             parZipWithChunk
@@ -220,6 +220,8 @@ em parallelParams filePath bound threshold gmms xs =
         "getStateLikelihood: All reset state shold have been removed by now."
     getModelDone (EMDone _ m) = m
     getModelDone _ = error "getModelDone: There are states which are not done yet."
+    getModelContinue (EMContinue _ _ m) = m
+    getModelContinue _ = error "getModelDone: There are states which are not EMContinue."
 
 gmmSink
   :: ParallelParams
