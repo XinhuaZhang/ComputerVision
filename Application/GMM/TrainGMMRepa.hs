@@ -2,6 +2,7 @@ module Main where
 
 import           Application.GMM.ArgsParser         as Parser
 import           Application.GMM.GMM
+import           Control.Monad
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparable
 import           CV.Feature.PolarSeparableRepa
@@ -19,6 +20,28 @@ import           Data.Vector                        as V
 import           Data.Vector.Unboxed                as VU
 import           Prelude                            as P
 import           System.Environment
+
+
+sliceConduit :: ParallelParams
+             -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
+sliceConduit parallelParams = do
+  xs <- CL.take (Parallel.batchSize parallelParams)
+  unless
+    (P.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\arr ->
+                    let (Z :. nf :. ny :. nx) = extent arr
+                    in P.map
+                         (\i ->
+                             toUnboxed . computeS $
+                             R.slice arr (Z :. i :. All :. All)) $
+                       [0 .. nf - 1])
+                xs
+        sourceList ys
+        sliceConduit parallelParams)
 
 main = do
   args <- getArgs
@@ -45,16 +68,11 @@ main = do
   readLabeledImagebinarySource (inputFile params) $$
     CL.map (\(LabeledArray _ arr) -> arr) =$=
     magnitudeConduit' parallelParams filters (downsampleFactor params) =$=
-    CL.map
-      (\arr ->
-          let (Z :. nf :. ny :. nx) = extent arr
-          in P.map
-               (\i -> toUnboxed . computeS $ R.slice arr (Z :. i :. All :. All)) $
-             [0 .. nf - 1]) =$=
+    sliceConduit parallelParams =$=
     gmmSink
       parallelParams
       (gmmFile params)
       (numGaussian params)
       (-2,2)
       (threshold params)
-      
+
