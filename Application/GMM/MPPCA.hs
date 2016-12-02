@@ -66,6 +66,15 @@ assignPointVec
   -> V.Vector Double
 assignPointVec (Model (w, m)) invM zs xs =
   V.zipWith (\z x -> w * x / z) zs $ ppcaPVec' m invM xs
+  
+assignPointVec' :: Model PPCA
+                -> V.Vector (VU.Vector Double)
+                -> Double
+                -> V.Vector Double
+                -> V.Vector MPPCAData
+                -> V.Vector Double
+assignPointVec' (Model (w,m)) invCvec det zs xs =
+  V.zipWith (\z x -> w * x / z) zs $ ppcaPVec'' m invCvec det xs
 
 computeZS
   :: ParallelParams

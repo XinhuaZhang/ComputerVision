@@ -117,6 +117,15 @@ ppcaPVec' model@(PPCA nd _nzd w' mu' sigma') invM =
         (+)
         (diagonal 0 (V.replicate nd sigma'))
         (w' * (transpose w'))
+        
+ppcaPVec'' :: PPCA
+           -> V.Vector (VU.Vector Double)
+           -> Double
+           -> V.Vector (VU.Vector Double)
+           -> V.Vector Double
+ppcaPVec'' (PPCA _nd _nzd _w' mu' _sigma') invCVec det =
+  V.map (\x -> (det ** (-0.5)) * exp ((-0.5) * xtwx (xmu x) invCVec))
+  where xmu x = VU.zipWith (-) x mu'
 
 computeLatentZ :: PPCA -> VU.Vector Double -> Matrix Double
 computeLatentZ model@(PPCA _nD nM w' mu' sigma') x =

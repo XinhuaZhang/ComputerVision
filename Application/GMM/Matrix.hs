@@ -30,3 +30,7 @@ matrixVecMult
   :: (Unbox a, Num a)
   => V.Vector (VU.Vector a) -> VU.Vector a -> VU.Vector a
 matrixVecMult mat vec = V.convert . V.map (VU.sum . VU.zipWith (*) vec) $ mat
+
+{-# INLINE matrix2MatrixV #-}
+matrix2MatrixV :: Matrix Double -> V.Vector (VU.Vector Double)
+matrix2MatrixV = V.fromList . P.map VU.fromList . M.toLists 
