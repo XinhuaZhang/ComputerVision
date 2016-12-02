@@ -48,15 +48,13 @@ main = do
     CL.map
       (\arr ->
           let (Z :. nf :. ny :. nx) = extent arr
-          in V.fromList .
-             P.map
-               (\(a, b) ->
-                   toUnboxed . computeS $ R.slice arr (Z :. All :. a :. b)) $
-             [ (i, j)
-             | i <- [0 .. ny - 1]
-             , j <- [0 .. nx - 1] ]) =$=
+          in P.map
+               (\i -> toUnboxed . computeS $ R.slice arr (Z :. i :. All :. All)) $
+             [0 .. nf - 1]) =$=
     gmmSink
       parallelParams
-      (numGaussian params)
-      (threshold params)
       (gmmFile params)
+      (numGaussian params)
+      (-2,2)
+      (threshold params)
+      
