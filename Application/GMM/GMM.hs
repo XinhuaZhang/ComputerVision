@@ -152,7 +152,7 @@ emOneStep threshold (EMContinue oldAssignmentVec _ oldGMM) xs
            (VU.convert newSigma))
     !newAssignmentVec = getAssignmentVec newGMM xs
     !newAvgLikelihood =
-      getLikelihood newAssignmentVec / fromIntegral (VU.length xs)
+      getLikelihood newAssignmentVec / fromIntegral (V.length newAssignmentVec)
 emOneStep _ (EMReset _ _) _ =
   error "emOneStep: There models needed to be reset!"
 

@@ -26,7 +26,7 @@ instance NFData Gaussian where
 {-# INLINE gaussian #-}
 gaussian :: Gaussian -> Double -> Double
 gaussian (Gaussian mu' sigma') x =
-  exp (-(x - mu') / 2 / sigma') / sqrt (2 * pi * sigma')
+  exp (-(x - mu') ^ (2 :: Int) / (2 * sigma')) / sqrt (2 * pi * sigma')
 
 {-# INLINE randomGaussian #-}
 randomGaussian
