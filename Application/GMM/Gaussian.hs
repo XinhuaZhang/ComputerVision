@@ -9,7 +9,10 @@ import           System.Random
 data Gaussian = Gaussian
   { gaussianMu    :: !Double
   , gaussianSigma :: !Double
-  } deriving (Show, Generic)
+  } deriving (Generic)
+  
+instance Show Gaussian where
+  show (Gaussian mu sigma) = "Mu: " ++ show mu ++ " Sigma: " ++ show sigma
 
 instance Binary Gaussian where
   put (Gaussian mu' sigma') = do
@@ -26,7 +29,7 @@ instance NFData Gaussian where
 {-# INLINE gaussian #-}
 gaussian :: Gaussian -> Double -> Double
 gaussian (Gaussian mu' sigma') x =
-  exp (-(x - mu') ^ (2 :: Int) / (2 * sigma')) / sqrt (2 * pi * sigma')
+  exp (-((x - mu') ^ (2 :: Int)) / (2 * sigma')) / sqrt (2 * pi * sigma')
 
 {-# INLINE randomGaussian #-}
 randomGaussian

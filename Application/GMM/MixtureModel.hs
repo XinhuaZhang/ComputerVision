@@ -13,7 +13,11 @@ import           System.Random
 
 newtype Model a =
   Model (Double,a)
-  deriving (Show,Generic)
+  deriving (Generic)
+  
+instance Show a =>
+         Show (Model a) where
+  show (Model (x,y)) = "Weight: " P.++ show x P.++ " " P.++ show y
 
 instance (Binary a) =>
          Binary (Model a) where
@@ -28,8 +32,8 @@ instance NFData a =>
 
 data MixtureModel a =
   MixtureModel {numModel :: Int
-               ,model    :: V.Vector (Model a)}
-  deriving (Show,Generic)
+               ,model :: V.Vector (Model a)}
+  deriving (Generic)
   
 instance NFData a =>
          NFData (MixtureModel a) where
@@ -45,6 +49,13 @@ instance (Binary a) =>
        xs <- get
        return (MixtureModel numModel'
                             (V.fromList xs))
+                            
+instance Show a =>
+         Show (MixtureModel a) where
+  show (MixtureModel n modelVec) =
+    "MixtureModel " P.++ show n P.++ "\n" P.++
+    V.foldl' (\s m -> s P.++ show m P.++ "\n") "" modelVec
+
 
 initializeMixture :: Int -> V.Vector a -> IO (MixtureModel a)
 initializeMixture numModel' !xs = do

@@ -243,7 +243,7 @@ gmmSink
   -> Double
   -> Sink [VU.Vector Double] IO ()
 gmmSink parallelParams filePath numM bound threshold =
-  do xs <- CL.take (batchSize parallelParams)
+  do xs <- consume
      fileFlag <- liftIO $ doesFileExist filePath
      models <-
        liftIO $
