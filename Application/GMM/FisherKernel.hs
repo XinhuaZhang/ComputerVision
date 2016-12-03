@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns  #-}
+{-# LANGUAGE BangPatterns #-}
 module Application.GMM.FisherKernel where
 
 import           Application.GMM.Gaussian
@@ -6,11 +6,9 @@ import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Control.Monad
 import           CV.Utility.Parallel
-
 import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.List                    as L
-
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 
@@ -19,13 +17,26 @@ fisherVectorMu gmms assignments xs =
   VU.concat $
   L.zipWith3
     (\(MixtureModel _ modelVec) assignment x ->
-        V.convert $
-        V.zipWith
-          (\(Model (wk, Gaussian mu' sigma')) a ->
-              sqrt (sigma' / (fromIntegral (VU.length x) * wk)) *
-              VU.sum (VU.zipWith (\an xn -> an * (xn - mu') / sigma') a x))
-          modelVec
-          assignment)
+        let muVec = V.convert . V.map (\(Model m) -> gaussianMu . snd $ m) $ modelVec
+            sigmaVec =
+              V.convert . V.map (\(Model m) -> gaussianSigma . snd $ m) $ modelVec
+            wVec = V.convert . V.map (\(Model m) -> fst m) $ modelVec
+        in VU.zipWith3
+             (\wk sigma' y ->
+                 y * sqrt (sigma' / (fromIntegral (VU.length x) * wk)))
+             wVec
+             sigmaVec .
+           V.foldl1' (VU.zipWith (+)) .
+           V.zipWith
+             (\an xn ->
+                 VU.zipWith3
+                   (\mu' sigma' a -> a * (xn - mu') / sigma')
+                   muVec
+                   sigmaVec
+                   an)
+             assignment .
+           VU.convert $
+           x)
     gmms
     assignments
     xs
@@ -38,17 +49,24 @@ fisherVectorSigma gmms assignments xs =
   VU.concat $
   L.zipWith3
     (\(MixtureModel _ modelVec) assignment x ->
-        V.convert $
-        V.zipWith
-          (\(Model (wk, Gaussian mu' sigma')) a ->
-              sqrt (0.5 / (fromIntegral (VU.length x) * wk)) *
-              VU.sum
-                (VU.zipWith
-                   (\an xn -> an * ((xn - mu') ^ (2 :: Int) / sigma' - 1))
-                   a
-                   x))
-          modelVec
-          assignment)
+        let muVec = V.convert . V.map (\(Model m) -> gaussianMu . snd $ m) $ modelVec
+            sigmaVec =
+              V.convert . V.map (\(Model m) -> gaussianSigma . snd $ m) $ modelVec
+            wVec = V.convert . V.map (\(Model m) -> fst m) $ modelVec
+        in VU.zipWith
+             (\wk y -> y * sqrt (0.5 / (fromIntegral (VU.length x) * wk)))
+             wVec .
+           V.foldl1' (VU.zipWith (+)) .
+           V.zipWith
+             (\an xn ->
+                 VU.zipWith3
+                   (\mu' sigma' a -> a * ((xn - mu') ^ (2 :: Int) / sigma' - 1))
+                   muVec
+                   sigmaVec
+                   an)
+             assignment .
+           VU.convert $
+           x)
     gmms
     assignments
     xs
