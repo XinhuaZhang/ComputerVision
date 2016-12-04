@@ -57,7 +57,7 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  gmm <- decodeFile (gmmFile params) :: IO [GMM]
+  gmm <- readGMM (gmmFile params) :: IO [GMM]
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params

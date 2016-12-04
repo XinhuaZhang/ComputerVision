@@ -69,7 +69,7 @@ main = do
     CL.map (\(LabeledArray _ arr) -> arr) =$=
     magnitudeConduit' parallelParams filters (downsampleFactor params) =$=
     sliceConduit parallelParams =$=
-    convertConduit
+    convertConduit =$=
     gmmSink1
       parallelParams
       (gmmFile params)

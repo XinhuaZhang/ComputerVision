@@ -5,6 +5,9 @@ module Application.GMM.GMM
   , AssignmentVec
   , getAssignmentVec
   , gmmSink
+  , gmmSink1
+  , convertConduit
+  , readGMM
   ) where
 
 import           Application.GMM.Gaussian
@@ -328,16 +331,16 @@ gmmSink1 parallelParams filePath numM numFeature bound threshold = do
         if fileSize > 0
           then do
             IO.putStrLn $ "Read GMM data file: " P.++ filePath
-            decodeFile filePath
+            readGMM filePath
           else M.replicateM numFeature $ initializeGMM numM bound
       else M.replicateM numFeature $ initializeGMM numM bound
-  handle <- liftIO $ openBinaryFile filePath ReadMode
+  handle <- liftIO $ openBinaryFile filePath WriteMode
   liftIO $ BL.hPut handle (encode (fromIntegral numFeature :: Word32))
   go handle models
   liftIO $ hClose handle
   where
     go h gmms = do
-      xs <- CL.take (batchSize parallelParams)
+      xs <- CL.take (numThread parallelParams)
       unless
         (L.null xs)
         (do let (as, bs) = L.splitAt (L.length xs) gmms

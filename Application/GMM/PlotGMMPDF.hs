@@ -17,7 +17,7 @@ getProb modelVec x =
 
 main = do
   (filePath:_) <- getArgs
-  models <- decodeFile filePath :: IO [GMM]
+  models <- readGMM filePath :: IO [GMM]
   let step = 0.01
   V.imapM_
     (\i (MixtureModel _ modelVec) ->
@@ -27,6 +27,6 @@ main = do
              (line
                 ""
                 [ [ (x, getProb modelVec x * step)
-                  | x <- [-5,(-5 + step) .. 5] ]
+                  | x <- [-3,(-3 + step) .. 3] ]
                 ])) $
     V.fromList models
