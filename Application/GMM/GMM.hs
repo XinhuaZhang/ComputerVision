@@ -146,7 +146,7 @@ emOneStep _ x@(EMDone _ _) _ = x
 emOneStep threshold (EMContinue oldAssignmentVec _ oldGMM) xs
   | not (V.null zeroNaNNKIdx) = EMReset (ResetIndex zeroNaNNKIdx) oldGMM
   | isJust zeroZIdx = EMReset ResetAll oldGMM
-  | newAvgLikelihood > threshold = EMDone newAvgLikelihood oldGMM
+  | newAvgLikelihood > threshold = EMDone newAvgLikelihood newGMM
   | otherwise = EMContinue newAssignmentVec newAvgLikelihood newGMM
   where !nks = getNks oldAssignmentVec
         !newMu = updateMu oldAssignmentVec nks xs
@@ -230,6 +230,9 @@ em parallelParams filePath bound threshold gmms xs =
         getModelContinueDone (EMDone _ m) = m
         getModelContinueDone _ =
           error "getModelContinueDone: There are states which are not EMContinue."
+          
+
+
 
 gmmSink
   :: ParallelParams
