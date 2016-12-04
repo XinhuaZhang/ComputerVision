@@ -24,6 +24,8 @@ import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
 import           System.Directory
 import           Text.Printf
+import Data.ByteString.Lazy as BL
+import System.IO as IO 
 
 data ResetOption
   = ResetAll
@@ -202,7 +204,7 @@ em parallelParams filePath bound threshold gmms xs =
                    (P.sum . P.map getStateLikelihood $ gmms) /
                    fromIntegral (P.length gmms)
              if isNaN avgLikelihood
-                then putStrLn "Reset"
+                then IO.putStrLn "Reset"
                 else printf "%0.2f\n" avgLikelihood
              em parallelParams filePath bound threshold newGMMs xs
   where checkStateDone EMDone{} = True
@@ -244,7 +246,7 @@ gmmSink parallelParams filePath numM bound threshold =
        if fileFlag
           then do fileSize <- liftIO $ getFileSize filePath
                   if fileSize > 0
-                     then do putStrLn $ "Read GMM data file: " P.++ filePath
+                     then do IO.putStrLn $ "Read GMM data file: " P.++ filePath
                              decodeFile filePath
                      else M.replicateM (P.length . P.head $ xs)  $
                           initializeGMM numM
@@ -264,3 +266,29 @@ gmmSink parallelParams filePath numM bound threshold =
              models
              ys
      liftIO $ em parallelParams filePath bound threshold stateGMM ys
+
+
+hPutGMM :: Handle -> [GMM] -> IO ()
+hPutGMM handle =
+  M.mapM_
+    (\x -> do
+       let y = encode x
+           len = P.fromIntegral $ BL.length y :: Word32
+       BL.hPut handle (encode len)
+       BL.hPut handle y)
+       
+readGMM :: FilePath -> IO [GMM]
+readGMM filePath =
+  withBinaryFile
+    filePath
+    ReadMode
+    (\h -> do
+       lenbs <- hGet h 4
+       let len = fromIntegral (decode lenbs :: Word32) :: Int
+       M.replicateM len (hGetGMM h))
+  where
+    hGetGMM h = do
+      sizebs <- BL.hGet h 4
+      let size = fromIntegral (decode sizebs :: Word32) :: Int
+      bs <- BL.hGet h size
+      return $ decode bs
