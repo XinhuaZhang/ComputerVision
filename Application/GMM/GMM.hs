@@ -12,9 +12,11 @@ import           Application.GMM.MixtureModel
 import           Control.DeepSeq              as DS
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
+import           Control.Monad.Parallel       as MP
 import           CV.Utility.Parallel
 import           CV.Utility.Time
 import           Data.Binary
+import           Data.ByteString.Lazy         as BL
 import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.List                    as L
@@ -23,9 +25,8 @@ import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
 import           System.Directory
+import           System.IO                    as IO
 import           Text.Printf
-import Data.ByteString.Lazy as BL
-import System.IO as IO 
 
 data ResetOption
   = ResetAll
@@ -230,8 +231,41 @@ em parallelParams filePath bound threshold gmms xs =
         getModelContinueDone (EMDone _ m) = m
         getModelContinueDone _ =
           error "getModelContinueDone: There are states which are not EMContinue."
-          
 
+
+em1
+  :: Double
+  -> GMM
+  -> ((Double, Double), (Double, Double))
+  -> VU.Vector Double
+  -> IO GMM
+em1 threshold oldGMM bound xs
+  | not (V.null zeroNaNNKIdx) = do
+    gmm <- resetGMM (ResetIndex zeroNaNNKIdx) oldGMM bound
+    em1 threshold gmm bound xs
+  | isJust zeroZIdx = do
+    gmm <- resetGMM ResetAll oldGMM bound
+    em1 threshold gmm bound xs
+  | oldAvgLikelihood > threshold = return oldGMM
+  | otherwise = em1 threshold newGMM bound xs
+  where
+    !oldAssignmentVec = getAssignmentVec oldGMM xs
+    !oldAvgLikelihood = getAvgLikelihood oldGMM xs
+    !nks = getNks oldAssignmentVec
+    !newMu = updateMu oldAssignmentVec nks xs
+    !newSigma = updateSigma oldAssignmentVec nks newMu xs
+    !newW = updateW (VU.length xs) nks
+    !zs = V.map VU.sum oldAssignmentVec
+    !zeroZIdx = V.findIndex (== 0) zs
+    !zeroNaNNKIdx = VU.convert $ VU.findIndices (\x -> x == 0 || isNaN x) nks
+    !newGMM =
+      MixtureModel
+        (numModel oldGMM)
+        (V.zipWith3
+           (\w mu sigma -> Model (w, Gaussian mu sigma))
+           (VU.convert newW)
+           (VU.convert newMu)
+           (VU.convert newSigma))
 
 
 gmmSink
@@ -270,6 +304,49 @@ gmmSink parallelParams filePath numM bound threshold =
              ys
      liftIO $ em parallelParams filePath bound threshold stateGMM ys
 
+convertConduit :: Conduit [VU.Vector Double] IO (VU.Vector Double)
+convertConduit = do
+  xs <- consume
+  let !ys = P.map VU.concat . L.transpose $ xs
+  sourceList ys
+
+gmmSink1
+  :: ParallelParams
+  -> FilePath
+  -> Int
+  -> Int
+  -> ((Double, Double), (Double, Double))
+  -> Double
+  -> Sink (VU.Vector Double) IO ()
+gmmSink1 parallelParams filePath numM numFeature bound threshold = do
+  fileFlag <- liftIO $ doesFileExist filePath
+  models <-
+    liftIO $
+    if fileFlag
+      then do
+        fileSize <- liftIO $ getFileSize filePath
+        if fileSize > 0
+          then do
+            IO.putStrLn $ "Read GMM data file: " P.++ filePath
+            decodeFile filePath
+          else M.replicateM numFeature $ initializeGMM numM bound
+      else M.replicateM numFeature $ initializeGMM numM bound
+  handle <- liftIO $ openBinaryFile filePath ReadMode
+  liftIO $ BL.hPut handle (encode (fromIntegral numFeature :: Word32))
+  go handle models
+  liftIO $ hClose handle
+  where
+    go h gmms = do
+      xs <- CL.take (batchSize parallelParams)
+      unless
+        (L.null xs)
+        (do let (as, bs) = L.splitAt (L.length xs) gmms
+            ys <-
+              liftIO . MP.sequence $
+              L.zipWith (\gmm x -> em1 threshold gmm bound x) as xs
+            liftIO $ hPutGMM h ys
+            go h bs)
+
 
 hPutGMM :: Handle -> [GMM] -> IO ()
 hPutGMM handle =
@@ -279,7 +356,7 @@ hPutGMM handle =
            len = P.fromIntegral $ BL.length y :: Word32
        BL.hPut handle (encode len)
        BL.hPut handle y)
-       
+
 readGMM :: FilePath -> IO [GMM]
 readGMM filePath =
   withBinaryFile
