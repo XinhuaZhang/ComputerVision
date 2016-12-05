@@ -5,6 +5,7 @@ import           Application.GMM.FisherKernel
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
+import           Control.Arrow
 import           Control.Monad
 import qualified Control.Monad.Parallel             as MP
 import           Control.Parallel
@@ -98,8 +99,5 @@ main = do
   --       in (label, V.fromList . Maybe.catMaybes $ vec))
     sliceConduit parallelParams =$=
     (fisherVectorConduit parallelParams gmm) =$=
-    CL.mapM
-      (\(label, xs) -> do
-         ptr <- getFeatureVecPtr . Dense . VU.toList $ xs
-         return (fromIntegral label, ptr)) =$=
+    CL.map (fromIntegral *** (getFeature . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")

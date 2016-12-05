@@ -34,6 +34,22 @@ newParameter solver c = C'parameter
   , c'parameter'p = 0.1
   , c'parameter'init_sol = nullPtr
   }
+  
+getFeature :: LibLinearFeature -> [C'feature_node]
+getFeature (Dense xs) = pairs ++ [C'feature_node (-1) 0]
+  where
+    pairs =
+      P.zipWith
+        (\i x -> C'feature_node i (realToFrac x))
+        [1 ..]
+        xs
+getFeature (Sparse xs) = (pairs ++ [C'feature_node (-1) 0])
+  where
+    pairs =
+      P.map (\(i, x) -> C'feature_node i (realToFrac x)) .
+      P.filter (\(_i, x) -> x /= 0) . P.zip [1 ..] $
+      xs
+
 
 getFeatureVecPtr :: LibLinearFeature -> IO (Ptr C'feature_node)
 getFeatureVecPtr (Dense xs) =
