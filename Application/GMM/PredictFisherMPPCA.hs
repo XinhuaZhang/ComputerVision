@@ -2,9 +2,10 @@ module Main where
 
 import           Application.GMM.ArgsParser         as Parser
 import           Application.GMM.FisherKernelMPPCA
-import           Application.GMM.MPPCA
 import           Application.GMM.MixtureModel
+import           Application.GMM.MPPCA
 import           Classifier.LibLinear
+import           Control.Arrow
 import           Control.Monad.IO.Class
 import qualified Control.Monad.Parallel             as MP
 import           Control.Parallel
@@ -73,6 +74,5 @@ main = do
                 , j <- [0 .. nx - 1] ]
           in (label, V.fromList . Maybe.catMaybes $ vec)) =$=
     (fisherVectorConduit parallelParams  mppca) =$=
-    CL.mapM (\(label, xs) ->  do ptr <- getFeatureVecPtr . Dense . VU.toList $ xs
-                                 return (fromIntegral label , ptr)) =$=
+    CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")

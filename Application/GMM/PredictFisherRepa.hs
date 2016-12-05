@@ -99,5 +99,5 @@ main = do
   --       in (label, V.fromList . Maybe.catMaybes $ vec))
     sliceConduit parallelParams =$=
     (fisherVectorConduit parallelParams gmm) =$=
-    CL.map (fromIntegral *** (getFeature . VU.toList)) =$=
+    CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")
