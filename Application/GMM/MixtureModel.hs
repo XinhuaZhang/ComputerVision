@@ -2,18 +2,22 @@
 {-# LANGUAGE DeriveGeneric #-}
 module Application.GMM.MixtureModel where
 
-import           Application.GMM.Gaussian
+import           Control.DeepSeq
+import           Control.Monad   as M
 import           Data.Binary
-import           Data.Time
-import           Data.Vector              as V
+import           Data.Vector     as V
 import           GHC.Generics
-import           Prelude                  as P
+import           Prelude         as P
 import           System.Random
 
 
 newtype Model a =
   Model (Double,a)
-  deriving (Show,Generic)
+  deriving (Generic)
+  
+instance Show a =>
+         Show (Model a) where
+  show (Model (x,y)) = "Weight: " P.++ show x P.++ " " P.++ show y
 
 instance (Binary a) =>
          Binary (Model a) where
@@ -22,10 +26,18 @@ instance (Binary a) =>
     do x <- get
        return $ Model x
 
+instance NFData a =>
+         NFData (Model a) where
+  rnf (Model (x, y)) = x `seq` y `seq` ()
+
 data MixtureModel a =
   MixtureModel {numModel :: Int
-               ,model    :: V.Vector (Model a)}
-  deriving (Show,Generic)
+               ,model :: V.Vector (Model a)}
+  deriving (Generic)
+  
+instance NFData a =>
+         NFData (MixtureModel a) where
+  rnf (MixtureModel x y) = x `seq` y `seq` ()
 
 instance (Binary a) =>
          Binary (MixtureModel a) where
@@ -37,31 +49,18 @@ instance (Binary a) =>
        xs <- get
        return (MixtureModel numModel'
                             (V.fromList xs))
+                            
+instance Show a =>
+         Show (MixtureModel a) where
+  show (MixtureModel n modelVec) =
+    "MixtureModel " P.++ show n P.++ "\n" P.++
+    V.foldl' (\s m -> s P.++ show m P.++ "\n") "" modelVec
 
 
-randomRList :: (RandomGen g,Random a)
-            => Int -> (a,a) -> g -> ([a],g)
-randomRList len bound gen
-  | len > 0 =
-    (\(xs,g) -> (x : xs,g)) $
-    randomRList (len - 1)
-                bound
-                newGen
-  | otherwise = ([],gen)
-  where (x,newGen) = randomR bound gen
-
-initializeMixture
-  :: Int -> V.Vector a -> IO (MixtureModel a)
-initializeMixture numModel xs =
-  do time <- getCurrentTime
-     let gen =
-           mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $
-           time
-         (w',gen1) =
-           randomRList numModel
-                       (1,1000)
-                       gen
-         !ws' = P.sum $ w'
-         w = V.fromList $ P.map (/ ws') w'
-         models = V.zipWith (\a b -> Model (a,b)) w xs
-     return (MixtureModel numModel models)
+initializeMixture :: Int -> V.Vector a -> IO (MixtureModel a)
+initializeMixture numModel' !xs = do
+  w <- M.replicateM numModel' (randomRIO (1, 1000))
+  let !ws = P.sum w
+      !normalizedW = V.fromList . P.map (/ ws) $ w
+      !models = V.zipWith (curry Model) normalizedW xs
+  return (MixtureModel numModel' models)

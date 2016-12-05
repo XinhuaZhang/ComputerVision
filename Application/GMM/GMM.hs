@@ -2,15 +2,12 @@
 
 module Application.GMM.GMM
   ( GMM
-  , GMMData
-  , GMMParameters
-  , assignPoint
-  , assignGMM
-  , updateMuGMM
-  , updateSigmaGMM
-  , updateWGMM
-  , gmmTestSink
+  , AssignmentVec
+  , getAssignmentVec
   , gmmSink
+  , gmmSink1
+  , convertConduit
+  , readGMM
   ) where
 
 import           Application.GMM.Gaussian
@@ -18,90 +15,60 @@ import           Application.GMM.MixtureModel
 import           Control.DeepSeq              as DS
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
-import           Control.Parallel
+import           Control.Monad.Parallel       as MP
 import           CV.Utility.Parallel
+import           CV.Utility.Time
 import           Data.Binary
+import           Data.ByteString.Lazy         as BL
 import           Data.Conduit
 import           Data.Conduit.List            as CL
+import           Data.List                    as L
 import           Data.Maybe
-import           Data.Time
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
 import           System.Directory
-import           System.Random
+import           System.IO                    as IO
 import           Text.Printf
+
+data ResetOption
+  = ResetAll
+  | ResetIndex !(V.Vector Int)
+  deriving (Show)
+
+instance NFData ResetOption where
+  rnf (ResetIndex x) = x `seq` ()
+  rnf _              = ()
+
+data EMState a
+  = EMDone !Double
+           !a
+  | EMContinue AssignmentVec
+               Double
+               !a
+  | EMReset !ResetOption
+            !a
+
+instance NFData a =>
+         NFData (EMState a) where
+  rnf (EMContinue x y z) = x `seq` y `seq` z `seq` ()
+  rnf (EMReset x _y)     = x `seq` ()
+  rnf _                  = ()
 
 type GMM = MixtureModel Gaussian
 
-type GMMData = VU.Vector Double
+type AssignmentVec = V.Vector (VU.Vector Double)
 
-type GMMParameters = VU.Vector Double
+initializeGMM :: Int -> ((Double, Double),(Double, Double)) -> IO GMM
+initializeGMM numModel' bound = do
+  gs <- V.replicateM numModel' (randomGaussian bound)
+  initializeMixture numModel' gs
 
-assignPoint :: Model Gaussian -> Double -> GMMData -> Double
-assignPoint (Model (w, g)) z x = DS.force (w * gaussian g x) / z
-
-assignGMM
-  :: ParallelParams
-  -> GMM
-  -> V.Vector GMMData
-  -> IO (V.Vector Double, V.Vector Double, Double, GMM)
-assignGMM parallelParams gmm@(MixtureModel _n modelVec) xs
-  | V.length smallVarIdx > 0 = do
-    putStrLn
-      "Variances of some Gaussians are too small. Overfitting could happen. Reset."
-    print smallVarIdx
-    newModel <- resetGMM gmm smallVarIdx
-    assignGMM parallelParams newModel xs
-  | isJust zeroZIdx =
-    error $
-    "There is one data point which is assigned to none of the model. Try to increase the initialization range of sigma and to decrease that of mu.\n" P.++
-    show (xs V.! fromJust zeroZIdx) P.++
-    "\n" P.++
-    show (probability (xs V.! fromJust zeroZIdx))
-  | V.length zeroKIdx > 0 = do
-    putStrLn
-      "There are models which have no point assigned to them! Reset them now."
-    print zeroKIdx
-    newModel <- resetGMM gmm zeroKIdx
-    assignGMM parallelParams newModel xs
-  | otherwise = return (zs, nks, likelihood, gmm)
-  where
-    !zs =
-      parMapChunkVector
-        parallelParams
-        rdeepseq
-        (\x -> V.foldl' (\s (Model (wj, mj)) -> s + (wj * gaussian mj x)) 0 modelVec)
-        xs
-    nks =
-      parMapChunkVector
-        parallelParams
-        rdeepseq
-        (\m -> V.sum . V.zipWith (assignPoint m) zs $ xs)
-        modelVec
-    likelihood = getLikelihood zs
-    zeroZIdx = V.findIndex (== 0) zs
-    zeroKIdx = V.findIndices (\x -> x == 0 || isNaN x) nks
-    smallVarIdx =
-      V.findIndices
-        (\(Model (_w, Gaussian _ _ sigmaVec)) ->
-            case VU.find (< 0.025) sigmaVec of
-              Nothing -> False
-              Just _  -> True)
-        modelVec
-    probability y = V.map (\(Model (wj, mj)) -> (wj * gaussian mj y)) modelVec
-
-resetGMM :: GMM -> V.Vector Int -> IO GMM
-resetGMM _gmm@(MixtureModel n modelVec) idx = do
-  time <- liftIO getCurrentTime
-  let gen = mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $ time
-      models' =
-        V.unfoldrN
-          (V.length idx)
-          (Just .
-           randomGaussian ((\(Model (_, gm)) -> numDims gm) $ V.head modelVec))
-          gen
-      idxModels = V.zip idx models'
+resetGMM :: ResetOption -> GMM -> ((Double, Double),(Double, Double)) -> IO GMM
+resetGMM ResetAll gmm bound = initializeGMM (numModel gmm) bound
+resetGMM (ResetIndex vec) (MixtureModel n modelVec) bound = do
+  gs <- V.replicateM (V.length vec) (randomGaussian bound)
+  let !idxModels = V.zip vec gs
   return $!
     MixtureModel
       n
@@ -110,208 +77,251 @@ resetGMM _gmm@(MixtureModel n modelVec) idx = do
          (\i ->
              let mi@(Model (wi, _)) = modelVec V.! i
              in case V.find (\(j, _) -> i == j) idxModels of
-                  Nothing       -> mi
-                  Just (_j, gm) -> Model (wi, gm)))
+                  Nothing      -> mi
+                  Just (_, gm) -> Model (wi, gm)))
 
-updateMuKGMM :: Model Gaussian
-             -> V.Vector Double
-             -> V.Vector GMMData
-             -> Double
-             -> GMMParameters
-updateMuKGMM mg zs xs nk =
-  VU.map (/ nk) .
-  V.foldl1' (VU.zipWith (+)) .
-  V.zipWith (\z x -> VU.map (* assignPoint mg z x) x) zs $
-  xs
-
-updateMuGMM
-  :: ParallelParams
-  -> GMM
-  -> V.Vector Double
-  -> V.Vector GMMData
-  -> V.Vector Double
-  -> V.Vector GMMParameters
-updateMuGMM parallelParams _gmm@(MixtureModel _n modelVec) zs xs =
-  parZipWithChunkVector
-    parallelParams
-    rdeepseq
-    (\modelK nk -> updateMuKGMM modelK zs xs nk)
-    modelVec
-
-updateSigmaKGMM
-  :: Model Gaussian
-  -> V.Vector Double
-  -> V.Vector GMMData
-  -> Double
-  -> GMMParameters
-  -> GMMParameters
-updateSigmaKGMM modelK zs xs nk newMuK = newSigma
+resetGMMList :: ((Double, Double),(Double, Double)) -> [EMState GMM] -> IO [EMState GMM]
+resetGMMList bound = P.mapM reset
   where
-    newSigma =
-      VU.map (\x -> sqrt (x / nk)) .
-      V.foldl1' (VU.zipWith (+)) .
-      V.zipWith
-        (\z x ->
-            VU.map (* assignPoint modelK z x) .
-            VU.zipWith (\mu' y -> (y - mu') ^ (2 :: Int)) newMuK $
-            x)
-        zs $
-      xs
+    reset (EMReset option gmm) = do
+      newGMM <- resetGMM option gmm bound
+      return $! EMContinue undefined undefined newGMM
+    reset gmmState = return gmmState
 
-updateSigmaGMM
-  :: ParallelParams
-  -> GMM
-  -> V.Vector Double
-  -> V.Vector GMMData
-  -> V.Vector Double
-  -> V.Vector GMMParameters
-  -> V.Vector GMMParameters
-updateSigmaGMM parallelParams (MixtureModel _n modelVec) zs xs =
-  parZipWith3ChunkVector
-    parallelParams
-    rdeepseq
-    (\modelK nk muK -> updateSigmaKGMM modelK zs xs nk muK)
-    modelVec
+{-# INLINE getAssignment #-}
 
-updateWGMM :: Int -> V.Vector Double -> V.Vector Double
-updateWGMM n = V.map (/ fromIntegral n)
+getAssignment :: GMM -> Double -> VU.Vector Double
+getAssignment (MixtureModel _n modelVec) x = VU.map (/ s) vec
+  where
+    !vec =
+      V.convert .
+      V.map
+        (\(Model (weight, gaussianModel)) -> weight * gaussian gaussianModel x) $
+      modelVec
+    !s = VU.sum vec
 
-getLikelihood :: V.Vector Double -> Double
-getLikelihood = V.foldl' (\a b -> a + log b) 0
+getAssignmentVec :: GMM -> VU.Vector Double -> AssignmentVec
+getAssignmentVec gmm = V.map (getAssignment gmm) . VU.convert
 
--- EM algorithm
-emTest
-  :: ParallelParams
-  -> V.Vector GMMData
-  -> Double
-  -> GMM
-  -> IO (GMM, Double, V.Vector Double, V.Vector GMMParameters, V.Vector GMMParameters, V.Vector Double)
-emTest parallelParams xs threshold oldModel = undefined
--- | V.or . V.map (<= 0) $ nks =
---   error "nk is zero! Try increasing the initialization range of sigma and decreasing that of mu."
--- | isNaN likelihood =
---   error "Likelihood is NaN! There must be something wrong."
--- | otherwise = return (newModel,likelihood,nks,newMu,newSigma,newW)
--- where (zs,nks,likelihood) = assignGMM parallelParams oldModel xs
---       newMu = updateMuGMM parallelParams oldModel zs xs nks
---       newSigma = updateSigmaGMM parallelParams oldModel zs xs nks newMu
---       !newW =
---         updateWGMM (V.length xs)
---                    nks
---       !newModel =
---         newMu `pseq`
---         newSigma `pseq`
---         MixtureModel (numModel oldModel) $
---         V.zipWith3
---           (\w mu sigma ->
---              Model (w
---                    ,Gaussian (numDims .
---                               snd . (\(Model x) -> x) . V.head . model $
---                               oldModel)
---                              mu
---                              sigma))
---           newW
---           newMu
---           newSigma
+getNks :: AssignmentVec -> VU.Vector Double
+getNks = V.foldl1' (VU.zipWith (+))
+
+getAvgLikelihood :: GMM -> VU.Vector Double -> Double
+getAvgLikelihood gmm xs =
+  VU.foldl' (\ss x ->
+               ss +
+               (log .
+                V.foldl' (\s (Model (weight,gaussianModel)) ->
+                            s + weight * gaussian gaussianModel x)
+                         0 .
+                model $
+                gmm))
+            0
+            xs /
+  fromIntegral (VU.length xs)
+
+
+updateMu :: AssignmentVec -> VU.Vector Double -> VU.Vector Double -> VU.Vector Double
+updateMu assignmentVec nks =
+  VU.zipWith (flip (/)) nks .
+  V.foldl1' (VU.zipWith (+)) .
+  V.zipWith (\assignment x -> VU.map (* x) assignment) assignmentVec . VU.convert
+
+updateSigma
+  :: AssignmentVec
+  -> VU.Vector Double
+  -> VU.Vector Double
+  -> VU.Vector Double
+  -> VU.Vector Double
+updateSigma assignmentVec nks newMu =
+  VU.zipWith (flip (/)) nks .
+  V.foldl1' (VU.zipWith (+)) .
+  V.zipWith
+    (\assignment x ->
+        VU.zipWith (\a mu -> a * (x - mu) ^ (2 :: Int)) assignment newMu)
+    assignmentVec .
+  VU.convert
+
+updateW :: Int -> VU.Vector Double -> VU.Vector Double
+updateW n = VU.map (/ fromIntegral n)
+
+emOneStep :: Double -> EMState GMM -> VU.Vector Double -> EMState GMM
+emOneStep _ x@(EMDone _ _) _ = x
+emOneStep threshold (EMContinue oldAssignmentVec _ oldGMM) xs
+  | not (V.null zeroNaNNKIdx) = EMReset (ResetIndex zeroNaNNKIdx) oldGMM
+  | isJust zeroZIdx = EMReset ResetAll oldGMM
+  | newAvgLikelihood > threshold = EMDone newAvgLikelihood newGMM
+  | otherwise = EMContinue newAssignmentVec newAvgLikelihood newGMM
+  where !nks = getNks oldAssignmentVec
+        !newMu = updateMu oldAssignmentVec nks xs
+        !newSigma = updateSigma oldAssignmentVec nks newMu xs
+        !newW = updateW (VU.length xs) nks
+        !zs = V.map VU.sum oldAssignmentVec
+        !zeroZIdx = V.findIndex (== 0) zs
+        !zeroNaNNKIdx =
+          VU.convert $
+          VU.findIndices (\x -> x == 0 || isNaN x)
+                         nks
+        !newGMM =
+          MixtureModel
+            (numModel oldGMM)
+            (V.zipWith3 (\w mu sigma -> Model (w,Gaussian mu sigma))
+                        (VU.convert newW)
+                        (VU.convert newMu)
+                        (VU.convert newSigma))
+        !newAssignmentVec = getAssignmentVec newGMM xs
+        !newAvgLikelihood = getAvgLikelihood newGMM xs
+emOneStep _ (EMReset _ _) _ =
+  error "emOneStep: There models needed to be reset!"
 
 em
   :: ParallelParams
   -> FilePath
-  -> V.Vector GMMData
+  -> ((Double, Double),(Double, Double))
   -> Double
-  -> Double
-  -> GMM
+  -> [EMState GMM]
+  -> [VU.Vector Double]
   -> IO ()
-em parallelParams filePath xs threshold oldLikelihood oldModel = do
-  (zs, nks, newLikelihood, intermediateModel) <-
-    assignGMM parallelParams oldModel xs
-  let newMu = updateMuGMM parallelParams intermediateModel zs xs nks
-      newSigma = updateSigmaGMM parallelParams intermediateModel zs xs nks newMu
-      !newW = updateWGMM (V.length xs) nks
-      !nD = numDims . snd . (\(Model x) -> x) . V.head . model $ intermediateModel
-      !newModel =
-        newW `par`
-        newMu `pseq`
-        MixtureModel (numModel intermediateModel) $
-        V.zipWith3
-          (\w mu' sigma' -> Model (w, Gaussian nD mu' sigma'))
-          newW
-          newMu
-          newSigma
-      !avgLikelihood =
-        (newLikelihood - (P.fromIntegral (V.length xs * nD) / 2) * log (2 * pi)) /
-        P.fromIntegral (V.length xs)
-  time <- liftIO getZonedTime
-  let timeStr = (show . localTimeOfDay . zonedTimeToLocalTime $ time) P.++ ": "
-  printf
-    (timeStr P.++ "%0.2f (%0.3f%%)\n")
-    avgLikelihood
-    ((avgLikelihood - oldLikelihood) / abs oldLikelihood * 100)
-  if avgLikelihood > threshold
-    then liftIO $ encodeFile filePath intermediateModel
-    else do
-      liftIO $ encodeFile filePath intermediateModel
-      em parallelParams filePath xs threshold avgLikelihood newModel
+em parallelParams filePath bound threshold gmms xs =
+  if P.all checkStateDone gmms
+     then do let !avgLikelihood =
+                   (P.sum . P.map getStateLikelihood $ gmms) /
+                   fromIntegral (P.length gmms)
+             printCurrentTime
+             printf "%0.2f\n" avgLikelihood
+             encodeFile filePath
+                        (P.map getModelDone gmms)
+     else do printCurrentTime
+             when (P.all checkStateContinueDone gmms)
+                  (encodeFile filePath
+                              (P.map getModelContinueDone gmms))
+             gmms1 <- resetGMMList bound gmms
+             let !gmms2 =
+                   parZipWithChunk parallelParams rdeepseq computeStateAssignmentLikelihood gmms1 xs
+                 !newGMMs =
+                   parZipWithChunk parallelParams
+                                   rdeepseq
+                                   (emOneStep threshold)
+                                   gmms2
+                                   xs
+                 !avgLikelihood =
+                   (P.sum . P.map getStateLikelihood $ gmms) /
+                   fromIntegral (P.length gmms)
+             if isNaN avgLikelihood
+                then IO.putStrLn "Reset"
+                else printf "%0.2f\n" avgLikelihood
+             em parallelParams filePath bound threshold newGMMs xs
+  where checkStateDone EMDone{} = True
+        checkStateDone _        = False
+        checkStateContinueDone EMContinue{} = True
+        checkStateContinueDone EMDone{}     = True
+        checkStateContinueDone _            = False
+        computeStateAssignmentLikelihood (EMContinue _ _ m) x =
+          let !assignment = getAssignmentVec m x
+              !avgLikelihood = getAvgLikelihood m x
+          in EMContinue assignment avgLikelihood m
+        computeStateAssignmentLikelihood EMReset{} _ =
+          error "computeStateAssignment: All reset state shold have been removed by now."
+        computeStateAssignmentLikelihood state _ = state
+        getStateLikelihood (EMContinue _ x _) = x
+        getStateLikelihood (EMDone x _) = x
+        getStateLikelihood _ =
+          error "getStateLikelihood: All reset state shold have been removed by now."
+        getModelDone (EMDone _ m) = m
+        getModelDone _ =
+          error "getModelDone: There are states which are not done yet."
+        getModelContinueDone (EMContinue _ _ m) = m
+        getModelContinueDone (EMDone _ m) = m
+        getModelContinueDone _ =
+          error "getModelContinueDone: There are states which are not EMContinue."
 
-initializeGMM :: Int -> Int -> IO GMM
-initializeGMM numModel' numDimension = do
-  putStrLn "initializeGMM"
-  time <- getCurrentTime
-  let gen = mkStdGen . P.fromIntegral . diffTimeToPicoseconds . utctDayTime $ time
-      (w', gen1) = randomRList numModel' (1, 100) gen
-      ws' = P.sum w'
-      w = V.fromList $ P.map (/ ws') w'
-      models' = V.unfoldrN numModel' (Just . randomGaussian numDimension) gen1
-      models = V.zipWith (curry Model) w models'
-  return (MixtureModel numModel' models)
 
-randomGaussian
-  :: (RandomGen g)
-  => Int -> g -> (Gaussian, g)
-randomGaussian numDimension gen =
-  (Gaussian numDimension (VU.fromList mu') (VU.fromList sigma'), newGen2)
+em1
+  :: Double
+  -> GMM
+  -> ((Double, Double), (Double, Double))
+  -> VU.Vector Double
+  -> IO GMM
+em1 threshold oldGMM bound xs
+  | not (V.null zeroNaNNKIdx) = do
+    gmm <- resetGMM (ResetIndex zeroNaNNKIdx) oldGMM bound
+    em1 threshold gmm bound xs
+  | isJust zeroZIdx = do
+    gmm <- resetGMM ResetAll oldGMM bound
+    em1 threshold gmm bound xs
+  | oldAvgLikelihood > threshold = return oldGMM
+  | otherwise = em1 threshold newGMM bound xs
   where
-    (mu', newGen1) = randomRList numDimension (0, 10) gen
-    (sigma', newGen2) = randomRList numDimension (1, 100) newGen1
+    !oldAssignmentVec = getAssignmentVec oldGMM xs
+    !oldAvgLikelihood = getAvgLikelihood oldGMM xs
+    !nks = getNks oldAssignmentVec
+    !newMu = updateMu oldAssignmentVec nks xs
+    !newSigma = updateSigma oldAssignmentVec nks newMu xs
+    !newW = updateW (VU.length xs) nks
+    !zs = V.map VU.sum oldAssignmentVec
+    !zeroZIdx = V.findIndex (== 0) zs
+    !zeroNaNNKIdx = VU.convert $ VU.findIndices (\x -> x == 0 || isNaN x) nks
+    !newGMM =
+      MixtureModel
+        (numModel oldGMM)
+        (V.zipWith3
+           (\w mu sigma -> Model (w, Gaussian mu sigma))
+           (VU.convert newW)
+           (VU.convert newMu)
+           (VU.convert newSigma))
 
-gmmTestSink :: ParallelParams
-            -> Int
-            -> Double
-            -> FilePath
-            -> Sink (V.Vector GMMData) IO ()
-gmmTestSink parallelParams numM threshold filePath = do
-  xs <- consume
-  models <- liftIO $ initializeGMM numM (VU.length . V.head . P.head $ xs)
-  let !ys = V.concat xs
-  trainedModel <-
-    liftIO $
-    M.foldM
-      (\(oldLike, oldModel) b -> do
-         (newModel, like, nks, newMu, newSigma, newW) <-
-           emTest parallelParams ys threshold oldModel
-         putStrLn $ (show (b + 1)) P.++ ":"
-         putStrLn $
-           "likelihood: " P.++ (show like) P.++ " (" P.++
-           (show $ abs $ (like - oldLike) / oldLike * 100) P.++
-           "%)"
-         -- putStrLn $ "assignment: " P.++ show (V.take 5 assignment)
-         -- putStrLn $ "zs: " P.++ show (V.take 5 zs)
-         -- putStrLn $ "nks: " P.++ show (V.take 5 nks)
-         -- putStrLn $ "newMu: " P.++ show (V.head newMu)
-         -- putStrLn $ "newSigma: " P.++ show (V.head newSigma)
-         -- putStrLn $ "newW: " P.++ show (V.take 5 newW)
-         return (like, newModel))
-      (0, models)
-      (V.generate 12 id)
-  liftIO $ encodeFile filePath trainedModel
 
-gmmSink :: ParallelParams
-        -> Int
-        -> Double
-        -> FilePath
-        -> Sink (V.Vector GMMData) IO ()
-gmmSink parallelParams numM threshold filePath = do
+gmmSink
+  :: ParallelParams
+  -> FilePath
+  -> Int
+  -> ((Double, Double),(Double, Double))
+  -> Double
+  -> Sink [VU.Vector Double] IO ()
+gmmSink parallelParams filePath numM bound threshold =
+  do xs <- consume
+     fileFlag <- liftIO $ doesFileExist filePath
+     models <-
+       liftIO $
+       if fileFlag
+          then do fileSize <- liftIO $ getFileSize filePath
+                  if fileSize > 0
+                     then do IO.putStrLn $ "Read GMM data file: " P.++ filePath
+                             decodeFile filePath
+                     else M.replicateM (P.length . P.head $ xs)  $
+                          initializeGMM numM
+                                        bound
+          else M.replicateM (P.length . P.head $ xs) $
+               initializeGMM numM
+                             bound
+     let !ys = P.map VU.concat . L.transpose $ xs
+         !stateGMM =
+           parZipWithChunk
+             parallelParams
+             rdeepseq
+             (\gmm y ->
+                let !assignment = getAssignmentVec gmm y
+                    !likelihood = getAvgLikelihood gmm y
+                in EMContinue assignment likelihood gmm)
+             models
+             ys
+     liftIO $ em parallelParams filePath bound threshold stateGMM ys
+
+convertConduit :: Conduit [VU.Vector Double] IO (VU.Vector Double)
+convertConduit = do
   xs <- consume
+  let !ys = P.map VU.concat . L.transpose $ xs
+  sourceList ys
+
+gmmSink1
+  :: ParallelParams
+  -> FilePath
+  -> Int
+  -> Int
+  -> ((Double, Double), (Double, Double))
+  -> Double
+  -> Sink (VU.Vector Double) IO ()
+gmmSink1 parallelParams filePath numM numFeature bound threshold = do
   fileFlag <- liftIO $ doesFileExist filePath
   models <-
     liftIO $
@@ -320,9 +330,48 @@ gmmSink parallelParams numM threshold filePath = do
         fileSize <- liftIO $ getFileSize filePath
         if fileSize > 0
           then do
-            putStrLn $ "Read GMM data file: " P.++ filePath
-            decodeFile filePath
-          else initializeGMM numM (VU.length . V.head . P.head $ xs)
-      else initializeGMM numM (VU.length . V.head . P.head $ xs)
-  let !ys = V.concat xs
-  liftIO $ em parallelParams filePath ys threshold 0 models
+            IO.putStrLn $ "Read GMM data file: " P.++ filePath
+            readGMM filePath
+          else M.replicateM numFeature $ initializeGMM numM bound
+      else M.replicateM numFeature $ initializeGMM numM bound
+  handle <- liftIO $ openBinaryFile filePath WriteMode
+  liftIO $ BL.hPut handle (encode (fromIntegral numFeature :: Word32))
+  go handle models
+  liftIO $ hClose handle
+  where
+    go h gmms = do
+      xs <- CL.take (numThread parallelParams)
+      unless
+        (L.null xs)
+        (do let (as, bs) = L.splitAt (L.length xs) gmms
+            ys <-
+              liftIO . MP.sequence $
+              L.zipWith (\gmm x -> em1 threshold gmm bound x) as xs
+            liftIO $ hPutGMM h ys
+            go h bs)
+
+
+hPutGMM :: Handle -> [GMM] -> IO ()
+hPutGMM handle =
+  M.mapM_
+    (\x -> do
+       let y = encode x
+           len = P.fromIntegral $ BL.length y :: Word32
+       BL.hPut handle (encode len)
+       BL.hPut handle y)
+
+readGMM :: FilePath -> IO [GMM]
+readGMM filePath =
+  withBinaryFile
+    filePath
+    ReadMode
+    (\h -> do
+       lenbs <- hGet h 4
+       let len = fromIntegral (decode lenbs :: Word32) :: Int
+       M.replicateM len (hGetGMM h))
+  where
+    hGetGMM h = do
+      sizebs <- BL.hGet h 4
+      let size = fromIntegral (decode sizebs :: Word32) :: Int
+      bs <- BL.hGet h size
+      return $ decode bs

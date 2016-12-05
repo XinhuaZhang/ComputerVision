@@ -5,7 +5,8 @@ import           Application.GMM.FisherKernel
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
-import           Control.Monad.IO.Class
+import           Control.Arrow
+import           Control.Monad
 import qualified Control.Monad.Parallel             as MP
 import           Control.Parallel
 import           CV.Array.LabeledArray
@@ -30,13 +31,34 @@ import           Foreign.Ptr
 import           Prelude                            as P
 import           System.Environment
 
+
+sliceConduit :: ParallelParams
+             -> Conduit (LabeledArray DIM3 Double) IO (Int, [VU.Vector Double])
+sliceConduit parallelParams =
+  do xs <- CL.take (Parallel.batchSize parallelParams)
+     unless (P.null xs)
+            (do let ys =
+                      parMapChunk
+                        parallelParams
+                        rdeepseq
+                        (\(LabeledArray label arr) ->
+                           let (Z :. nf :. ny :. nx) = extent arr
+                           in (label
+                              ,P.map (\i ->
+                                        toUnboxed . computeS $
+                                        R.slice arr (Z :. i :. All :. All)) $
+                               [0 .. nf - 1]))
+                        xs
+                sourceList ys
+                sliceConduit parallelParams)
+
 main = do
   args <- getArgs
   if P.null args
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  gmm <- decodeFile (gmmFile params) :: IO GMM
+  gmm <- readGMM (gmmFile params) :: IO [GMM]
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
@@ -54,25 +76,28 @@ main = do
         makeFilter filterParams :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
   print params
   readLabeledImagebinarySource (inputFile params) $$
-    magnitudeLabeledArrayConduit' parallelParams filters (downsampleFactor params) =$=
-    CL.map
-      (\(LabeledArray label arr) ->
-          let (Z :. nf :. ny :. nx) = extent arr
-              r = (fromIntegral $ nx ^ 2 + ny ^ 2) / 4
-              centerX = fromIntegral nx / 2
-              centerY = fromIntegral ny / 2
-              vec =
-                P.map
-                  (\(a, b) ->
-                      if (fromIntegral b - centerX) ^ 2 + (fromIntegral a - centerY) ^ 2 < r
-                        then Just . toUnboxed . computeS $
-                             R.slice arr (Z :. All :. a :. b)
-                        else Nothing) $
-                [ (i, j)
-                | i <- [0 .. ny - 1]
-                , j <- [0 .. nx - 1] ]
-          in (label, V.fromList . Maybe.catMaybes $ vec)) =$=
-    (fisherVectorConduit parallelParams  gmm) =$=
-    CL.mapM (\(label, xs) ->  do ptr <- getFeatureVecPtr . Dense . VU.toList $ xs
-                                 return (fromIntegral label , ptr)) =$=
+    magnitudeLabeledArrayConduit'
+      parallelParams
+      filters
+      (downsampleFactor params) =$=
+  -- CL.map
+  --   (\(LabeledArray label arr) ->
+  --       let (Z :. nf :. ny :. nx) = extent arr
+  --           r = (fromIntegral $ nx ^ 2 + ny ^ 2) / 4
+  --           centerX = fromIntegral nx / 2
+  --           centerY = fromIntegral ny / 2
+  --           vec =
+  --             P.map
+  --               (\(a, b) ->
+  --                   if (fromIntegral b - centerX) ^ 2 + (fromIntegral a - centerY) ^ 2 < r
+  --                     then Just . toUnboxed . computeS $
+  --                          R.slice arr (Z :. All :. a :. b)
+  --                     else Nothing) $
+  --             [ (i, j)
+  --             | i <- [0 .. ny - 1]
+  --             , j <- [0 .. nx - 1] ]
+  --       in (label, V.fromList . Maybe.catMaybes $ vec))
+    sliceConduit parallelParams =$=
+    (fisherVectorConduit parallelParams gmm) =$=
+    CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")

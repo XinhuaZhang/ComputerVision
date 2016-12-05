@@ -11,28 +11,22 @@ import           Graphics.Rendering.Chart.Easy
 import           Prelude                                as P
 import           System.Environment
 
-gaussian' :: Gaussian -> Int -> Double -> Double
-gaussian' (Gaussian numDims' mu' sigma') ind x =
-  exp (-(x - m) ^ 2 / 2 / s) / (s * sqrt (2 * pi))
-  where
-    s = sigma' VU.! ind
-    m = mu' VU.! ind
-
-getProb :: V.Vector (Model Gaussian) -> Int -> Double -> Double
-getProb modelVec ind x =
-  V.foldl' (\s (Model (w, gm)) -> s + w * gaussian' gm ind x) 0 modelVec
+getProb :: V.Vector (Model Gaussian) -> Double -> Double
+getProb modelVec x =
+  V.foldl' (\s (Model (w, gm)) -> s + w * gaussian gm x) 0 modelVec
 
 main = do
   (filePath:_) <- getArgs
-  (MixtureModel n modelVec) <- decodeFile filePath :: IO GMM
-  V.mapM_
-    (\i ->
+  models <- readGMM filePath :: IO [GMM]
+  let step = 0.01
+  V.imapM_
+    (\i (MixtureModel _ modelVec) ->
         toFile def (show i P.++ ".png") $
         do layout_title .= "PDF"
            plot
              (line
                 ""
-                [ [ (x, getProb modelVec i x)
-                  | x <- [-10,-9.9 .. 10] ]
+                [ [ (x, getProb modelVec x * step)
+                  | x <- [-3,(-3 + step) .. 3] ]
                 ])) $
-    V.generate n id
+    V.fromList models
