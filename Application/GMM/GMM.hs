@@ -145,7 +145,9 @@ updateSigma assignmentVec nks newMu =
   VU.convert
 
 updateW :: Int -> VU.Vector Double -> VU.Vector Double
-updateW n = VU.map (/ fromIntegral n)
+updateW n w = VU.map (/ VU.sum vec) vec
+  where
+    !vec = VU.map (/ fromIntegral n) w
 
 emOneStep :: Double -> EMState GMM -> VU.Vector Double -> EMState GMM
 emOneStep _ x@(EMDone _ _) _ = x
