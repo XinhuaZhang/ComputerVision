@@ -67,7 +67,7 @@ main = do
       numM = numGaussian params
       bound = ((0, 10), (0.1, 100))
       numLayer = 2
-      numFeature = numLayer  * P.sum . P.map P.length $ filterParamsList
+      numFeature = numLayer  * (P.sum . P.map P.length $ filterParamsList)
   print params
   fileFlag <- doesFileExist filePath
   gmms <-
