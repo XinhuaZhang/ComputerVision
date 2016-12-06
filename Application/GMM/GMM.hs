@@ -424,20 +424,27 @@ gmmSink2
   -> ((Double, Double),(Double, Double))
   -> Double
   -> Sink [VU.Vector Double] IO Handle
-gmmSink2 parallelParams handle gmms bound threshold =
-  do xs <- consume
-     let !ys = P.map VU.concat . L.transpose $ xs
-         !stateGMM =
-           parZipWithChunk
-             parallelParams
-             rdeepseq
-             (\gmm y ->
-                let !assignment = getAssignmentVec gmm y
-                    !likelihood = getAvgLikelihood gmm y
-                in EMContinue assignment likelihood gmm)
-             gmms
-             ys
-     liftIO $ em2 parallelParams handle bound threshold stateGMM ys
+gmmSink2 parallelParams handle gmms bound threshold = do
+  xs <- consume
+  when
+    ((P.length . P.head $ xs) /= P.length gmms)
+    (liftIO . IO.putStrLn $
+     "The number of input features doesn't equal to the number of GMM models. " P.++
+     show (P.length . P.head $ xs) P.++
+     " vs " P.++
+     show (P.length gmms))
+  let !ys = P.map VU.concat . L.transpose $ xs
+      !stateGMM =
+        parZipWithChunk
+          parallelParams
+          rdeepseq
+          (\gmm y ->
+              let !assignment = getAssignmentVec gmm y
+                  !likelihood = getAvgLikelihood gmm y
+              in EMContinue assignment likelihood gmm)
+          gmms
+          ys
+  liftIO $ em2 parallelParams handle bound threshold stateGMM ys
 
 
 hPutGMM :: Handle -> [GMM] -> IO ()
