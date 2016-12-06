@@ -1,10 +1,11 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies      #-}
 
 module CV.Filter.PolarSeparableFilter where
 
-import           CV.Filter
+
 import           CV.Filter.GaussianFilter
 import           CV.Image                 as IM
 import           CV.Utility.Coordinates
@@ -119,47 +120,61 @@ getFilterFunc PolarSeparableFilterParams {getName = Pinwheels} = pinwheels
 getFilterNum :: PolarSeparableFilterParamsSet -> Int
 getFilterNum (PolarSeparableFilterParamsSet _ _ scale rs as _) =
   (P.product . P.map Set.size $ [rs, as]) * Set.size scale
+  
 
-instance Filter (PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))) where
-  type Input (PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))) = R.Array U DIM3 Double
-  type Output (PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))) = R.Array D DIM3 (C.Complex Double) 
-  type FilterParameter (PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))) = PolarSeparableFilterParams
-  makeFilter params@(PolarSeparableFilterParams (ny, nx) downSampleFactor scale rf af _name) =
-    PolarSeparableFilter params .
-    dft . listArray ((0, 0), (ny' - 1, nx' - 1)) . pixelList $
-    (IM.makeFilter ny' nx' (getFilterFunc params scale rf af) :: ComplexImage)
-    where
-      ny' = div ny downSampleFactor
-      nx' = div nx downSampleFactor
-  displayFilter params@(PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af _name) =
-    IM.makeImage ny' nx' (getFilterFunc params scale rf af) :: ComplexImage
-    where
-      ny' = div ny downsampleFactor
-      nx' = div nx downsampleFactor
-  applyFilterFixedSize (PolarSeparableFilter params filter') = filterFunc (getDownsampleFactor params) filter'
-  applyFilterVariedSize (PolarSeparableFilterParams _ downsampleFactor scale rf af name) inputArr =
-    filterFunc downsampleFactor filter' inputArr
-    where
-      (Z :. _ :. ny :. nx) = extent inputArr
-      (PolarSeparableFilter _ !filter') =
-        CV.Filter.makeFilter
-          (PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af name) :: PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))
+makeFilter :: PolarSeparableFilterParams -> PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))
+makeFilter params@(PolarSeparableFilterParams (ny, nx) downSampleFactor scale rf af _name) =
+  PolarSeparableFilter params .
+  dft . listArray ((0, 0), (ny' - 1, nx' - 1)) . pixelList $
+  (IM.makeFilter ny' nx' (getFilterFunc params scale rf af) :: ComplexImage)
+  where
+    ny' = div ny downSampleFactor
+    nx' = div nx downSampleFactor
+    
+displayFilter :: PolarSeparableFilterParams -> ComplexImage
+displayFilter params@(PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af _name) =
+  IM.makeImage ny' nx' (getFilterFunc params scale rf af) :: ComplexImage
+  where
+    ny' = div ny downsampleFactor
+    nx' = div nx downsampleFactor
+    
+applyFilterFixedSize
+  :: (Source s (C.Complex Double))
+  => PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double) 
+applyFilterFixedSize (PolarSeparableFilter params filter') =
+  filterFunc (getDownsampleFactor params) filter'
+
+applyFilterVariedSize
+  :: (Source s (C.Complex Double))
+  => PolarSeparableFilterParams
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double) 
+applyFilterVariedSize (PolarSeparableFilterParams _ downsampleFactor scale rf af name) inputArr =
+  filterFunc downsampleFactor filter' inputArr
+  where
+    (Z :. _ :. ny :. nx) = extent inputArr
+    (PolarSeparableFilter _ !filter') =
+      CV.Filter.PolarSeparableFilter.makeFilter
+        (PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af name) :: PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))  
 
 {-# INLINE filterFunc #-}
 
 filterFunc
-  :: Int
+  :: (Source s (C.Complex Double))
+  => Int
   -> CArray (Int, Int) (C.Complex Double)
-  -> R.Array U DIM3 Double
+  -> R.Array s DIM3 (C.Complex Double)
   -> R.Array D DIM3 (C.Complex Double)
 filterFunc downsampleFactor filter' inputArr =
   threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
   where
-    !downsampledInputArr =
+    !cArr =
       if downsampleFactor == 1
-        then inputArr
-        else computeS $ RU.downsample [downsampleFactor, downsampleFactor, 1] inputArr
-    !cArr = threeDRArray2CArray (R.map (:+ 0) downsampledInputArr)
+        then threeDRArray2CArray inputArr
+        else threeDRArray2CArray $
+             RU.downsample [downsampleFactor, downsampleFactor, 1] inputArr
     !dftCArr = dftN [1, 2] cArr
     !rArr = threeDCArray2RArray dftCArr
     !filterArr = twoDCArray2RArray filter'
