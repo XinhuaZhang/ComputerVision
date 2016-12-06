@@ -66,7 +66,7 @@ generateMultilayerPSFParamsSet =
         [ a : bs
         | bs <- bss
         , a <- as ])
-    [] .
+    [[]] .
   L.map generatePSFParamsSet 
   
 
