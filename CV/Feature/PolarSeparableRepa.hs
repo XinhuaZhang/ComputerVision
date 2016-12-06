@@ -6,7 +6,6 @@ import           Control.Monad.IO.Class             (liftIO)
 import           CV.Array.LabeledArray
 import           CV.Filter
 import           CV.Filter.PolarSeparableFilter
-import           CV.Filter.PolarSeparableFilterRepa
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility        as RU
 import           Data.Array.Repa                    as R
@@ -15,8 +14,32 @@ import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.Set                           as S
 import           Prelude                            as P
+import           Data.Array.CArray        as CA
+import Data.List as L
 
-magnitudeConduit
+
+magnitudeFixedSizeConduit
+  :: ParallelParams
+  -> [[PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))]]
+  -> Int
+  -> Conduit (R.Array U DIM3 Double) IO (R.Array U DIM3 Double)
+magnitudeFixedSizeConduit parallelParams filters factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (P.null xs)
+    (do let ys = undefined
+        undefined)
+        
+multiLayerMagnitude
+  :: [PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))]
+  -> Int
+  -> R.Array U DIM3 Double
+  -> [VU.Vector Double]
+multiLayerMagnitude filters facotr img = L.tail . L.scanl' (undefined) img filters
+
+{-
+        
+        magnitudeconduit
   :: ParallelParams
   -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
   -> Int
@@ -185,4 +208,4 @@ complexConduit parallelParams filter' factor = do
         sourceList ys
         complexConduit parallelParams filter' factor)
   where
-    scale = getScale . getParams $ filter'
+    scale = getScale . getParams $ filter'-}
