@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies      #-}
 
@@ -7,16 +7,17 @@ module CV.Filter.PolarSeparableFilter where
 
 
 import           CV.Filter.GaussianFilter
-import           CV.Image                 as IM
+import           CV.Image                    as IM
 import           CV.Utility.Coordinates
-import           Data.Array.CArray        as CA
-import           Data.Array.Repa          as R
-import           Data.Complex             as C
-import           Data.Set                 as Set
+import           CV.Utility.RepaArrayUtility as RU
+import           Data.Array.CArray           as CA
+import           Data.Array.Repa             as R
+import           Data.Complex                as C
+import           Data.List                   as L
+import           Data.Set                    as Set
 import           Foreign.Storable
 import           Math.FFT
-import           Prelude                  as P
-import           CV.Utility.RepaArrayUtility        as RU
+import           Prelude                     as P
 
 data PolarSeparableFilterName
   = Fans
@@ -54,6 +55,20 @@ generatePSFParamsSet (PolarSeparableFilterParamsSet (ny, nx) downsampleFactor sc
   | scale <- toAscList scaleSet
   , rf <- toAscList rfSet
   , af <- toAscList afSet ]
+
+-- Input: [layer1, layer2 ...]
+generateMultilayerPSFParamsSet :: [PolarSeparableFilterParamsSet]
+                               -> [[PolarSeparableFilterParams]]
+generateMultilayerPSFParamsSet =
+  L.map L.reverse .
+  L.foldl'
+    (\bss as ->
+        [ a : bs
+        | bs <- bss
+        , a <- as ])
+    [] .
+  L.map generatePSFParamsSet 
+  
 
 {-# INLINE ejx #-}
 
@@ -120,7 +135,7 @@ getFilterFunc PolarSeparableFilterParams {getName = Pinwheels} = pinwheels
 getFilterNum :: PolarSeparableFilterParamsSet -> Int
 getFilterNum (PolarSeparableFilterParamsSet _ _ scale rs as _) =
   (P.product . P.map Set.size $ [rs, as]) * Set.size scale
-  
+
 
 makeFilter :: PolarSeparableFilterParams -> PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))
 makeFilter params@(PolarSeparableFilterParams (ny, nx) downSampleFactor scale rf af _name) =
@@ -130,14 +145,14 @@ makeFilter params@(PolarSeparableFilterParams (ny, nx) downSampleFactor scale rf
   where
     ny' = div ny downSampleFactor
     nx' = div nx downSampleFactor
-    
+
 displayFilter :: PolarSeparableFilterParams -> ComplexImage
 displayFilter params@(PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af _name) =
   IM.makeImage ny' nx' (getFilterFunc params scale rf af) :: ComplexImage
   where
     ny' = div ny downsampleFactor
     nx' = div nx downsampleFactor
-    
+
 applyFilterFixedSize
   :: (Source s (C.Complex Double))
   => PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))

@@ -6,8 +6,10 @@ module Application.GMM.GMM
   , getAssignmentVec
   , gmmSink
   , gmmSink1
-  , convertConduit
+  , gmmSink2
+  , convertConduit1
   , readGMM
+  , initializeGMM
   ) where
 
 import           Application.GMM.Gaussian
@@ -269,7 +271,69 @@ em1 threshold oldGMM bound xs
            (VU.convert newW)
            (VU.convert newMu)
            (VU.convert newSigma))
+           
 
+em2
+  :: ParallelParams
+  -> Handle
+  -> ((Double, Double),(Double, Double))
+  -> Double
+  -> [EMState GMM]
+  -> [VU.Vector Double]
+  -> IO Handle
+em2 parallelParams handle bound threshold gmms xs =
+  if P.all checkStateDone gmms
+    then do
+      let !avgLikelihood =
+            (P.sum . P.map getStateLikelihood $ gmms) /
+            fromIntegral (P.length gmms)
+      printCurrentTime
+      printf "%0.2f\n" avgLikelihood
+      hPutGMM handle (P.map getModelDone gmms)
+      return handle
+    else do
+      printCurrentTime
+      gmms1 <- resetGMMList bound gmms
+      let !gmms2 =
+            parZipWithChunk
+              parallelParams
+              rdeepseq
+              computeStateAssignmentLikelihood
+              gmms1
+              xs
+          !newGMMs =
+            parZipWithChunk
+              parallelParams
+              rdeepseq
+              (emOneStep threshold)
+              gmms2
+              xs
+          !avgLikelihood =
+            (P.sum . P.map getStateLikelihood $ gmms) /
+            fromIntegral (P.length gmms)
+      if isNaN avgLikelihood
+        then IO.putStrLn "Reset"
+        else printf "%0.2f\n" avgLikelihood
+      em2 parallelParams handle bound threshold newGMMs xs
+  where
+    checkStateDone EMDone {} = True
+    checkStateDone _ = False
+    computeStateAssignmentLikelihood (EMContinue _ _ m) x =
+      let !assignment = getAssignmentVec m x
+          !avgLikelihood = getAvgLikelihood m x
+      in EMContinue assignment avgLikelihood m
+    computeStateAssignmentLikelihood EMReset {} _ =
+      error
+        "computeStateAssignment: All reset state shold have been removed by now."
+    computeStateAssignmentLikelihood state _ = state
+    getStateLikelihood (EMContinue _ x _) = x
+    getStateLikelihood (EMDone x _) = x
+    getStateLikelihood _ =
+      error
+        "getStateLikelihood: All reset state shold have been removed by now."
+    getModelDone (EMDone _ m) = m
+    getModelDone _ =
+      error "getModelDone: There are states which are not done yet."
 
 gmmSink
   :: ParallelParams
@@ -307,8 +371,8 @@ gmmSink parallelParams filePath numM bound threshold =
              ys
      liftIO $ em parallelParams filePath bound threshold stateGMM ys
 
-convertConduit :: Conduit [VU.Vector Double] IO (VU.Vector Double)
-convertConduit = do
+convertConduit1 :: Conduit [VU.Vector Double] IO (VU.Vector Double)
+convertConduit1 = do
   xs <- consume
   let !ys = P.map VU.concat . L.transpose $ xs
   sourceList ys
@@ -349,6 +413,29 @@ gmmSink1 parallelParams filePath numM numFeature bound threshold = do
               L.zipWith (\gmm x -> em1 threshold gmm bound x) as xs
             liftIO $ hPutGMM h ys
             go h bs)
+            
+
+gmmSink2
+  :: ParallelParams
+  -> Handle
+  -> [GMM]
+  -> ((Double, Double),(Double, Double))
+  -> Double
+  -> Sink [VU.Vector Double] IO Handle
+gmmSink2 parallelParams handle gmms bound threshold =
+  do xs <- consume
+     let !ys = P.map VU.concat . L.transpose $ xs
+         !stateGMM =
+           parZipWithChunk
+             parallelParams
+             rdeepseq
+             (\gmm y ->
+                let !assignment = getAssignmentVec gmm y
+                    !likelihood = getAvgLikelihood gmm y
+                in EMContinue assignment likelihood gmm)
+             gmms
+             ys
+     liftIO $ em2 parallelParams handle bound threshold stateGMM ys
 
 
 hPutGMM :: Handle -> [GMM] -> IO ()
