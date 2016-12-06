@@ -65,7 +65,7 @@ main = do
         generateMultilayerPSFParamsSet [filterParamsSet1, filterParamsSet2]
       filePath = gmmFile params
       numM = numGaussian params
-      bound = ((0, 10), (0.1, 100))
+      bound = ((0, 500), (0.1, 1000))
       numLayer = 2
       numFeature = numLayer  * (P.sum . P.map P.length $ filterParamsList)
   print params
@@ -89,7 +89,7 @@ main = do
        M.foldM_
          (\handle (models, filterParams) ->
              readLabeledImagebinarySource (inputFile params) $$
-             CL.map (\(LabeledArray _ arr) -> arr) =$=
+             CL.map (\(LabeledArray _ arr) -> computeS $ R.map (*100) arr) =$=
              magnitudeVariedSizeConduit
                parallelParams
                filterParams

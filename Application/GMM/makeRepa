@@ -5,8 +5,8 @@ FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-thres
 OBJPATH="../../Classifier/LibLinear/"
 LIBS="-lstdc++ -llapack -lblas -lgomp"
 ghc $FLAG $LIBS -i../../ TrainGMMRepa.hs -o trainGMMRepa
-ghc $FLAG $LIBS -i../../ TrainMPPCARepa.hs -o trainMPPCARepa
-ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisherRepa.hs -o trainFisherRepa
-ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherRepa.hs -o predictFisherRepa
-ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisherMPPCA.hs -o trainFisherMPPCA
-ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherMPPCA.hs -o predictFisherMPPCA
+## ghc $FLAG $LIBS -i../../ TrainMPPCARepa.hs -o trainMPPCARepa
+## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisherRepa.hs -o trainFisherRepa
+## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherRepa.hs -o predictFisherRepa
+## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisherMPPCA.hs -o trainFisherMPPCA
+## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherMPPCA.hs -o predictFisherMPPCA
