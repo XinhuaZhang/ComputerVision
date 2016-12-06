@@ -1,211 +1,152 @@
 {-# LANGUAGE BangPatterns #-}
 module CV.Feature.PolarSeparableRepa where
 
-import           Control.Monad                      as M
-import           Control.Monad.IO.Class             (liftIO)
+import           Control.Monad                  as M
 import           CV.Array.LabeledArray
-import           CV.Filter
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel
-import           CV.Utility.RepaArrayUtility        as RU
-import           Data.Array.Repa                    as R
-import           Data.Complex                       as C
+import           CV.Utility.RepaArrayUtility    as RU
+import           Data.Array.CArray              as CA
+import           Data.Array.Repa                as R
+import           Data.Complex                   as C
 import           Data.Conduit
-import           Data.Conduit.List                  as CL
-import           Data.Set                           as S
-import           Prelude                            as P
-import           Data.Array.CArray        as CA
-import Data.List as L
-
+import           Data.Conduit.List              as CL
+import           Data.List                      as L
+import           Data.Vector.Unboxed            as VU
 
 magnitudeFixedSizeConduit
   :: ParallelParams
   -> [[PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))]]
   -> Int
-  -> Conduit (R.Array U DIM3 Double) IO (R.Array U DIM3 Double)
+  -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
 magnitudeFixedSizeConduit parallelParams filters factor = do
   xs <- CL.take (batchSize parallelParams)
   unless
-    (P.null xs)
-    (do let ys = undefined
-        undefined)
-        
-multiLayerMagnitude
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\x ->
+                    L.concatMap
+                      (\filter' -> multiLayerMagnitudeFixedSize filter' factor x)
+                      filters)
+                xs
+        sourceList ys
+        magnitudeFixedSizeConduit parallelParams filters factor)
+
+magnitudeVariedSizeConduit
+  :: ParallelParams
+  -> [[PolarSeparableFilterParams]]
+  -> Int
+  -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
+magnitudeVariedSizeConduit parallelParams filterParamsList factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\x ->
+                    L.concatMap
+                      (\filterParams ->
+                          multiLayerMagnitudeVariedSize filterParams factor x)
+                      filterParamsList)
+                xs
+        sourceList ys
+        magnitudeVariedSizeConduit parallelParams filterParamsList factor)
+
+
+labeledArrayMagnitudeFixedSizeConduit
+  :: ParallelParams
+  -> [[PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))]]
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) IO (Int,[VU.Vector Double])
+labeledArrayMagnitudeFixedSizeConduit parallelParams filters factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray label x) ->
+                    ( label
+                    , L.concatMap
+                        (\filter' ->
+                            multiLayerMagnitudeFixedSize filter' factor x)
+                        filters))
+                xs
+        sourceList ys
+        labeledArrayMagnitudeFixedSizeConduit parallelParams filters factor)
+
+
+labeledArrayMagnitudeVariedSizeConduit
+  :: ParallelParams
+  -> [[PolarSeparableFilterParams]]
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) IO (Int,[VU.Vector Double])
+labeledArrayMagnitudeVariedSizeConduit parallelParams filterParamsList factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray label x) ->
+                    ( label
+                    , L.concatMap
+                        (\filterParams ->
+                            multiLayerMagnitudeVariedSize filterParams factor x)
+                        filterParamsList))
+                xs
+        sourceList ys
+        labeledArrayMagnitudeVariedSizeConduit parallelParams filterParamsList factor)
+
+{-# INLINE multiLayerMagnitudeFixedSize #-}
+
+multiLayerMagnitudeFixedSize
   :: [PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))]
   -> Int
   -> R.Array U DIM3 Double
   -> [VU.Vector Double]
-multiLayerMagnitude filters facotr img = L.tail . L.scanl' (undefined) img filters
+multiLayerMagnitudeFixedSize filters facotr img =
+  L.concatMap
+    (\arr ->
+        let !(Z :. nf :. _ :. _) = extent arr
+            !downSampledArr = RU.downsample [facotr, facotr, 1] arr
+            !magnitudeArr = R.map C.magnitude downSampledArr
+        in [ toUnboxed . computeUnboxedS . R.slice magnitudeArr $
+            (Z :. k :. All :. All)
+           | k <- [0 .. nf - 1] ]) .
+  L.tail .
+  L.scanl'
+    (\arr filter' -> computeUnboxedS . applyFilterFixedSize filter' $ arr)
+    (computeUnboxedS . R.map (:+ 0) $ img) $
+  filters
 
-{-
-        
-        magnitudeconduit
-  :: ParallelParams
-  -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
+
+{-# INLINE multiLayerMagnitudeVariedSize #-}
+
+multiLayerMagnitudeVariedSize
+  :: [PolarSeparableFilterParams]
   -> Int
-  -> Conduit (R.Array U DIM3 Double) IO (R.Array U DIM3 Double)
-magnitudeConduit parallelParams filter' factor = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (P.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rseq
-                (\x' ->
-                    let (Z :. nf :. ny :. nx) = extent x'
-                        (nx':ny':_) = P.map (`div` factor) [nx, ny]
-                        nxNew =
-                          nx' -
-                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
-                        nyNew =
-                          ny' -
-                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
-                        y' = applyFilter filter' x'
-                        (Z :. newNF :. _ :. _) = extent y'
-                        z =
-                          if factor == 1
-                            then y'
-                            else RU.downsample [factor, factor, 1] y'
-                        !result =
-                          computeUnboxedS .
-                          R.map C.magnitude 
-                          -- crop
-                          --   [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
-                          --   [nxNew, nyNew, newNF]
-                          $
-                          z
-                    in result)
-                xs
-        sourceList ys
-        magnitudeConduit parallelParams filter' factor)
-  where
-    scale = getScale . getParams $ filter'
-    
-magnitudeConduit'
-  :: ParallelParams
-  -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
-  -> Int
-  -> Conduit (R.Array U DIM3 Double) IO (R.Array U DIM3 Double)
-magnitudeConduit' parallelParams filter' factor = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (P.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rseq
-                (\x' ->
-                    let (Z :. nf :. ny :. nx) = extent x'
-                        (nx':ny':_) = P.map (`div` factor) [nx, ny]
-                        nxNew =
-                          nx' -
-                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
-                        nyNew =
-                          ny' -
-                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
-                        y' = applyFilter' filter' x'
-                        (Z :. newNF :. _ :. _) = extent y'
-                        z =
-                          if factor == 1
-                            then y'
-                            else RU.downsample [factor, factor, 1] y'
-                        !result = 
-                          computeUnboxedS .
-                          R.map C.magnitude 
-                          -- crop
-                          --   [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
-                          --   [nxNew, nyNew, newNF] 
-                          $
-                          z
-                    in result)
-                xs
-        sourceList ys
-        magnitudeConduit' parallelParams filter' factor)
-  where
-    scale = getScale . getParams $ filter'
-
-
-magnitudeLabeledArrayConduit'
-  :: ParallelParams
-  -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
-  -> Int
-  -> Conduit (LabeledArray DIM3 Double) IO (LabeledArray DIM3 Double)
-magnitudeLabeledArrayConduit' parallelParams filter' factor = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (P.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rseq
-                (\(LabeledArray label x') ->
-                    let (Z :. nf :. ny :. nx) = extent x'
-                        (nx':ny':_) = P.map (`div` factor) [nx, ny]
-                        nxNew =
-                          nx' -
-                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
-                        nyNew =
-                          ny' -
-                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
-                        y' = applyFilter' filter' x'
-                        (Z :. newNF :. _ :. _) = extent y'
-                        z =
-                          if factor == 1
-                            then y'
-                            else RU.downsample [factor, factor, 1] y'
-                        !result = LabeledArray label .
-                          computeUnboxedS .
-                          R.map C.magnitude 
-                          -- crop
-                          --   [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
-                          --   [nxNew, nyNew, newNF]
-                          $
-                          z
-                    in result)
-                xs
-        sourceList ys
-        magnitudeLabeledArrayConduit' parallelParams filter' factor)
-  where
-    scale = getScale . getParams $ filter'
-
-
-complexConduit
-  :: ParallelParams -> PolarSeparableFilter (R.Array U DIM3 (Complex Double))
-  -> Int
-  -> Conduit (R.Array U DIM3 Double) IO (R.Array U DIM3 (Complex Double))
-complexConduit parallelParams filter' factor = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (P.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rseq
-                (\x' ->
-                    let (Z :. nf :. ny :. nx) = extent x'
-                        (nx':ny':_) = P.map (`div` factor) [nx, ny]
-                        nxNew =
-                          nx' -
-                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
-                        nyNew =
-                          ny' -
-                          div ((P.round . P.head . S.toDescList $ scale) * 4) factor
-                        y' = applyFilter filter' x'
-                        z =
-                          if factor == 1
-                            then y'
-                            else RU.downsample [factor, factor, 1] y'
-                        !result =
-                          computeUnboxedS 
-                          -- crop
-                          --   [div (nx' - nxNew) 2, div (ny' - nyNew) 2, 0]
-                          --   [nxNew, nyNew, nf]
-                          $
-                          z
-                    in result)
-                xs
-        sourceList ys
-        complexConduit parallelParams filter' factor)
-  where
-    scale = getScale . getParams $ filter'-}
+  -> R.Array U DIM3 Double
+  -> [VU.Vector Double]
+multiLayerMagnitudeVariedSize filterParamsList facotr img =
+  L.concatMap
+    (\arr ->
+        let !(Z :. nf :. _ :. _) = extent arr
+            !downSampledArr = RU.downsample [facotr, facotr, 1] arr
+            !magnitudeArr = R.map C.magnitude downSampledArr
+        in [ toUnboxed . computeUnboxedS . R.slice magnitudeArr $
+            (Z :. k :. All :. All)
+           | k <- [0 .. nf - 1] ]) .
+  L.tail .
+  L.scanl'
+    (\arr filterParams ->
+        computeUnboxedS . applyFilterVariedSize filterParams $ arr)
+    (computeUnboxedS . R.map (:+ 0) $ img) $
+  filterParamsList
