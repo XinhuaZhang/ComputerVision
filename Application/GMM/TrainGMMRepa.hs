@@ -60,13 +60,14 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
+      filterParamsSetList = [filterParamsSet1, filterParamsSet2]
       filterParamsList =
         splitList (Parser.numThread params) $
-        generateMultilayerPSFParamsSet [filterParamsSet1, filterParamsSet2]
+        generateMultilayerPSFParamsSet filterParamsSetList
       filePath = gmmFile params
       numM = numGaussian params
       bound = ((0, 10), (0.1, 100))
-      numLayer = 2
+      numLayer = P.length filterParamsSetList
       numFeature = numLayer  * (P.sum . P.map P.length $ filterParamsList)
   print params
   fileFlag <- doesFileExist filePath
