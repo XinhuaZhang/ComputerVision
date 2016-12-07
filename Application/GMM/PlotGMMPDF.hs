@@ -18,15 +18,19 @@ getProb modelVec x =
 main = do
   (filePath:_) <- getArgs
   models <- readGMM filePath :: IO [GMM]
-  let step = 0.01
   V.imapM_
     (\i (MixtureModel _ modelVec) ->
         toFile def (show i P.++ ".png") $
-        do layout_title .= "PDF"
+        do let range = 2 * (getMaxMu modelVec)
+               step = (log (getMaxMu modelVec)) / 20
+           layout_title .= "PDF"
            plot
              (line
                 ""
                 [ [ (x, getProb modelVec x * step)
-                  | x <- [-3,(-3 + step) .. 3] ]
+                  | x <- [-range,(-range + step) .. range] ]
                 ])) $
     V.fromList models
+    
+getMaxMu :: V.Vector (Model Gaussian) -> Double
+getMaxMu  = V.maximum . V.map (\(Model (_,Gaussian mu _)) -> mu)

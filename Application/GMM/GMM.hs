@@ -9,6 +9,7 @@ module Application.GMM.GMM
   , gmmSink2
   , convertConduit1
   , readGMM
+  , writeGMM
   , initializeGMM
   ) where
 
@@ -277,14 +278,13 @@ em1 threshold oldGMM bound xs
            
 
 em2
-  :: ParallelParams
-  -> Handle
+  :: Handle
   -> ((Double, Double),(Double, Double))
   -> Double
   -> [EMState GMM]
   -> [VU.Vector Double]
   -> IO Handle
-em2 parallelParams handle bound threshold gmms xs =
+em2 handle bound threshold gmms xs =
   if P.all checkStateDone gmms
      then do let !avgLikelihood =
                    (P.sum . P.map getStateLikelihood $ gmms) /
@@ -296,13 +296,12 @@ em2 parallelParams handle bound threshold gmms xs =
      else do printCurrentTime
              gmms1 <- resetGMMList bound gmms
              let !gmms2 =
-                   parZipWithChunk parallelParams rdeepseq computeStateAssignmentLikelihood gmms1 xs
+                   parZipWith rdeepseq computeStateAssignmentLikelihood gmms1 xs
                  !newGMMs =
-                   parZipWithChunk parallelParams
-                                   rdeepseq
-                                   (emOneStep threshold)
-                                   gmms2
-                                   xs
+                   parZipWith rdeepseq
+                              (emOneStep threshold)
+                              gmms2
+                              xs
                  !avgLikelihood =
                    (P.sum . P.map getStateLikelihood $ gmms2) /
                    fromIntegral (P.length gmms2)
@@ -310,7 +309,7 @@ em2 parallelParams handle bound threshold gmms xs =
                 then IO.putStrLn "Reset"
                 else do printf "%0.2f\n" avgLikelihood
                         print . P.map getStateLikelihood $ gmms2
-             em2 parallelParams handle bound threshold newGMMs xs
+             em2 handle bound threshold newGMMs xs
   where checkStateDone EMDone{} = True
         checkStateDone _ = False
         computeStateAssignmentLikelihood (EMContinue _ _ m) x =
@@ -409,13 +408,12 @@ gmmSink1 parallelParams filePath numM numFeature bound threshold = do
             
 
 gmmSink2
-  :: ParallelParams
-  -> Handle
+  :: Handle
   -> [GMM]
   -> ((Double, Double),(Double, Double))
   -> Double
   -> Sink [VU.Vector Double] IO Handle
-gmmSink2 parallelParams handle gmms bound threshold = do
+gmmSink2 handle gmms bound threshold = do
   xs <- consume
   when
     ((P.length . P.head $ xs) /= P.length gmms)
@@ -426,8 +424,7 @@ gmmSink2 parallelParams handle gmms bound threshold = do
      show (P.length gmms))
   let !ys = P.map VU.concat . L.transpose $ xs
       !stateGMM =
-        parZipWithChunk
-          parallelParams
+        parZipWith
           rdeepseq
           (\gmm y ->
               let !assignment = getAssignmentVec gmm y
@@ -435,7 +432,7 @@ gmmSink2 parallelParams handle gmms bound threshold = do
               in EMContinue assignment likelihood gmm)
           gmms
           ys
-  liftIO $ em2 parallelParams handle bound threshold stateGMM ys
+  liftIO $ em2  handle bound threshold stateGMM ys
 
 
 hPutGMM :: Handle -> [GMM] -> IO ()
@@ -462,5 +459,12 @@ readGMM filePath =
       let size = fromIntegral (decode sizebs :: Word32) :: Int
       bs <- BL.hGet h size
       return $ decode bs
-
-
+      
+writeGMM :: FilePath -> [GMM] -> IO ()
+writeGMM filePath gmms =
+  withBinaryFile
+    filePath
+    WriteMode
+    (\h ->
+       do BL.hPut h (encode (fromIntegral $ P.length gmms :: Word32))
+          hPutGMM h gmms)

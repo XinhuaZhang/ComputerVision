@@ -94,6 +94,6 @@ main = do
                parallelParams
                filterParams
                (downsampleFactor params) =$=
-             gmmSink2 parallelParams handle models bound (threshold params))
+             gmmSink2 handle models bound (threshold params))
          h $
          P.zip gmmsList filterParamsList)
