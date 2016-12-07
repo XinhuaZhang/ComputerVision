@@ -13,7 +13,6 @@ import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparableRepa
 import           CV.Filter
 import           CV.Filter.PolarSeparableFilter
-import           CV.Filter.PolarSeparableFilterRepa
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
 import           Data.Array.Repa                    as R
@@ -31,26 +30,21 @@ import           Foreign.Ptr
 import           Prelude                            as P
 import           System.Environment
 
-
-sliceConduit :: ParallelParams
-             -> Conduit (LabeledArray DIM3 Double) IO (Int, [VU.Vector Double])
-sliceConduit parallelParams =
+scaleConduit
+  :: ParallelParams
+  -> Conduit (LabeledArray DIM3 Double) IO (LabeledArray DIM3 Double)
+scaleConduit parallelParams =
   do xs <- CL.take (Parallel.batchSize parallelParams)
      unless (P.null xs)
             (do let ys =
                       parMapChunk
                         parallelParams
-                        rdeepseq
+                        rseq
                         (\(LabeledArray label arr) ->
-                           let (Z :. nf :. ny :. nx) = extent arr
-                           in (label
-                              ,P.map (\i ->
-                                        toUnboxed . computeS $
-                                        R.slice arr (Z :. i :. All :. All)) $
-                               [0 .. nf - 1]))
+                           LabeledArray label . computeS $ R.map (* 100) arr)
                         xs
                 sourceList ys
-                sliceConduit parallelParams)
+                scaleConduit parallelParams)
 
 main = do
   args <- getArgs
@@ -64,40 +58,40 @@ main = do
         { Parallel.numThread = Parser.numThread params
         , Parallel.batchSize = Parser.batchSize params
         }
-      filterParams =
-        PolarSeparableFilterParams
-        { getRadius = 128
-        , getScale = S.fromDistinctAscList (scale params)
-        , getRadialFreq = S.fromDistinctAscList [0 .. (freq params - 1)]
-        , getAngularFreq = S.fromDistinctAscList [0 .. (freq params - 1)]
-        , getName = Pinwheels
-        }
-      filters =
-        makeFilter filterParams :: PolarSeparableFilter (R.Array U DIM3 (C.Complex Double))
+      filterParamsSet1 =
+        PolarSeparableFilterParamsSet {getSizeSet = (0,0)
+                                      ,getDowsampleFactorSet = 1
+                                      ,getScaleSet =
+                                         S.fromDistinctAscList (scale params)
+                                      ,getRadialFreqSet =
+                                         S.fromDistinctAscList
+                                           [0 .. (freq params - 1)]
+                                      ,getAngularFreqSet =
+                                         S.fromDistinctAscList
+                                           [0 .. (freq params - 1)]
+                                      ,getNameSet = Pinwheels}
+      filterParamsSet2 =
+        PolarSeparableFilterParamsSet {getSizeSet = (0,0)
+                                      ,getDowsampleFactorSet = 2
+                                      ,getScaleSet =
+                                         S.fromDistinctAscList (scale params)
+                                      ,getRadialFreqSet =
+                                         S.fromDistinctAscList
+                                           [0 .. (freq params - 1)]
+                                      ,getAngularFreqSet =
+                                         S.fromDistinctAscList
+                                           [0 .. (freq params - 1)]
+                                      ,getNameSet = Pinwheels}
+      filterParamsList =
+        generateMultilayerPSFParamsSet [filterParamsSet1,filterParamsSet2]
+      numLayer = 2
+      numFeature = numLayer * P.length filterParamsList
   print params
   readLabeledImagebinarySource (inputFile params) $$
-    magnitudeLabeledArrayConduit'
-      parallelParams
-      filters
-      (downsampleFactor params) =$=
-  -- CL.map
-  --   (\(LabeledArray label arr) ->
-  --       let (Z :. nf :. ny :. nx) = extent arr
-  --           r = (fromIntegral $ nx ^ 2 + ny ^ 2) / 4
-  --           centerX = fromIntegral nx / 2
-  --           centerY = fromIntegral ny / 2
-  --           vec =
-  --             P.map
-  --               (\(a, b) ->
-  --                   if (fromIntegral b - centerX) ^ 2 + (fromIntegral a - centerY) ^ 2 < r
-  --                     then Just . toUnboxed . computeS $
-  --                          R.slice arr (Z :. All :. a :. b)
-  --                     else Nothing) $
-  --             [ (i, j)
-  --             | i <- [0 .. ny - 1]
-  --             , j <- [0 .. nx - 1] ]
-  --       in (label, V.fromList . Maybe.catMaybes $ vec))
-    sliceConduit parallelParams =$=
+    scaleConduit parallelParams =$=
+    labeledArrayMagnitudeVariedSizeConduit parallelParams
+                                           filterParamsList
+                                           (downsampleFactor params) =$=
     (fisherVectorConduit parallelParams gmm) =$=
     CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")
