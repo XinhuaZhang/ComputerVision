@@ -17,10 +17,29 @@ parMapChunk
   :: ParallelParams -> Strategy b -> (a -> b) -> [a] -> [b]
 parMapChunk ParallelParams {numThread = nt} strat f xs =
   (withStrategy (parListChunk (div (P.length xs) nt) strat) . P.map f) xs
-  
+
+{-# INCLUDE parZipWithChunk #-}
 parZipWithChunk :: ParallelParams -> Strategy c -> (a -> b -> c) -> [a] -> [b] -> [c]
 parZipWithChunk ParallelParams {numThread = nt} strat f xs =
   withStrategy (parListChunk (div (P.length xs) nt) strat) . P.zipWith f xs
+  
+parZipWith :: Strategy c -> (a -> b -> c) -> [a] -> [b] -> [c]
+parZipWith strat f xs  = withStrategy (parList strat) . P.zipWith f xs
+
+{-# INLINE parZipWith3 #-}
+parZipWith3
+  :: Strategy d -> (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
+parZipWith3 strat f xs ys = withStrategy (parList strat) . P.zipWith3 f xs ys
+
+{-# INLINE parZipWith3Chunk #-}
+parZipWith3Chunk :: ParallelParams
+                 -> Strategy d
+                 -> (a -> b -> c -> d)
+                 -> [a]
+                 -> [b]
+                 -> [c]
+                 -> [d]
+parZipWith3Chunk ParallelParams {numThread = nt} strat f xs ys = withStrategy (parListChunk (div (P.length xs) nt) strat) . P.zipWith3 f xs ys
 
 {- Boxed Vector -}
 parMapVector
