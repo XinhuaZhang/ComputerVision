@@ -138,15 +138,17 @@ multiLayerMagnitudeVariedSize
 multiLayerMagnitudeVariedSize filterParamsList facotr img =
   L.concatMap
     (\arr ->
-        let !(Z :. nf :. _ :. _) = extent arr
-            !downSampledArr = RU.downsample [facotr, facotr, 1] arr
-            !magnitudeArr = R.map C.magnitude downSampledArr
-        in [ toUnboxed . computeUnboxedS . R.slice magnitudeArr $
-            (Z :. k :. All :. All)
-           | k <- [0 .. nf - 1] ]) .
+       let !(Z :. nf :. _ :. _) = extent arr
+           !downSampledArr =
+             RU.downsample [facotr,facotr,1]
+                           arr
+       in [toUnboxed . computeUnboxedS . R.slice downSampledArr $
+           (Z :. k :. All :. All)|k <- [0 .. nf - 1]]) .
   L.tail .
-  L.scanl'
-    (\arr filterParams ->
-        computeUnboxedS . applyFilterVariedSize filterParams $ arr)
-    (computeUnboxedS . R.map (:+ 0) $ img) $
+  L.scanl' (\arr filterParams ->
+              computeUnboxedS .
+              R.map C.magnitude .
+              applyFilterVariedSize filterParams . R.map (:+ 0) $
+              arr)
+           img $
   filterParamsList
