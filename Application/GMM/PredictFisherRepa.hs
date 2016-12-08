@@ -59,39 +59,32 @@ main = do
         , Parallel.batchSize = Parser.batchSize params
         }
       filterParamsSet1 =
-        PolarSeparableFilterParamsSet {getSizeSet = (0,0)
-                                      ,getDowsampleFactorSet = 1
-                                      ,getScaleSet =
-                                         S.fromDistinctAscList (scale params)
-                                      ,getRadialFreqSet =
-                                         S.fromDistinctAscList
-                                           [0 .. (freq params - 1)]
-                                      ,getAngularFreqSet =
-                                         S.fromDistinctAscList
-                                           [0 .. (freq params - 1)]
-                                      ,getNameSet = Pinwheels}
+        PolarSeparableFilterParamsSet
+        { getSizeSet = (0, 0)
+        , getDowsampleFactorSet = 1
+        , getScaleSet = S.fromDistinctAscList (scale params)
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getNameSet = Pinwheels
+        }
       filterParamsSet2 =
-        PolarSeparableFilterParamsSet {getSizeSet = (0,0)
-                                      ,getDowsampleFactorSet = 2
-                                      ,getScaleSet =
-                                         S.fromDistinctAscList (scale params)
-                                      ,getRadialFreqSet =
-                                         S.fromDistinctAscList
-                                           [0 .. (freq params - 1)]
-                                      ,getAngularFreqSet =
-                                         S.fromDistinctAscList
-                                           [0 .. (freq params - 1)]
-                                      ,getNameSet = Pinwheels}
-      filterParamsList =
-        generateMultilayerPSFParamsSet [filterParamsSet1,filterParamsSet2]
+        PolarSeparableFilterParamsSet
+        { getSizeSet = (0, 0)
+        , getDowsampleFactorSet = 2
+        , getScaleSet = S.fromDistinctAscList (scale params)
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getNameSet = Pinwheels
+        }
+      filterParamsList = [filterParamsSet1, filterParamsSet2]
       numLayer = 2
-      numFeature = numLayer * P.length filterParamsList
+      numFeature = numLayer * P.sum . P.map getFilterNum $ filterParamsList 
   print params
-  readLabeledImagebinarySource (inputFile params) $$
-    scaleConduit parallelParams =$=
-    labeledArrayMagnitudeVariedSizeConduit parallelParams
-                                           filterParamsList
-                                           (downsampleFactor params) =$=
+  readLabeledImagebinarySource (inputFile params) $$ scaleConduit parallelParams =$=
+    labeledArrayMagnitudeSetVariedSizeConduit
+      parallelParams
+      filterParamsList
+      (downsampleFactor params) =$=
     (fisherVectorConduit parallelParams gmm) =$=
     CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")

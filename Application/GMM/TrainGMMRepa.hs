@@ -23,6 +23,7 @@ import           Prelude                        as P
 import           System.Directory
 import           System.Environment
 import           System.IO                      as IO
+import Data.List as L
 
 splitList :: Int -> [a] -> [[a]]
 splitList n xs
@@ -45,7 +46,7 @@ main = do
       filterParamsSet1 =
         PolarSeparableFilterParamsSet
         { getSizeSet = (0, 0)
-        , getDowsampleFactorSet = 1
+        , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
@@ -54,7 +55,7 @@ main = do
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
         { getSizeSet = (0, 0)
-        , getDowsampleFactorSet = 2
+        , getDownsampleFactorSet = 2
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
@@ -62,8 +63,8 @@ main = do
         }
       filterParamsSetList = [filterParamsSet1, filterParamsSet2]
       filterParamsList =
-        splitList (Parser.numThread params) $
-        generateMultilayerPSFParamsSet filterParamsSetList
+        splitList (Parser.numThread params) . P.concatMap 
+        generateMultilayerPSFParamsSet . L.tail . L.inits $ filterParamsSetList
       filePath = gmmFile params
       numM = numGaussian params
       bound = ((0, 500), (0.1, 1000))

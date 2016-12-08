@@ -26,17 +26,17 @@ data PolarSeparableFilterName
   deriving (Show, Read)
 
 data PolarSeparableFilterParamsSet = PolarSeparableFilterParamsSet
-  { getSizeSet            :: !(Int, Int)
-  , getDowsampleFactorSet :: !Int
-  , getScaleSet           :: !(Set Double)
-  , getRadialFreqSet      :: !(Set Int)
-  , getAngularFreqSet     :: !(Set Int)
-  , getNameSet            :: !PolarSeparableFilterName
+  { getSizeSet             :: !(Int, Int)
+  , getDownsampleFactorSet :: !Int
+  , getScaleSet            :: !(Set Double)
+  , getRadialFreqSet       :: !(Set Int)
+  , getAngularFreqSet      :: !(Set Int)
+  , getNameSet             :: !PolarSeparableFilterName
   } deriving (Show)
 
-data PolarSeparableFilter a =
-  PolarSeparableFilter !PolarSeparableFilterParams
-                       a
+data PolarSeparableFilter a b =
+  PolarSeparableFilter !a
+                       b
   deriving (Show)
 
 data PolarSeparableFilterParams = PolarSeparableFilterParams
@@ -48,13 +48,25 @@ data PolarSeparableFilterParams = PolarSeparableFilterParams
   , getName             :: !PolarSeparableFilterName
   } deriving (Show)
 
-generatePSFParamsSet :: PolarSeparableFilterParamsSet
-                     -> [PolarSeparableFilterParams]
-generatePSFParamsSet (PolarSeparableFilterParamsSet (ny, nx) downsampleFactor scaleSet rfSet afSet name) =
-  [ PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af name
+
+-- this function is to make sure that the params sequence is correct
+{-# INLINE generateParamsSet #-}  
+generateParamsSet :: Set Double -> Set Int -> Set Int -> [(Double,Int,Int)]
+generateParamsSet scaleSet rfSet afSet =
+  [ (scale, rf, af)
   | scale <- toAscList scaleSet
   , rf <- toAscList rfSet
   , af <- toAscList afSet ]
+
+generatePSFParamsSet :: PolarSeparableFilterParamsSet
+                     -> [PolarSeparableFilterParams]
+generatePSFParamsSet (PolarSeparableFilterParamsSet (ny, nx) downsampleFactor scaleSet rfSet afSet name) =
+  L.map
+    (\(scale, rf, af) ->
+        PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af name) $
+  generateParamsSet scaleSet rfSet afSet
+
+
 
 -- Input: [layer1, layer2 ...]
 generateMultilayerPSFParamsSet :: [PolarSeparableFilterParamsSet]
@@ -68,7 +80,7 @@ generateMultilayerPSFParamsSet =
         , a <- as ])
     [[]] .
   L.map generatePSFParamsSet 
-  
+
 
 {-# INLINE ejx #-}
 
@@ -132,19 +144,48 @@ getFilterFunc PolarSeparableFilterParams {getName = Fans} = fans
 getFilterFunc PolarSeparableFilterParams {getName = Bullseye} = bullseye
 getFilterFunc PolarSeparableFilterParams {getName = Pinwheels} = pinwheels
 
+{-# INLINE getFilterSetFunc #-}
+
+getFilterSetFunc
+  :: PolarSeparableFilterParamsSet
+  -> (Double -> Int -> Int -> PixelOp (C.Complex Double))
+getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Fans} = fans
+getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Bullseye} = bullseye
+getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Pinwheels} = pinwheels
+
 getFilterNum :: PolarSeparableFilterParamsSet -> Int
 getFilterNum (PolarSeparableFilterParamsSet _ _ scale rs as _) =
   (P.product . P.map Set.size $ [rs, as]) * Set.size scale
 
 
-makeFilter :: PolarSeparableFilterParams -> PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))
+makeFilter :: PolarSeparableFilterParams -> PolarSeparableFilter PolarSeparableFilterParams (R.Array U DIM2 (C.Complex Double))
 makeFilter params@(PolarSeparableFilterParams (ny, nx) downSampleFactor scale rf af _name) =
-  PolarSeparableFilter params .
+  PolarSeparableFilter params . computeS . twoDCArray2RArray .
   dft . listArray ((0, 0), (ny' - 1, nx' - 1)) . pixelList $
   (IM.makeFilter ny' nx' (getFilterFunc params scale rf af) :: ComplexImage)
   where
     ny' = div ny downSampleFactor
     nx' = div nx downSampleFactor
+
+makeFilterSet
+  :: PolarSeparableFilterParamsSet
+  -> PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))
+makeFilterSet params@(PolarSeparableFilterParamsSet (ny, nx) downSampleFactor scaleSet rfSet afSet _name) =
+  PolarSeparableFilter params filterArr
+  where
+    !paramsList = generateParamsSet scaleSet rfSet afSet
+    !filterEleList =
+      L.map
+        (\(scale, rf, af) ->
+            pixelList
+              (IM.makeFilter ny' nx' (getFilterSetFunc params scale rf af) :: ComplexImage))
+        paramsList
+    !ny' = div ny downSampleFactor
+    !nx' = div nx downSampleFactor
+    !nf' = L.length filterEleList
+    !cArr = listArray ((0, 0, 0), (nf' - 1, ny' - 1, nx' - 1)) . L.concat $ filterEleList
+    !dftCArr = dftN [1, 2] cArr
+    !filterArr = computeS $ threeDCArray2RArray dftCArr
 
 displayFilter :: PolarSeparableFilterParams -> ComplexImage
 displayFilter params@(PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af _name) =
@@ -155,11 +196,19 @@ displayFilter params@(PolarSeparableFilterParams (ny, nx) downsampleFactor scale
 
 applyFilterFixedSize
   :: (Source s (C.Complex Double))
-  => PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))
+  => PolarSeparableFilter PolarSeparableFilterParams (R.Array U DIM2 (C.Complex Double))
   -> R.Array s DIM3 (C.Complex Double)
   -> R.Array D DIM3 (C.Complex Double) 
 applyFilterFixedSize (PolarSeparableFilter params filter') =
   filterFunc (getDownsampleFactor params) filter'
+
+applyFilterSetFixedSize
+  :: (Source s (C.Complex Double))
+  => PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double) 
+applyFilterSetFixedSize (PolarSeparableFilter params filter') =
+  filterSetFunc (getDownsampleFactorSet params) filter'
 
 applyFilterVariedSize
   :: (Source s (C.Complex Double))
@@ -172,17 +221,37 @@ applyFilterVariedSize (PolarSeparableFilterParams _ downsampleFactor scale rf af
     (Z :. _ :. ny :. nx) = extent inputArr
     (PolarSeparableFilter _ !filter') =
       CV.Filter.PolarSeparableFilter.makeFilter
-        (PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af name) :: PolarSeparableFilter (CArray (Int, Int) (C.Complex Double))  
+        (PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af name)  
+
+
+applyFilterSetVariedSize
+  :: (Source s (C.Complex Double))
+  => PolarSeparableFilterParamsSet
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double) 
+applyFilterSetVariedSize (PolarSeparableFilterParamsSet _ downsampleFactor scaleSet rfSet afSet name) inputArr =
+  filterSetFunc downsampleFactor filter' inputArr
+  where
+    (Z :. _ :. ny :. nx) = extent inputArr
+    (PolarSeparableFilter _ !filter') =
+      makeFilterSet
+        (PolarSeparableFilterParamsSet
+           (ny, nx)
+           downsampleFactor
+           scaleSet
+           rfSet
+           afSet
+           name)  
 
 {-# INLINE filterFunc #-}
 
 filterFunc
   :: (Source s (C.Complex Double))
   => Int
-  -> CArray (Int, Int) (C.Complex Double)
+  -> R.Array U DIM2 (C.Complex Double)
   -> R.Array s DIM3 (C.Complex Double)
   -> R.Array D DIM3 (C.Complex Double)
-filterFunc downsampleFactor filter' inputArr =
+filterFunc downsampleFactor filterArr inputArr =
   threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
   where
     !cArr =
@@ -192,7 +261,6 @@ filterFunc downsampleFactor filter' inputArr =
              RU.downsample [downsampleFactor, downsampleFactor, 1] inputArr
     !dftCArr = dftN [1, 2] cArr
     !rArr = threeDCArray2RArray dftCArr
-    !filterArr = twoDCArray2RArray filter'
     !multArr =
       computeUnboxedS $
       traverse2
@@ -200,6 +268,39 @@ filterFunc downsampleFactor filter' inputArr =
         filterArr
         const
         (\f1 f2 idx@(Z :. _k :. j :. i) -> f1 idx * f2 (Z :. j :. i))
+
+
+{-# INLINE filterSetFunc #-}
+
+filterSetFunc
+  :: (Source s (C.Complex Double))
+  => Int
+  -> R.Array U DIM3 (C.Complex Double)
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double)
+filterSetFunc downsampleFactor filterArr inputArr =
+  threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
+  where
+    !cArr =
+      if downsampleFactor == 1
+        then threeDRArray2CArray inputArr
+        else threeDRArray2CArray $
+             RU.downsample [downsampleFactor, downsampleFactor, 1] inputArr
+    !dftCArr = dftN [1, 2] cArr
+    !rArr = threeDCArray2RArray dftCArr
+    !(Z :. nfFilter :. ny' :. nx') = extent filterArr
+    !(Z :. nfInput :. _ :. _) = extent inputArr
+    !newNf = nfFilter * nfInput
+    !multArr =
+      computeUnboxedS $
+      fromFunction
+        (Z :. newNf :. ny' :. nx')
+        (\(Z :. k :. j :. i) ->
+            let !kFilter = mod k nfFilter
+                !kInput = div k nfFilter
+            in rArr R.! (Z :. kInput :. j :. i) *
+               filterArr R.! (Z :. kFilter :. j :. i))
+
 
 {-# INLINE twoDCArray2RArray #-}
 

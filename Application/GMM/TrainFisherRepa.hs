@@ -86,62 +86,56 @@ trainSink parallelParams filePath trainParams findCFlag =
                            (P.concat . L.reverse $ label)
                            (P.concat . L.reverse $ pss)
 
-main =
-  do args <- getArgs
-     if P.null args
-        then error "run with --help to see options."
-        else return ()
-     params <- parseArgs args
-     gmm <- readGMM (gmmFile params) :: IO [GMM]
-     imageListLen <- getArrayNumFile (inputFile params)
-     let parallelParams =
-           ParallelParams {Parallel.numThread = Parser.numThread params
-                          ,Parallel.batchSize = Parser.batchSize params}
-         filterParamsSet1 =
-           PolarSeparableFilterParamsSet {getSizeSet = (0,0)
-                                         ,getDowsampleFactorSet = 1
-                                         ,getScaleSet =
-                                            S.fromDistinctAscList (scale params)
-                                         ,getRadialFreqSet =
-                                            S.fromDistinctAscList
-                                              [0 .. (freq params - 1)]
-                                         ,getAngularFreqSet =
-                                            S.fromDistinctAscList
-                                              [0 .. (freq params - 1)]
-                                         ,getNameSet = Pinwheels}
-         filterParamsSet2 =
-           PolarSeparableFilterParamsSet {getSizeSet = (0,0)
-                                         ,getDowsampleFactorSet = 2
-                                         ,getScaleSet =
-                                            S.fromDistinctAscList (scale params)
-                                         ,getRadialFreqSet =
-                                            S.fromDistinctAscList
-                                              [0 .. (freq params - 1)]
-                                         ,getAngularFreqSet =
-                                            S.fromDistinctAscList
-                                              [0 .. (freq params - 1)]
-                                         ,getNameSet = Pinwheels}
-         filterParamsList =
-           generateMultilayerPSFParamsSet [filterParamsSet1,filterParamsSet2]
-         numLayer = 2
-         numFeature = numLayer * P.length filterParamsList
-         trainParams =
-           TrainParams {trainSolver = L2R_L2LOSS_SVC_DUAL
-                       ,trainC = c params
-                       ,trainNumExamples = imageListLen
-                       ,trainFeatureIndexMax =
-                          if isComplex params
-                             then (4 * numFeature) * (numModel $ P.head gmm)
-                             else (2 * numFeature) * (numModel $ P.head gmm)
-                       ,trainModel = modelName params}
-     print params
-     readLabeledImagebinarySource (inputFile params) $$
-       scaleConduit parallelParams =$=
-       labeledArrayMagnitudeVariedSizeConduit parallelParams
-                                              filterParamsList
-                                              (downsampleFactor params) =$=
-       (fisherVectorConduit parallelParams gmm) =$=
-       trainSink parallelParams
-                 (labelFile params)
-                 trainParams
-                 (findC params)
+main = do
+  args <- getArgs
+  if P.null args
+    then error "run with --help to see options."
+    else return ()
+  params <- parseArgs args
+  gmm <- readGMM (gmmFile params) :: IO [GMM]
+  imageListLen <- getArrayNumFile (inputFile params)
+  let parallelParams =
+        ParallelParams
+        { Parallel.numThread = Parser.numThread params
+        , Parallel.batchSize = Parser.batchSize params
+        }
+      filterParamsSet1 =
+        PolarSeparableFilterParamsSet
+        { getSizeSet = (0, 0)
+        , getDowsampleFactorSet = 1
+        , getScaleSet = S.fromDistinctAscList (scale params)
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getNameSet = Pinwheels
+        }
+      filterParamsSet2 =
+        PolarSeparableFilterParamsSet
+        { getSizeSet = (0, 0)
+        , getDowsampleFactorSet = 2
+        , getScaleSet = S.fromDistinctAscList (scale params)
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getNameSet = Pinwheels
+        }
+      filterParamsList = [filterParamsSet1, filterParamsSet2]
+      numLayer = 2
+      numFeature = numLayer * P.sum . P.map getFilterNum $ filterParamsList
+      trainParams =
+        TrainParams
+        { trainSolver = L2R_L2LOSS_SVC_DUAL
+        , trainC = c params
+        , trainNumExamples = imageListLen
+        , trainFeatureIndexMax =
+          if isComplex params
+            then (4 * numFeature) * (numModel $ P.head gmm)
+            else (2 * numFeature) * (numModel $ P.head gmm)
+        , trainModel = modelName params
+        }
+  print params
+  readLabeledImagebinarySource (inputFile params) $$ scaleConduit parallelParams =$=
+    labeledArrayMagnitudeSetVariedSizeConduit
+      parallelParams
+      filterParamsList
+      (downsampleFactor params) =$=
+    (fisherVectorConduit parallelParams gmm) =$=
+    trainSink parallelParams (labelFile params) trainParams (findC params)
