@@ -61,7 +61,7 @@ main = do
       filterParamsSet1 =
         PolarSeparableFilterParamsSet
         { getSizeSet = (0, 0)
-        , getDowsampleFactorSet = 1
+        , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
@@ -70,7 +70,7 @@ main = do
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
         { getSizeSet = (0, 0)
-        , getDowsampleFactorSet = 2
+        , getDownsampleFactorSet = 2
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
@@ -78,7 +78,7 @@ main = do
         }
       filterParamsList = [filterParamsSet1, filterParamsSet2]
       numLayer = 2
-      numFeature = numLayer * P.sum . P.map getFilterNum $ filterParamsList 
+      numFeature = numLayer * (P.sum . P.map getFilterNum $ filterParamsList)
   print params
   readLabeledImagebinarySource (inputFile params) $$ scaleConduit parallelParams =$=
     labeledArrayMagnitudeSetVariedSizeConduit

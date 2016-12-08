@@ -36,7 +36,8 @@ scaleConduit
   :: ParallelParams
   -> Conduit (LabeledArray DIM3 Double) IO (LabeledArray DIM3 Double)
 scaleConduit parallelParams =
-  do xs <- CL.take (Parallel.batchSize parallelParams)
+  do CL.drop 1260
+     xs <- CL.take (Parallel.batchSize parallelParams)
      unless (P.null xs)
             (do let ys =
                       parMapChunk
@@ -102,7 +103,7 @@ main = do
       filterParamsSet1 =
         PolarSeparableFilterParamsSet
         { getSizeSet = (0, 0)
-        , getDowsampleFactorSet = 1
+        , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
@@ -111,7 +112,7 @@ main = do
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
         { getSizeSet = (0, 0)
-        , getDowsampleFactorSet = 2
+        , getDownsampleFactorSet = 2
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
@@ -119,7 +120,7 @@ main = do
         }
       filterParamsList = [filterParamsSet1, filterParamsSet2]
       numLayer = 2
-      numFeature = numLayer * P.sum . P.map getFilterNum $ filterParamsList
+      numFeature = numLayer * (P.sum . P.map getFilterNum $ filterParamsList)
       trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
