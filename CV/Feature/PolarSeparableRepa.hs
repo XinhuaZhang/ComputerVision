@@ -100,13 +100,15 @@ multiLayerMagnitudeFixedSize
 multiLayerMagnitudeFixedSize filters facotr img =
   let !arr =
         L.foldl'
-          (\arr' filter' -> computeUnboxedS . applyFilterFixedSize filter' $ arr')
-          (computeUnboxedS . R.map (:+ 0) $ img)
+          (\arr' filter' ->
+              computeUnboxedS .
+              R.map C.magnitude . applyFilterFixedSize filter' . R.map (:+ 0) $
+              arr')
+          img
           filters
       !(Z :. nf :. _ :. _) = extent arr
       !downSampledArr = RU.downsample [facotr, facotr, 1] arr
-      !magnitudeArr = R.map C.magnitude downSampledArr
-  in [ toUnboxed . computeUnboxedS . R.slice magnitudeArr $
+  in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
       (Z :. k :. All :. All)
      | k <- [0 .. nf - 1] ]
 
@@ -124,14 +126,16 @@ multiLayerMagnitudeSetFixedSize filters facotr img =
     (\arr ->
         let !(Z :. nf :. _ :. _) = extent arr
             !downSampledArr = RU.downsample [facotr, facotr, 1] arr
-            !magnitudeArr = R.map C.magnitude downSampledArr
-        in [ toUnboxed . computeUnboxedS . R.slice magnitudeArr $
+        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. k :. All :. All)
            | k <- [0 .. nf - 1] ]) .
   L.tail .
   L.scanl'
-    (\arr filter' -> computeUnboxedS . applyFilterSetFixedSize filter' $ arr)
-    (computeUnboxedS . R.map (:+ 0) $ img) $
+    (\arr filter' ->
+        computeUnboxedS .
+        R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $
+        arr)
+    img $
   filters
 
 
@@ -172,13 +176,14 @@ multiLayerMagnitudeSetVariedSize filterParamsList facotr img =
     (\arr ->
         let !(Z :. nf :. _ :. _) = extent arr
             !downSampledArr = RU.downsample [facotr, facotr, 1] arr
-            !magnitudeArr = R.map C.magnitude downSampledArr
-        in [ toUnboxed . computeUnboxedS . R.slice magnitudeArr $
+        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. k :. All :. All)
            | k <- [0 .. nf - 1] ]) .
   L.tail .
   L.scanl'
     (\arr filterParams ->
-        computeUnboxedS . applyFilterSetVariedSize filterParams $ arr)
-    (computeUnboxedS . R.map (:+ 0) $ img) $
+        computeUnboxedS .
+        R.map C.magnitude . applyFilterSetVariedSize filterParams . R.map (:+ 0) $
+        arr)
+    img $
   filterParamsList
