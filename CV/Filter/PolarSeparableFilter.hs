@@ -160,9 +160,9 @@ getFilterNum (PolarSeparableFilterParamsSet _ _ scale rs as _) =
 
 makeFilter :: PolarSeparableFilterParams -> PolarSeparableFilter PolarSeparableFilterParams (R.Array U DIM2 (C.Complex Double))
 makeFilter params@(PolarSeparableFilterParams (ny, nx) downSampleFactor scale rf af _name) =
-  PolarSeparableFilter params . computeS . twoDCArray2RArray .
-  dft . listArray ((0, 0), (ny' - 1, nx' - 1)) . pixelList $
-  (IM.makeFilter ny' nx' (getFilterFunc params scale rf af) :: ComplexImage)
+  PolarSeparableFilter params .
+  computeS . twoDCArray2RArray . dft . listArray ((0, 0), (ny' - 1, nx' - 1)) $
+  makeFilterList ny' nx' (getFilterFunc params scale rf af)
   where
     ny' = div ny downSampleFactor
     nx' = div nx downSampleFactor
@@ -177,8 +177,7 @@ makeFilterSet params@(PolarSeparableFilterParamsSet (ny, nx) downSampleFactor sc
     !filterEleList =
       L.map
         (\(scale, rf, af) ->
-            pixelList
-              (IM.makeFilter ny' nx' (getFilterSetFunc params scale rf af) :: ComplexImage))
+            makeFilterList ny' nx' (getFilterSetFunc params scale rf af))
         paramsList
     !ny' = div ny downSampleFactor
     !nx' = div nx downSampleFactor
@@ -335,3 +334,19 @@ threeDCArray2RArray cArr =
     (\(Z :. k :. j :. i) -> cArr CA.! (k, j, i))
   where
     ((_, _, _), (nf', ny', nx')) = bounds cArr
+
+{-# INLINE makeFilterList #-}
+
+makeFilterList :: Int -> Int -> (Int -> Int -> a) -> [a]
+makeFilterList ny nx f =
+  [ let !x =
+          if r < (ny `div` 2)
+            then r
+            else r - ny
+        !y =
+          if c < (nx `div` 2)
+            then c
+            else c - nx
+    in f x y
+  | r <- [0 .. ny - 1]
+  , c <- [0 .. nx - 1] ]
