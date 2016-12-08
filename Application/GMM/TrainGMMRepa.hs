@@ -31,6 +31,21 @@ splitList n xs
   | otherwise = as : splitList n bs
   where (as,bs) = P.splitAt n xs
 
+scaleConduit :: ParallelParams
+             -> Conduit (LabeledArray DIM3 Double) IO (R.Array U DIM3 Double)
+scaleConduit parallelParams = do
+  xs <- CL.take (Parallel.batchSize parallelParams)
+  unless
+    (P.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label arr) -> computeS $ R.map (* 100) arr)
+                xs
+        sourceList ys
+        scaleConduit parallelParams)
+
 
 main = do
   args <- getArgs
@@ -90,7 +105,7 @@ main = do
        M.foldM_
          (\handle (models, filterParams) ->
              readLabeledImagebinarySource (inputFile params) $$
-             CL.map (\(LabeledArray _ arr) -> computeS $ R.map (*100) arr) =$=
+             scaleConduit parallelParams =$=
              magnitudeVariedSizeConduit
                parallelParams
                filterParams
