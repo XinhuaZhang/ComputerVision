@@ -78,7 +78,7 @@ main = do
         }
       filterParamsList = [filterParamsSet1, filterParamsSet2]
       numLayer = 2
-      numFeature = numLayer * (P.sum . P.map getFilterNum $ filterParamsList)
+      numFeature = numLayer * (L.sum . L.map  L.product . L.tail . L.inits . L.map getFilterNum $ filterParamsList)
   print params
   readLabeledImagebinarySource (inputFile params) $$ scaleConduit parallelParams =$=
     labeledArrayMagnitudeSetVariedSizeConduit

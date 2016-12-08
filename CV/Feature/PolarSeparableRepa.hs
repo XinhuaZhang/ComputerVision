@@ -12,8 +12,6 @@ import           Data.Conduit
 import           Data.Conduit.List              as CL
 import           Data.List                      as L
 import           Data.Vector.Unboxed            as VU
-import Control.Monad.IO.Class
-
 
 -- The following two functions are for training GMM
 magnitudeFixedSizeConduit
@@ -85,7 +83,6 @@ labeledArrayMagnitudeSetVariedSizeConduit parallelParams filterParamsList factor
                     ( label
                     , multiLayerMagnitudeSetVariedSize filterParamsList factor x))
                 xs
-        liftIO $ (\(LabeledArray label x) -> print $ extent x) $ L.head xs        
         sourceList ys
         labeledArrayMagnitudeSetVariedSizeConduit
           parallelParams

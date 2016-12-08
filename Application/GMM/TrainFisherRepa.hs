@@ -36,8 +36,7 @@ scaleConduit
   :: ParallelParams
   -> Conduit (LabeledArray DIM3 Double) IO (LabeledArray DIM3 Double)
 scaleConduit parallelParams =
-  do CL.drop 1260
-     xs <- CL.take (Parallel.batchSize parallelParams)
+  do xs <- CL.take (Parallel.batchSize parallelParams)
      unless (P.null xs)
             (do let ys =
                       parMapChunk
@@ -119,8 +118,7 @@ main = do
         , getNameSet = Pinwheels
         }
       filterParamsList = [filterParamsSet1, filterParamsSet2]
-      numLayer = 2
-      numFeature = numLayer * (P.sum . P.map getFilterNum $ filterParamsList)
+      numFeature = L.sum . L.map  L.product . L.tail . L.inits . L.map getFilterNum $ filterParamsList
       trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL

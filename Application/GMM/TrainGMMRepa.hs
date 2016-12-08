@@ -68,8 +68,7 @@ main = do
       filePath = gmmFile params
       numM = numGaussian params
       bound = ((0, 500), (0.1, 1000))
-      numLayer = 2
-      numFeature = numLayer  * (P.sum . P.map P.length $ filterParamsList)
+      numFeature = P.sum . P.map P.length $ filterParamsList
   print params
   fileFlag <- doesFileExist filePath
   gmms <-
@@ -82,7 +81,7 @@ main = do
             readGMM filePath
           else M.replicateM numFeature $ initializeGMM numM bound
       else M.replicateM numFeature $ initializeGMM numM bound
-  let gmmsList = splitList (numLayer * Parser.numThread params) gmms
+  let gmmsList = splitList (Parser.numThread params) gmms
   withBinaryFile
     (gmmFile params)
     WriteMode
