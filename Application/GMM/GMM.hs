@@ -164,17 +164,20 @@ updateW n w = VU.map (/ VU.sum vec) vec
 
 emOneStep :: Double -> EMState GMM -> VU.Vector Double -> EMState GMM
 emOneStep _ x@(EMDone _ _) _ = x
-emOneStep threshold (EMContinue oldAssignmentVec _ oldGMM) xs
+emOneStep threshold (EMContinue oldAssignmentVec oldAvgLikelihood oldGMM) xs
   | not (V.null zeroNaNNKIdx) = EMReset (ResetIndex zeroNaNNKIdx) oldGMM
   | isJust zeroZIdx = EMReset ResetAll oldGMM
-  | newAvgLikelihood > threshold = EMDone newAvgLikelihood newGMM
+  | newAvgLikelihood > threshold || oldAvgLikelihood == newAvgLikelihood =
+    EMDone newAvgLikelihood newGMM
   | otherwise = EMContinue newAssignmentVec newAvgLikelihood newGMM
   where !nks = getNks oldAssignmentVec
         !newMu = updateMu oldAssignmentVec nks xs
         !newSigma = updateSigma oldAssignmentVec nks newMu xs
         !newW = updateW (VU.length xs) nks
         !zs = V.map VU.sum oldAssignmentVec
-        !zeroZIdx = V.findIndex (\x -> x == 0 || isNaN x) zs
+        !zeroZIdx =
+          V.findIndex (\x -> x == 0 || isNaN x)
+                      zs
         !zeroNaNNKIdx =
           VU.convert $
           VU.findIndices (\x -> x == 0 || isNaN x)
@@ -266,7 +269,7 @@ em1 threshold oldGMM bound xs
   | isJust zeroZIdx = do
     gmm <- resetGMM ResetAll oldGMM bound
     em1 threshold gmm bound xs
-  | oldAvgLikelihood > threshold = return oldGMM
+  | oldAvgLikelihood > threshold  = return oldGMM
   | otherwise = em1 threshold newGMM bound xs
   where
     !oldAssignmentVec = getAssignmentVec oldGMM xs
