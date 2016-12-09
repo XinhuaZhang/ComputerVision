@@ -86,7 +86,7 @@ fisherVectorConduit parallelParams gmms =
   awaitForever
     (\(label,x) ->
        let !assignments =
-             parZipWithChunk parallelParams rdeepseq getAssignmentVec gmms x
+             parZipWithChunk parallelParams rdeepseq getAssignmentVecSafe gmms x
            !vecMu = fisherVectorMu parallelParams gmms assignments x
            !vecSigma = fisherVectorSigma parallelParams gmms assignments x
            !vec = vecMu VU.++ vecSigma

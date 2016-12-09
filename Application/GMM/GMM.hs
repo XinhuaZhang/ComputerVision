@@ -4,6 +4,7 @@ module Application.GMM.GMM
   ( GMM
   , AssignmentVec
   , getAssignmentVec
+  , getAssignmentVecSafe
   , gmmSink
   , gmmSink1
   , gmmSink2
@@ -106,6 +107,16 @@ getAssignment (MixtureModel _n modelVec) x = VU.map (/ s) vec
 
 getAssignmentVec :: GMM -> VU.Vector Double -> AssignmentVec
 getAssignmentVec gmm = V.map (getAssignment gmm) . VU.convert
+
+getAssignmentVecSafe :: GMM -> VU.Vector Double -> AssignmentVec
+getAssignmentVecSafe gmm =
+  V.map
+    (\x ->
+        let !y = getAssignment gmm x
+        in if VU.any isNaN y
+             then VU.replicate (VU.length y) 0
+             else y) .
+  VU.convert
 
 getNks :: AssignmentVec -> VU.Vector Double
 getNks = V.foldl1' (VU.zipWith (+))
