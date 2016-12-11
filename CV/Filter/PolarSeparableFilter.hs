@@ -161,7 +161,8 @@ getFilterNum (PolarSeparableFilterParamsSet _ _ scale rs as _) =
 makeFilter :: PolarSeparableFilterParams -> PolarSeparableFilter PolarSeparableFilterParams (R.Array U DIM2 (C.Complex Double))
 makeFilter params@(PolarSeparableFilterParams (ny, nx) downSampleFactor scale rf af _name) =
   PolarSeparableFilter params .
-  computeS . twoDCArray2RArray . dft . listArray ((0, 0), (ny' - 1, nx' - 1)) $
+  computeS .
+  twoDCArray2RArray . dftN [0, 1] . listArray ((0, 0), (ny' - 1, nx' - 1)) $
   makeFilterList ny' nx' (getFilterFunc params scale rf af)
   where
     ny' = div ny downSampleFactor
@@ -183,7 +184,7 @@ makeFilterSet params@(PolarSeparableFilterParamsSet (ny, nx) downSampleFactor sc
     !nx' = div nx downSampleFactor
     !nf' = L.length filterEleList
     !cArr = listArray ((0, 0, 0), (nf' - 1, ny' - 1, nx' - 1)) . L.concat $ filterEleList
-    !dftCArr = dftN [0, 1] cArr
+    !dftCArr = dftN [1, 2] cArr
     !filterArr = computeS $ threeDCArray2RArray dftCArr
 
 displayFilter :: PolarSeparableFilterParams -> ComplexImage
@@ -251,14 +252,14 @@ filterFunc
   -> R.Array s DIM3 (C.Complex Double)
   -> R.Array D DIM3 (C.Complex Double)
 filterFunc downsampleFactor filterArr inputArr =
-  threeDCArray2RArray . idftN [0, 1] . threeDRArray2CArray $ multArr
+  threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
   where
     !cArr =
       if downsampleFactor == 1
         then threeDRArray2CArray inputArr
         else threeDRArray2CArray $
              RU.downsample [downsampleFactor, downsampleFactor, 1] inputArr
-    !dftCArr = dftN [0, 1] cArr
+    !dftCArr = dftN [1, 2] cArr
     !rArr = threeDCArray2RArray dftCArr
     !multArr =
       computeUnboxedS $
@@ -278,14 +279,14 @@ filterSetFunc
   -> R.Array s DIM3 (C.Complex Double)
   -> R.Array D DIM3 (C.Complex Double)
 filterSetFunc downsampleFactor filterArr inputArr =
-  threeDCArray2RArray . idftN [0, 1] . threeDRArray2CArray $ multArr
+  threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
   where
     !cArr =
       if downsampleFactor == 1
         then threeDRArray2CArray inputArr
         else threeDRArray2CArray $
              RU.downsample [downsampleFactor, downsampleFactor, 1] inputArr
-    !dftCArr = dftN [0, 1] cArr
+    !dftCArr = dftN [1, 2] cArr
     !rArr = threeDCArray2RArray dftCArr
     !(Z :. nfFilter :. ny' :. nx') = extent filterArr
     !(Z :. nfInput :. _ :. _) = extent inputArr
