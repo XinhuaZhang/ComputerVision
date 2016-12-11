@@ -41,7 +41,7 @@ scaleConduit parallelParams = do
               parMapChunk
                 parallelParams
                 rseq
-                (\(LabeledArray label arr) -> computeS $ R.map (* 100) arr)
+                (\(LabeledArray label arr) -> arr)
                 xs
         sourceList ys
         scaleConduit parallelParams)
@@ -82,7 +82,7 @@ main = do
         generateMultilayerPSFParamsSet . L.tail . L.inits $ filterParamsSetList
       filePath = gmmFile params
       numM = numGaussian params
-      bound = ((0, 500), (0.1, 1000))
+      bound = ((0, 10), (0.1, 100))
       numFeature = P.sum . P.map P.length $ filterParamsList
   print params
   fileFlag <- doesFileExist filePath
@@ -105,7 +105,7 @@ main = do
        M.foldM_
          (\handle (models, filterParams) ->
              readLabeledImagebinarySource (inputFile params) $$
-             scaleConduit parallelParams =$=
+             CL.map (\(LabeledArray _ arr) -> arr) =$=
              magnitudeVariedSizeConduit
                parallelParams
                filterParams

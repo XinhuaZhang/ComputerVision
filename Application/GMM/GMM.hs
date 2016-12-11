@@ -167,7 +167,7 @@ emOneStep _ x@(EMDone _ _) _ = x
 emOneStep threshold (EMContinue oldAssignmentVec oldAvgLikelihood oldGMM) xs
   | not (V.null zeroNaNNKIdx) = EMReset (ResetIndex zeroNaNNKIdx) oldGMM
   | isJust zeroZIdx = EMReset ResetAll oldGMM
-  | newAvgLikelihood > threshold || oldAvgLikelihood == newAvgLikelihood =
+  | newAvgLikelihood > threshold || rate < 0.001 =
     EMDone newAvgLikelihood newGMM
   | otherwise = EMContinue newAssignmentVec newAvgLikelihood newGMM
   where !nks = getNks oldAssignmentVec
@@ -191,6 +191,7 @@ emOneStep threshold (EMContinue oldAssignmentVec oldAvgLikelihood oldGMM) xs
                         (VU.convert newSigma))
         !newAssignmentVec = getAssignmentVec newGMM xs
         !newAvgLikelihood = getAvgLikelihood newGMM xs
+        !rate = abs $ (oldAvgLikelihood - newAvgLikelihood) / oldAvgLikelihood
 emOneStep _ (EMReset _ _) _ =
   error "emOneStep: There models needed to be reset!"
 

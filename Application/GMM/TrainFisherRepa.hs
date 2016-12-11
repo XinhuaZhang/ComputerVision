@@ -131,7 +131,7 @@ main = do
         , trainModel = modelName params
         }
   print params
-  readLabeledImagebinarySource (inputFile params) $$ scaleConduit parallelParams =$=
+  readLabeledImagebinarySource (inputFile params) $$ -- scaleConduit parallelParams =$=
     labeledArrayMagnitudeSetVariedSizeConduit
       parallelParams
       filterParamsList

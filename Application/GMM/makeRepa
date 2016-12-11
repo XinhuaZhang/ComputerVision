@@ -10,3 +10,5 @@ ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisherRepa.hs -o
 ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherRepa.hs -o predictFisherRepa
 ## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisherMPPCA.hs -o trainFisherMPPCA
 ## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherMPPCA.hs -o predictFisherMPPCA
+
+## ghc $FLAG $LIBS -i../../ FilterTest.hs -o filterTest

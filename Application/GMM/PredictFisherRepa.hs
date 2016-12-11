@@ -80,7 +80,7 @@ main = do
       numFeature =
         L.sum . L.map L.product . L.tail . L.inits . L.map getFilterNum $ filterParamsList
   print params
-  readLabeledImagebinarySource (inputFile params) $$ scaleConduit parallelParams =$=
+  readLabeledImagebinarySource (inputFile params) $$ -- scaleConduit parallelParams =$=
     labeledArrayMagnitudeSetVariedSizeConduit
       parallelParams
       filterParamsList
