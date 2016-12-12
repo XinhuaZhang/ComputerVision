@@ -8,6 +8,7 @@ module Application.GMM.GMM
   , gmmSink
   , gmmSink1
   , gmmSink2
+  , gmmSink2'
   , convertConduit1
   , readGMM
   , writeGMM
@@ -20,6 +21,7 @@ import           Control.DeepSeq              as DS
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Parallel       as MP
+import           Control.Monad.Trans.Resource
 import           CV.Utility.Parallel
 import           CV.Utility.Time
 import           Data.Binary
@@ -290,7 +292,7 @@ em1 threshold oldGMM bound xs
            (VU.convert newW)
            (VU.convert newMu)
            (VU.convert newSigma))
-           
+
 
 em2
   :: Handle
@@ -326,7 +328,7 @@ em2 handle bound threshold gmms xs =
                         print . P.map getStateLikelihood $ gmms2
              em2 handle bound threshold newGMMs xs
   where checkStateDone EMDone{} = True
-        checkStateDone _ = False
+        checkStateDone _        = False
         computeStateAssignmentLikelihood (EMContinue _ _ m) x =
           let !assignment = getAssignmentVec m x
               !avgLikelihood = getAvgLikelihood m x
@@ -420,7 +422,7 @@ gmmSink1 parallelParams filePath numM numFeature bound threshold = do
               L.zipWith (\gmm x -> em1 threshold gmm bound x) as xs
             liftIO $ hPutGMM h ys
             go h bs)
-            
+
 
 gmmSink2
   :: Handle
@@ -429,6 +431,33 @@ gmmSink2
   -> Double
   -> Sink [VU.Vector Double] IO Handle
 gmmSink2 handle gmms bound threshold = do
+  xs <- consume
+  when
+    ((P.length . P.head $ xs) /= P.length gmms)
+    (liftIO . IO.putStrLn $
+     "The number of input features doesn't equal to the number of GMM models. " P.++
+     show (P.length . P.head $ xs) P.++
+     " vs " P.++
+     show (P.length gmms))
+  let !ys = P.map VU.concat . L.transpose $ xs
+      !stateGMM =
+        parZipWith
+          rdeepseq
+          (\gmm y ->
+              let !assignment = getAssignmentVec gmm y
+                  !likelihood = getAvgLikelihood gmm y
+              in EMContinue assignment likelihood gmm)
+          gmms
+          ys
+  liftIO $ em2  handle bound threshold stateGMM ys
+
+gmmSink2'
+  :: Handle
+  -> [GMM]
+  -> ((Double, Double),(Double, Double))
+  -> Double
+  -> Sink [VU.Vector Double] (ResourceT IO) Handle
+gmmSink2' handle gmms bound threshold = do
   xs <- consume
   when
     ((P.length . P.head $ xs) /= P.length gmms)
@@ -474,7 +503,7 @@ readGMM filePath =
       let size = fromIntegral (decode sizebs :: Word32) :: Int
       bs <- BL.hGet h size
       return $ decode bs
-      
+
 writeGMM :: FilePath -> [GMM] -> IO ()
 writeGMM filePath gmms =
   withBinaryFile

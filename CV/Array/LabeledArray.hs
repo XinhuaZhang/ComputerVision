@@ -2,17 +2,20 @@
 {-# LANGUAGE InstanceSigs  #-}
 module CV.Array.LabeledArray where
 
-import           Control.Monad          as M
-import           Control.Monad.IO.Class (liftIO)
+import           Control.Monad                as M
+import           Control.Monad.IO.Class       (liftIO)
+import           Control.Monad.Trans.Resource
 import           CV.Array.Image
-import           Data.Array.Repa        as R
+import           Data.Array.Repa              as R
 import           Data.Binary
-import           Data.ByteString.Lazy   as BL
-import           Data.Conduit           as C
-import           Data.Conduit.List      as CL
-import           Data.Vector.Unboxed    as VU
+import           Data.ByteString              as BS
+import           Data.ByteString.Lazy         as BL
+import           Data.Conduit                 as C
+import           Data.Conduit.Binary          as CB
+import           Data.Conduit.List            as CL
+import           Data.Vector.Unboxed          as VU
 import           GHC.Generics
-import           Prelude                as P
+import           Prelude                      as P
 import           System.IO
 
 data LabeledArray sh e =
@@ -67,6 +70,24 @@ readLabeledImagebinarySource filePath = do
                    "Expect " P.++ show len P.++
                    " images, but there are more images in the file. ")
     (h, 0)
+
+
+readLabeledImagebinaryConduit :: Conduit BS.ByteString (ResourceT IO) (LabeledArray DIM3 Double)
+readLabeledImagebinaryConduit = do
+  CB.drop 4
+  go
+  where
+    go = do
+      sizeBS <- CB.take 4
+      when
+        (BL.length sizeBS > 0)
+        (do let size' = fromIntegral (decode sizeBS :: Word32) :: Int
+            bs <- CB.take size'
+            let (LabeledArray label arr) = decode bs :: LabeledArray DIM3 Word8
+            yield . LabeledArray label . computeUnboxedS . R.map fromIntegral $
+              arr
+            go)
+
 
 writeLabeledImageBinarySink :: FilePath
                             -> Int

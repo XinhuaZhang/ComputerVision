@@ -2,6 +2,7 @@
 module CV.Feature.PolarSeparableRepa where
 
 import           Control.Monad                  as M
+import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel
@@ -35,6 +36,22 @@ magnitudeVariedSizeConduit
   -> Int
   -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
 magnitudeVariedSizeConduit parallelParams filterParamsList factor =
+  awaitForever
+    (\x ->
+       yield .
+       L.concat .
+       parMapChunk
+         parallelParams
+         rdeepseq
+         (\filterParams -> multiLayerMagnitudeVariedSize filterParams factor x) $
+       filterParamsList)
+
+magnitudeVariedSizeConduit'
+  :: ParallelParams
+  -> [[PolarSeparableFilterParams]]
+  -> Int
+  -> Conduit (R.Array U DIM3 Double) (ResourceT IO) [VU.Vector Double]
+magnitudeVariedSizeConduit' parallelParams filterParamsList factor =
   awaitForever
     (\x ->
        yield .

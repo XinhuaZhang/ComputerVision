@@ -4,6 +4,7 @@ import           Application.GMM.ArgsParser     as Parser
 import           Application.GMM.GMM
 import           Control.Monad
 import           Control.Monad                  as M
+import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparableRepa
 import           CV.Filter
@@ -15,7 +16,9 @@ import           Data.Binary
 import           Data.ByteString.Lazy           as BL
 import           Data.Complex
 import           Data.Conduit
+import           Data.Conduit.Binary                  as CB
 import           Data.Conduit.List              as CL
+import           Data.List                      as L
 import           Data.Set                       as S
 import           Data.Vector                    as V
 import           Data.Vector.Unboxed            as VU
@@ -23,7 +26,6 @@ import           Prelude                        as P
 import           System.Directory
 import           System.Environment
 import           System.IO                      as IO
-import Data.List as L
 
 splitList :: Int -> [a] -> [[a]]
 splitList n xs
@@ -78,8 +80,9 @@ main = do
         }
       filterParamsSetList = [filterParamsSet1, filterParamsSet2]
       filterParamsList =
-        splitList (Parser.numThread params) . P.concatMap 
-        generateMultilayerPSFParamsSet . L.tail . L.inits $ filterParamsSetList
+        splitList (Parser.numThread params) .
+        P.concatMap generateMultilayerPSFParamsSet . L.tail . L.inits $
+        filterParamsSetList
       filePath = gmmFile params
       numM = numGaussian params
       bound = ((0, 10), (0.1, 100))
@@ -104,12 +107,13 @@ main = do
        BL.hPut h (encode (fromIntegral numFeature :: Word32))
        M.foldM_
          (\handle (models, filterParams) ->
-             readLabeledImagebinarySource (inputFile params) $$
-             CL.map (\(LabeledArray _ arr) -> arr) =$=
-             magnitudeVariedSizeConduit
-               parallelParams
-               filterParams
-               (downsampleFactor params) =$=
-             gmmSink2 handle models bound (threshold params))
+             runResourceT
+               (sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+                CL.map (\(LabeledArray _ arr) -> arr) =$=
+                magnitudeVariedSizeConduit'
+                  parallelParams
+                  filterParams
+                  (downsampleFactor params) =$=
+                gmmSink2' handle models bound (threshold params)))
          h $
          P.zip gmmsList filterParamsList)
