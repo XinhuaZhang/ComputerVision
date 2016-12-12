@@ -123,7 +123,7 @@ multiLayerMagnitudeFixedSize filters facotr img =
               arr')
           img
           filters
-      !(Z :. nf :. _ :. _) = extent arr
+      !(Z :. nf :. _ :. _) = extent downSampledArr
       !downSampledArr = RU.downsample [facotr, facotr, 1] arr
   in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
       (Z :. k :. All :. All)
@@ -141,7 +141,7 @@ multiLayerMagnitudeSetFixedSize
 multiLayerMagnitudeSetFixedSize filters facotr img =
   L.concatMap
     (\arr ->
-        let !(Z :. nf :. _ :. _) = extent arr
+        let !(Z :. nf :. _ :. _) = extent downSampledArr
             !downSampledArr = RU.downsample [facotr, facotr, 1] arr
         in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. k :. All :. All)
@@ -174,7 +174,7 @@ multiLayerMagnitudeVariedSize filterParamsList facotr img =
               arr')
           img
           filterParamsList
-      !(Z :. nf :. _ :. _) = extent arr
+      !(Z :. nf :. _ :. _) = extent downSampledArr
       !downSampledArr = RU.downsample [facotr, facotr, 1] arr
   in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
       (Z :. k :. All :. All)
@@ -191,7 +191,7 @@ multiLayerMagnitudeSetVariedSize
 multiLayerMagnitudeSetVariedSize filterParamsList facotr img =
   L.concatMap
     (\arr ->
-        let !(Z :. nf :. _ :. _) = extent arr
+        let !(Z :. nf :. _ :. _) = extent downSampledArr
             !downSampledArr = RU.downsample [facotr, facotr, 1] arr
         in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. k :. All :. All)
