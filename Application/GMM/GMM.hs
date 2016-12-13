@@ -431,7 +431,7 @@ gmmSink2
   -> Double
   -> Sink [VU.Vector Double] IO Handle
 gmmSink2 handle gmms bound threshold = do
-  xs <- consume
+  xs <- CL.take 100
   when
     ((P.length . P.head $ xs) /= P.length gmms)
     (liftIO . IO.putStrLn $
@@ -458,7 +458,7 @@ gmmSink2'
   -> Double
   -> Sink [VU.Vector Double] (ResourceT IO) Handle
 gmmSink2' handle gmms bound threshold = do
-  xs <- consume
+  xs <- CL.take 400
   liftIO . IO.putStrLn $ "Finish reading data."
   when
     ((P.length . P.head $ xs) /= P.length gmms)
