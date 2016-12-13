@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE ForeignFunctionInterface   #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -5,16 +6,16 @@
 {-# LANGUAGE PatternGuards              #-}
 module Classifier.LibLinear.Interface where
 
-import           Control.Monad.IO.Class                        (liftIO)
+import           Classifier.LibLinear.Bindings
+import           Classifier.LibLinear.Example
+import           Classifier.LibLinear.Solver
+import           Control.Monad.IO.Class        (liftIO)
 import           Data.Conduit
-import           Data.Conduit.List                             as CL
-import           Foreign                                       as F
+import           Data.Conduit.List             as CL
+import           Foreign                       as F
 import           Foreign.C
 import           Foreign.Marshal.Array
-import           Classifier.LibLinear.Bindings
-import           Classifier.LibLinear.Solver
-import           Classifier.LibLinear.Example
-import           Prelude                                       as P
+import           Prelude                       as P
 import           System.IO
 
 
@@ -62,7 +63,7 @@ predict predictModel output = do
          -> (Int, Int)
          -> (Double, [C'feature_node])
          -> IO (Int, Int)
-    func model (correct, total) (target, xs) = do
+    func model (!correct, !total) (!target, !xs) = do
       prediction <- withArray xs (c'predict model)
       let correctNew =
             if round target == round prediction
