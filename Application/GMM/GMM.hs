@@ -44,13 +44,13 @@ data ResetOption
 
 instance NFData ResetOption where
   rnf (ResetIndex x) = x `seq` ()
-  rnf _              = ()
+  rnf !_              = ()
 
 data EMState a
   = EMDone !Double
            !a
-  | EMContinue AssignmentVec
-               Double
+  | EMContinue !AssignmentVec
+               !Double
                !a
   | EMReset !ResetOption
             !a
@@ -59,8 +59,8 @@ data EMState a
 instance NFData a =>
          NFData (EMState a) where
   rnf (EMContinue x y z) = x `seq` y `seq` z `seq` ()
-  rnf (EMReset x _y)     = x `seq` ()
-  rnf _                  = ()
+  rnf (EMReset x y)     = x `seq` y `seq` ()
+  rnf !_                  = ()
 
 type GMM = MixtureModel Gaussian
 
@@ -92,7 +92,7 @@ resetGMMList bound = P.mapM reset
   where
     reset (EMReset option gmm) = do
       newGMM <- resetGMM option gmm bound
-      return $! EMContinue undefined undefined newGMM
+      return $! EMContinue V.empty 1000 newGMM
     reset gmmState = return gmmState
 
 {-# INLINE getAssignment #-}
