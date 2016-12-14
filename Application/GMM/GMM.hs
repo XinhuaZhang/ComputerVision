@@ -169,7 +169,8 @@ emOneStep _ x@(EMDone _ _) _ = x
 emOneStep threshold (EMContinue oldAssignmentVec oldAvgLikelihood oldGMM) xs
   | not (V.null zeroNaNNKIdx) = EMReset (ResetIndex zeroNaNNKIdx) oldGMM
   | isJust zeroZIdx = EMReset ResetAll oldGMM
-  | newAvgLikelihood > threshold || rate < 0.001 =
+  | --newAvgLikelihood > threshold || rate < 0.001 =
+    rate < 0.01 =
     EMDone newAvgLikelihood newGMM
   | otherwise = EMContinue newAssignmentVec newAvgLikelihood newGMM
   where !nks = getNks oldAssignmentVec
@@ -458,7 +459,7 @@ gmmSink2'
   -> Double
   -> Sink [VU.Vector Double] (ResourceT IO) Handle
 gmmSink2' handle gmms bound threshold = do
-  xs <- CL.take 400
+  xs <- CL.take 200
   liftIO . IO.putStrLn $ "Finish reading data."
   when
     ((P.length . P.head $ xs) /= P.length gmms)
