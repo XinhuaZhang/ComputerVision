@@ -22,7 +22,7 @@ printParams :: [PolarSeparableFilterParams] -> String
 printParams =
   L.concatMap
     (\(PolarSeparableFilterParams s df scale rf af name) ->
-        "s" L.++ show scale L.++ "r" L.++ show rf L.++ "a" L.++ show af)
+        "r" L.++ show rf L.++ "a" L.++ show af)
 
 main = do
   (inputFile:_) <- getArgs
@@ -68,7 +68,7 @@ main = do
                      (\params ->
                          multiLayerMagnitudeVariedSize params downsampleFactor arr)
                      filterParams)
-               arrList
+               $ L.take 1 arrList
            !ys = L.map VU.concat . L.transpose $ xs
            !muSigma = L.map meanVar ys
            !range = L.map valueRange ys
@@ -79,7 +79,7 @@ main = do
                  y
                  (a, b)
                  nBins
-                 (show (mu, sigma) L.++ " " L.++ show (a, b) L.++ " " L.++
+                 (show (mu, sigma) L.++ " " L.++
                   printParams params)
                  (printParams params L.++ ".png"))
            ys

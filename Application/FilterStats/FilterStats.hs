@@ -27,17 +27,20 @@ plotHist :: VU.Vector Double
          -> String
          -> FilePath
          -> IO ()
-plotHist vec (a, b) nbins title filePath =
+plotHist vec (a, b) nbins title filePath = 
   toFile def filePath $
-  do layout_title .= "Histogram"
-     plot (line title [VU.toList . VU.zip indexVec $ hist])
+    do layout_title .= title
+       plot (line "Histogram" [VU.toList . VU.zip indexVec $ normalizedHist])
   where
     !width = (b - a) / fromIntegral nbins
     !indexVec = VU.generate nbins (\i -> a + fromIntegral i * width)
     !eleIndexVec =
-      VU.filter (\x -> x >= 0 || x <= nbins - 1) .
+      VU.filter (\x -> x >= 0 && x <= nbins - 1) .
       VU.map (\x -> floor $ (x - a) / width :: Int) $
       vec
     !hist =
       VU.accumulate (+) (VU.replicate nbins 0) . VU.zip eleIndexVec $
-      VU.replicate (VU.length indexVec) (1 :: Int)
+      VU.replicate (VU.length eleIndexVec) (1 :: Int)
+    !s = VU.sum hist
+    !normalizedHist =
+      VU.map (\x -> fromIntegral x / fromIntegral s) hist :: VU.Vector Double
