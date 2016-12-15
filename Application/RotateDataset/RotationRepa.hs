@@ -37,29 +37,26 @@ recaleAndRotate2DImageS n degs arr =
                          [cos, sin, \x -> -(sin x), cos])
                       (center, center)
                       (fromIntegral j, fromIntegral i)
-              in if inRange j' && inRange i'
-                   then bicubicInterpolation
+              in if j' < 0 ||
+                    j' > (fromIntegral n - 1) ||
+                    i' < 0 || i' > (fromIntegral n - 1)
+                   then 0
+                   else bicubicInterpolation
                           ds
                           (minVal, maxVal)
-                          ((j' - boundaryWith) * ratio, (i' - boundaryWith) * ratio)
-                   else 0))
+                          (j' * ratio, i' * ratio)))
     degs
   where
-    minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
-    maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
-    (Z :. ny :. nx) = extent arr
-    m = max ny nx
-    theta = atan (fromIntegral nx / fromIntegral ny) :: Double
-    xx = max (cos theta) (sin theta)
-    innerSize = floor (fromIntegral n * xx)
-    boundaryWith = fromIntegral $ div (n - innerSize) 2
-    paddedImg = pad [m, m] arr
-    ds = computeDerivativeS (computeUnboxedS paddedImg)
-    center = fromIntegral (n - 1) / 2
-    ratio = fromIntegral m / (fromIntegral innerSize - 1)
-    inRange :: Double -> Bool
-    inRange x =
-      x >= boundaryWith && x <= (boundaryWith + fromIntegral innerSize - 1)
+    !minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !(Z :. ny :. nx) = extent arr
+    !m =
+      ceiling
+        (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
+    !paddedImg = pad [m, m] arr
+    !ds = computeDerivativeS (computeUnboxedS paddedImg)
+    !center = fromIntegral (n - 1) / 2
+    !ratio = fromIntegral m / fromIntegral n
 
 rotate2DImageS
   :: (R.Source s Double)
@@ -80,14 +77,14 @@ rotate2DImageS degs arr =
               (fromIntegral j, fromIntegral i)))
     degs
   where
-    minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
-    maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
-    (Z :. ny :. nx) = extent arr
+    !minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !(Z :. ny :. nx) = extent arr
     !n =
-      round
+      ceiling
         (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
-    paddedImg = pad [n, n] arr
-    ds = computeDerivativeS (computeUnboxedS paddedImg)
+    !paddedImg = pad [n, n] arr
+    !ds = computeDerivativeS (computeUnboxedS paddedImg)
     !center = fromIntegral (n - 1) / 2
 
 {-# INLINE rotatePixel #-}
