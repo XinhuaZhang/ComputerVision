@@ -4,68 +4,62 @@
 module Application.RotateDataset.RotationRepa where
 
 import           Control.Monad               as M
-import           Control.Monad.IO.Class
-import           CV.Array.Image
+
 import           CV.Array.LabeledArray
 import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           Data.Array.Repa             as R
 import           Data.Binary
-import           Data.ByteString.Lazy        as BL
 import           Data.Conduit
 import           Data.Conduit.List           as CL
-import qualified Data.Image                  as IM
 import           Data.List                   as L
-import           Data.Vector                 as V
 import           Data.Vector.Unboxed         as VU
 import           Prelude                     as P
-import           System.IO
 
 -- First pading image to be a square image then rotating it
 recaleAndRotate2DImageS
   :: (R.Source s Double)
   => Int -> [Double] -> Array s DIM2 Double -> [Array U DIM2 Double]
 recaleAndRotate2DImageS n degs arr =
-  parMap rseq
+  parMap
+    rseq
     (\deg ->
-       computeS $
-       fromFunction
-         (Z :. n :. n)
-         (\(Z :. j :. i) ->
-            let (j', i') =
-                  rotatePixel
-                    (VU.fromListN 4 $
-                     P.map
-                       (\f -> f (deg2Rad deg))
-                       [cos, sin, \x -> -(sin x), cos])
-                    (center, center)
-                    (fromIntegral j, fromIntegral i)
-            in if inRange j' && inRange i'
-                 then bicubicInterpolation
-                        ds
-                        (minVal,maxVal)
-                        ( (j' - boundaryWith) * ratio
-                        , (i' - boundaryWith) * ratio)
-                 else 0))
+        computeS $
+        fromFunction
+          (Z :. n :. n)
+          (\(Z :. j :. i) ->
+              let (j', i') =
+                    rotatePixel
+                      (VU.fromListN 4 $
+                       P.map
+                         (\f -> f (deg2Rad deg))
+                         [cos, sin, \x -> -(sin x), cos])
+                      (center, center)
+                      (fromIntegral j, fromIntegral i)
+              in if inRange j' && inRange i'
+                   then bicubicInterpolation
+                          ds
+                          (minVal, maxVal)
+                          ((j' - boundaryWith) * ratio, (i' - boundaryWith) * ratio)
+                   else 0))
     degs
   where
     minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
     maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
     (Z :. ny :. nx) = extent arr
     m = max ny nx
-    theta = atan (fromIntegral nx / fromIntegral ny)
+    theta = atan (fromIntegral nx / fromIntegral ny) :: Double
     xx = max (cos theta) (sin theta)
     innerSize = floor (fromIntegral n * xx)
     boundaryWith = fromIntegral $ div (n - innerSize) 2
     paddedImg = pad [m, m] arr
     ds = computeDerivativeS (computeUnboxedS paddedImg)
-    center = fromIntegral n / 2
+    center = fromIntegral (n - 1) / 2
     ratio = fromIntegral m / (fromIntegral innerSize - 1)
     inRange :: Double -> Bool
     inRange x =
       x >= boundaryWith && x <= (boundaryWith + fromIntegral innerSize - 1)
-      
 
 rotate2DImageS
   :: (R.Source s Double)
@@ -78,7 +72,7 @@ rotate2DImageS degs arr =
         fromFunction
           (Z :. n :. n)
           (\(Z :. j :. i) ->
-              bicubicInterpolation ds (minVal,maxVal) .
+              bicubicInterpolation ds (minVal, maxVal) .
               rotatePixel
                 (VU.fromListN 4 $
                  P.map (\f -> f (deg2Rad deg)) [cos, sin, \x -> -(sin x), cos])
@@ -89,12 +83,15 @@ rotate2DImageS degs arr =
     minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
     maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
     (Z :. ny :. nx) = extent arr
-    !n = round . sqrt . fromIntegral $ (nx ^ 2 + ny ^ 2)
+    !n =
+      round
+        (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
     paddedImg = pad [n, n] arr
     ds = computeDerivativeS (computeUnboxedS paddedImg)
-    !center = fromIntegral n / 2
+    !center = fromIntegral (n - 1) / 2
 
 {-# INLINE rotatePixel #-}
+
 rotatePixel :: VU.Vector Double
             -> (Double, Double)
             -> (Double, Double)
@@ -108,6 +105,7 @@ rotatePixel mat (centerY, centerX) (y, x) = (y3, x3)
     y3 = y2 + centerY
 
 {-# INLINE vecMatMult #-}
+
 vecMatMult :: (Double, Double) -> VU.Vector Double -> (Double, Double)
 vecMatMult (x, y) vec = (a * x + c * y, b * x + d * y)
   where
@@ -157,9 +155,8 @@ rescaleRotateLabeledImageConduit parallelParams n deg = do
     !len =
       if deg == 0
         then 1
-        else round (360 / deg)
+        else round (360 / deg) :: Int
     !degs = L.map (* deg) [0 .. fromIntegral len - 1]
-    
 
 rotateLabeledImageConduit
   :: ParallelParams
@@ -201,5 +198,5 @@ rotateLabeledImageConduit parallelParams deg = do
     !len =
       if deg == 0
         then 1
-        else round (360 / deg)
+        else round (360 / deg) :: Int
     !degs = L.map (* deg) [0 .. fromIntegral len - 1]

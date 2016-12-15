@@ -129,49 +129,49 @@ computeDerivativeS arr = arr : ds'
 {-# INLINE bicubicInterpolation #-}
 bicubicInterpolation
   :: [Array U DIM2 Double] -> (Double,Double) ->  (Double,Double) -> Double
-bicubicInterpolation ds (minVal,maxVal) (y,x)
-  | (x < 1) ||
-      (x > (fromIntegral nx - 2)) || (y < 1) || (y > (fromIntegral ny - 2)) = 0
+bicubicInterpolation ds (minVal, maxVal) (y, x)
+  | (x < 0) ||
+      (x > (fromIntegral nx - 1)) || (y < 0) || (y > (fromIntegral ny - 1)) = 0
   | result < minVal = minVal
   | result > maxVal = maxVal
   | otherwise = result
-  where (Z :. ny :. nx) = extent . P.head $ ds
-        x' = x - (fromIntegral . floor $ x)
-        y' = y - (fromIntegral . floor $ y)
-        idx =
-          VU.fromListN
-            4
-            [(floor y,floor x)
-            ,(floor y,ceiling x)
-            ,(ceiling y,floor x)
-            ,(ceiling y,ceiling x)] :: VU.Vector (Int,Int)
-        xs =
-          VU.concat .
-          P.map (\arr' -> VU.map (\(i,j) -> arr' R.! (Z :. i :. j)) idx) $
-          ds
-        alpha = V.map (VU.sum . VU.zipWith (*) xs) matrixA
-        arr =
-          fromListUnboxed (Z :. 4 :. 4) . V.toList $ alpha :: R.Array U DIM2 Double
-        arr1 =
-          R.traverse arr
-                     id
-                     (\f idx'@(Z :. j :. i) -> f idx' * (x' ^ i) * (y' ^ j))
-        result = sumAllS arr1
-        matrixA =
-          V.fromListN 16 . P.map (VU.fromListN 16) $
-          [[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-          ,[0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0]
-          ,[-3,3,0,0,-2,-1,0,0,0,0,0,0,0,0,0,0]
-          ,[2,-2,0,0,1,1,0,0,0,0,0,0,0,0,0,0]
-          ,[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0]
-          ,[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0]
-          ,[0,0,0,0,0,0,0,0,-3,3,0,0,-2,-1,0,0]
-          ,[0,0,0,0,0,0,0,0,2,-2,0,0,1,1,0,0]
-          ,[-3,0,3,0,0,0,0,0,-2,0,-1,0,0,0,0,0]
-          ,[0,0,0,0,-3,0,3,0,0,0,0,0,-2,0,-1,0]
-          ,[9,-9,-9,9,6,3,-6,-3,6,-6,3,-3,4,2,2,1]
-          ,[-6,6,6,-6,-3,-3,3,3,-4,4,-2,2,-2,-2,-1,-1]
-          ,[2,0,-2,0,0,0,0,0,1,0,1,0,0,0,0,0]
-          ,[0,0,0,0,2,0,-2,0,0,0,0,0,1,0,1,0]
-          ,[-6,6,6,-6,-4,-2,4,2,-3,3,-3,3,-2,-1,-2,-1]
-          ,[4,-4,-4,4,2,2,-2,-2,2,-2,2,-2,1,1,1,1]]
+  where
+    (Z :. ny :. nx) = extent . P.head $ ds
+    x' = x - fromIntegral (floor x :: Int)
+    y' = y - fromIntegral (floor y :: Int)
+    idx =
+      VU.fromListN
+        4
+        [ (floor y, floor x)
+        , (floor y, ceiling x)
+        , (ceiling y, floor x)
+        , (ceiling y, ceiling x)
+        ] :: VU.Vector (Int, Int)
+    xs =
+      VU.concat .
+      P.map (\arr' -> VU.map (\(i, j) -> arr' R.! (Z :. i :. j)) idx) $
+      ds
+    alpha = V.map (VU.sum . VU.zipWith (*) xs) matrixA
+    arr = fromListUnboxed (Z :. 4 :. 4) . V.toList $ alpha :: R.Array U DIM2 Double
+    arr1 =
+      R.traverse arr id (\f idx'@(Z :. j :. i) -> f idx' * (x' ^ i) * (y' ^ j))
+    result = sumAllS arr1
+    matrixA =
+      V.fromListN 16 . P.map (VU.fromListN 16) $
+      [ [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      , [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      , [-3, 3, 0, 0, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      , [2, -2, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      , [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+      , [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+      , [0, 0, 0, 0, 0, 0, 0, 0, -3, 3, 0, 0, -2, -1, 0, 0]
+      , [0, 0, 0, 0, 0, 0, 0, 0, 2, -2, 0, 0, 1, 1, 0, 0]
+      , [-3, 0, 3, 0, 0, 0, 0, 0, -2, 0, -1, 0, 0, 0, 0, 0]
+      , [0, 0, 0, 0, -3, 0, 3, 0, 0, 0, 0, 0, -2, 0, -1, 0]
+      , [9, -9, -9, 9, 6, 3, -6, -3, 6, -6, 3, -3, 4, 2, 2, 1]
+      , [-6, 6, 6, -6, -3, -3, 3, 3, -4, 4, -2, 2, -2, -2, -1, -1]
+      , [2, 0, -2, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0]
+      , [0, 0, 0, 0, 2, 0, -2, 0, 0, 0, 0, 0, 1, 0, 1, 0]
+      , [-6, 6, 6, -6, -4, -2, 4, 2, -3, 3, -3, 3, -2, -1, -2, -1]
+      , [4, -4, -4, 4, 2, 2, -2, -2, 2, -2, 2, -2, 1, 1, 1, 1]
+      ]
