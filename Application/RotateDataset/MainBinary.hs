@@ -6,11 +6,9 @@ import           CV.Array.Image
 import           CV.Array.LabeledArray
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel
-import           CV.Utility.RepaArrayUtility            as RAU
 import           Data.Array.Repa                        as R
 import           Data.Conduit                           as C
 import           Data.Conduit.List                      as CL
-import           Data.Image
 import           Prelude                                as P
 import           System.Directory
 import           System.Environment
@@ -50,14 +48,10 @@ main = do
       n = 256
       deg = 90
       rotationLen = round (360 / deg)
-      graySource path labelPath =
-        imagePathSource path =$= grayImageConduit =$= CL.map grayImage2Array =$=
+      imageSource path labelPath =
+        imagePathSource path =$= readImageConduit =$=
         mergeSource (labelSource labelPath) =$=
-        CL.map (\(label, img) -> LabeledArray label img)
-      colorSource path labelPath =
-        imagePathSource path =$= colorImageConduit =$= CL.map colorImage2Array =$=
-        mergeSource (labelSource labelPath) =$=
-        CL.map (\(label, img) -> LabeledArray label img)
+        CL.map (\(label, img) -> LabeledArray label $ computeUnboxedS img)
   trainLen <- fileLineCount trainPath
   testLen <- fileLineCount testPath
   P.mapM_
@@ -66,46 +60,23 @@ main = do
           True
           (outputPath P.++ "/" P.++ x P.++ "/" P.++ y P.++ "/" P.++ str)) $
     (,) <$> ["Train", "Test"] <*> ["Original", "Rotated"]
-  if read isColor :: Bool
-    then do
-      colorSource trainPath trainLabelPath $$
-        rescaleRotateLabeledImageConduit parallelParams n 0 =$=
-        writeLabeledImageBinarySink
-          (outputPath P.++ "/Train/Original/" P.++ str P.++ ".bin")
-          trainLen
-      colorSource trainPath trainLabelPath $$
-        rescaleRotateLabeledImageConduit parallelParams n deg =$=
-        writeLabeledImageBinarySink
-          (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin")
-          (trainLen * rotationLen)
-      colorSource testPath testLabelPath $$
-        rescaleRotateLabeledImageConduit parallelParams n 0 =$=
-        writeLabeledImageBinarySink
-          (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin")
-          testLen
-      colorSource testPath testLabelPath $$
-        rescaleRotateLabeledImageConduit parallelParams n deg =$=
-        writeLabeledImageBinarySink
-          (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin")
-          (testLen * rotationLen)
-    else do
-      graySource trainPath trainLabelPath $$
-        rescaleRotateLabeledImageConduit parallelParams n 0 =$=
-        writeLabeledImageBinarySink
-          (outputPath P.++ "/Train/Original/" P.++ str P.++ ".bin")
-          trainLen
-      graySource trainPath trainLabelPath $$
-        rescaleRotateLabeledImageConduit parallelParams n deg =$=
-        writeLabeledImageBinarySink
-          (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin")
-          (trainLen * rotationLen)
-      graySource testPath testLabelPath $$
-        rescaleRotateLabeledImageConduit parallelParams n 0 =$=
-        writeLabeledImageBinarySink
-          (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin")
-          testLen
-      graySource testPath testLabelPath $$
-        rescaleRotateLabeledImageConduit parallelParams n deg =$=
-        writeLabeledImageBinarySink
-          (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin")
-          (testLen * rotationLen)
+  imageSource trainPath trainLabelPath $$
+    rescaleRotateLabeledImageConduit parallelParams n 0 =$=
+    writeLabeledImageBinarySink
+      (outputPath P.++ "/Train/Original/" P.++ str P.++ ".bin")
+      trainLen
+  imageSource trainPath trainLabelPath $$
+    rescaleRotateLabeledImageConduit parallelParams n deg =$=
+    writeLabeledImageBinarySink
+      (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin")
+      (trainLen * rotationLen)
+  imageSource testPath testLabelPath $$
+    rescaleRotateLabeledImageConduit parallelParams n 0 =$=
+    writeLabeledImageBinarySink
+      (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin")
+      testLen
+  imageSource testPath testLabelPath $$
+    rescaleRotateLabeledImageConduit parallelParams n deg =$=
+    writeLabeledImageBinarySink
+      (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin")
+      (testLen * rotationLen)
