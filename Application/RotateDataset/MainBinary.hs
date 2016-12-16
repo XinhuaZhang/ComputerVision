@@ -39,17 +39,18 @@ main = do
   let parallelParams =
         ParallelParams
         { numThread = 14
-        , batchSize = 400
+        , batchSize = 1400
         }
+      isColorFlag = read isColor :: Bool
       str =
-        if read isColor :: Bool
+        if isColorFlag
           then "Color"
           else "Gray"
       n = 256
       deg = 90
       rotationLen = round (360 / deg)
       imageSource path labelPath =
-        imagePathSource path =$= readImageConduit =$=
+        imagePathSource path =$= readImageConduit isColorFlag =$=
         mergeSource (labelSource labelPath) =$=
         CL.map (\(label, img) -> LabeledArray label $ computeUnboxedS img)
   trainLen <- fileLineCount trainPath

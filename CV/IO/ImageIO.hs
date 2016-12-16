@@ -16,8 +16,8 @@ imagePathSource filePath = do
   pathList <- liftIO $ readImagePathList filePath
   sourceList pathList
 
-readImageConduit :: Conduit FilePath IO (Array D DIM3 Double)
-readImageConduit =
+readImageConduit :: Bool -> Conduit FilePath IO (Array D DIM3 Double)
+readImageConduit isColor =
   awaitForever
     (\filePath -> do
        buffer <- liftIO $ readImage filePath
@@ -25,62 +25,125 @@ readImageConduit =
          Left msg -> error msg
          Right dImg ->
            let arr =
-                 case dImg of
-                   ImageY8 img ->
-                     fromFunction
-                       (Z :. (1 :: Int) :. imageHeight img :. imageWidth img)
-                       (\(Z :. _ :. j :. i) ->
-                           fromIntegral $ pixelAt img i j :: Double)
-                   ImageY16 img ->
-                     fromFunction
-                       (Z :. (1 :: Int) :. imageHeight img :. imageWidth img)
-                       (\(Z :. _ :. j :. i) ->
-                           fromIntegral $ pixelAt img i j :: Double)
-                   ImageYF img ->
-                     fromFunction
-                       (Z :. (1 :: Int) :. imageHeight img :. imageWidth img)
-                       (\(Z :. _ :. j :. i) ->
-                           float2Double $ pixelAt img i j :: Double)
-                   ImageRGB8 img ->
-                     fromFunction
-                       (Z :. (3 :: Int) :. imageHeight img :. imageWidth img)
-                       (\(Z :. k :. j :. i) ->
-                           let !(PixelRGB8 r g b) = pixelAt img i j
-                           in case k of
-                                0 -> fromIntegral r
-                                1 -> fromIntegral g
-                                2 -> fromIntegral b
-                                _ -> error "readImageConduit: dimension error.")
-                   ImageRGB16 img ->
-                     fromFunction
-                       (Z :. (3 :: Int) :. imageHeight img :. imageWidth img)
-                       (\(Z :. k :. j :. i) ->
-                           let !(PixelRGB16 r g b) = pixelAt img i j
-                           in case k of
-                                0 -> fromIntegral r
-                                1 -> fromIntegral g
-                                2 -> fromIntegral b
-                                _ -> error "readImageConduit: dimension error.")
-                   ImageRGBF img ->
-                     fromFunction
-                       (Z :. (3 :: Int) :. imageHeight img :. imageWidth img)
-                       (\(Z :. k :. j :. i) ->
-                           let !(PixelRGBF r g b) = pixelAt img i j
-                           in case k of
-                                0 -> float2Double r
-                                1 -> float2Double g
-                                2 -> float2Double b
-                                _ -> error "readImageConduit: dimension error.")
-                   img ->
-                     let rgbImg = convertRGB8 img
-                     in fromFunction
-                          (Z :. (3 :: Int) :. imageHeight rgbImg :. imageWidth rgbImg)
-                          (\(Z :. k :. j :. i) ->
-                              let !(PixelRGB8 r g b) = pixelAt rgbImg i j
-                              in case k of
-                                   0 -> fromIntegral r
-                                   1 -> fromIntegral g
-                                   2 -> fromIntegral b
-                                   _ ->
-                                     error "readImageConduit: dimension error.")
+                 if isColor
+                   then case dImg of
+                          ImageY8 img ->
+                            fromFunction
+                              (Z :. (1 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. _ :. j :. i) ->
+                                  fromIntegral $ pixelAt img i j :: Double)
+                          ImageY16 img ->
+                            fromFunction
+                              (Z :. (1 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. _ :. j :. i) ->
+                                  fromIntegral $ pixelAt img i j :: Double)
+                          ImageYF img ->
+                            fromFunction
+                              (Z :. (1 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. _ :. j :. i) ->
+                                  float2Double $ pixelAt img i j :: Double)
+                          ImageRGB8 img ->
+                            fromFunction
+                              (Z :. (3 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. k :. j :. i) ->
+                                  let !(PixelRGB8 r g b) = pixelAt img i j
+                                  in case k of
+                                       0 -> fromIntegral r
+                                       1 -> fromIntegral g
+                                       2 -> fromIntegral b
+                                       _ ->
+                                         error
+                                           "readImageConduit: dimension error.")
+                          ImageRGB16 img ->
+                            fromFunction
+                              (Z :. (3 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. k :. j :. i) ->
+                                  let !(PixelRGB16 r g b) = pixelAt img i j
+                                  in case k of
+                                       0 -> fromIntegral r
+                                       1 -> fromIntegral g
+                                       2 -> fromIntegral b
+                                       _ ->
+                                         error
+                                           "readImageConduit: dimension error.")
+                          ImageRGBF img ->
+                            fromFunction
+                              (Z :. (3 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. k :. j :. i) ->
+                                  let !(PixelRGBF r g b) = pixelAt img i j
+                                  in case k of
+                                       0 -> float2Double r
+                                       1 -> float2Double g
+                                       2 -> float2Double b
+                                       _ ->
+                                         error
+                                           "readImageConduit: dimension error.")
+                          img ->
+                            let !rgbImg = convertRGB8 img
+                            in fromFunction
+                                 (Z :. (3 :: Int) :. imageHeight rgbImg :.
+                                  imageWidth rgbImg)
+                                 (\(Z :. k :. j :. i) ->
+                                     let !(PixelRGB8 r g b) = pixelAt rgbImg i j
+                                     in case k of
+                                          0 -> fromIntegral r
+                                          1 -> fromIntegral g
+                                          2 -> fromIntegral b
+                                          _ ->
+                                            error
+                                              "readImageConduit: dimension error.")
+                   else case dImg of
+                          ImageY8 img ->
+                            fromFunction
+                              (Z :. (1 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. _ :. j :. i) ->
+                                  fromIntegral $ pixelAt img i j :: Double)
+                          ImageY16 img ->
+                            fromFunction
+                              (Z :. (1 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. _ :. j :. i) ->
+                                  fromIntegral $ pixelAt img i j :: Double)
+                          ImageYF img ->
+                            fromFunction
+                              (Z :. (1 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. _ :. j :. i) ->
+                                  float2Double $ pixelAt img i j :: Double)
+                          ImageRGB8 img ->
+                            fromFunction
+                              (Z :. (1 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. _ :. j :. i) ->
+                                  let !(PixelRGB8 r g b) = pixelAt img i j
+                                  in fromIntegral (r + g + b) / 3)
+                          ImageRGB16 img ->
+                            fromFunction
+                              (Z :. (1 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. _ :. j :. i) ->
+                                  let !(PixelRGB16 r g b) = pixelAt img i j
+                                  in fromIntegral (r + g + b) / 3)
+                          ImageRGBF img ->
+                            fromFunction
+                              (Z :. (1 :: Int) :. imageHeight img :.
+                               imageWidth img)
+                              (\(Z :. _ :. j :. i) ->
+                                  let !(PixelRGBF r g b) = pixelAt img i j
+                                  in float2Double (r + g + b) / 3)
+                          img ->
+                            let !rgbImg = convertRGB8 img
+                            in fromFunction
+                                 (Z :. (1 :: Int) :. imageHeight rgbImg :.
+                                  imageWidth rgbImg)
+                                 (\(Z :. _ :. j :. i) ->
+                                     let !(PixelRGB8 r g b) = pixelAt rgbImg i j
+                                     in fromIntegral (r + g + b) / 3)
            in yield arr)
