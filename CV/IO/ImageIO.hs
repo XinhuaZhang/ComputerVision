@@ -30,22 +30,22 @@ readImageConduit =
                      fromFunction
                        (Z :. (1 :: Int) :. imageHeight img :. imageWidth img)
                        (\(Z :. _ :. j :. i) ->
-                           fromIntegral $ pixelAt img j i :: Double)
+                           fromIntegral $ pixelAt img i j :: Double)
                    ImageY16 img ->
                      fromFunction
                        (Z :. (1 :: Int) :. imageHeight img :. imageWidth img)
                        (\(Z :. _ :. j :. i) ->
-                           fromIntegral $ pixelAt img j i :: Double)
+                           fromIntegral $ pixelAt img i j :: Double)
                    ImageYF img ->
                      fromFunction
                        (Z :. (1 :: Int) :. imageHeight img :. imageWidth img)
                        (\(Z :. _ :. j :. i) ->
-                           float2Double $ pixelAt img j i :: Double)
+                           float2Double $ pixelAt img i j :: Double)
                    ImageRGB8 img ->
                      fromFunction
                        (Z :. (3 :: Int) :. imageHeight img :. imageWidth img)
                        (\(Z :. k :. j :. i) ->
-                           let !(PixelRGB8 r g b) = pixelAt img j i
+                           let !(PixelRGB8 r g b) = pixelAt img i j
                            in case k of
                                 0 -> fromIntegral r
                                 1 -> fromIntegral g
@@ -55,7 +55,7 @@ readImageConduit =
                      fromFunction
                        (Z :. (3 :: Int) :. imageHeight img :. imageWidth img)
                        (\(Z :. k :. j :. i) ->
-                           let !(PixelRGB16 r g b) = pixelAt img j i
+                           let !(PixelRGB16 r g b) = pixelAt img i j
                            in case k of
                                 0 -> fromIntegral r
                                 1 -> fromIntegral g
@@ -65,11 +65,22 @@ readImageConduit =
                      fromFunction
                        (Z :. (3 :: Int) :. imageHeight img :. imageWidth img)
                        (\(Z :. k :. j :. i) ->
-                           let !(PixelRGBF r g b) = pixelAt img j i
+                           let !(PixelRGBF r g b) = pixelAt img i j
                            in case k of
                                 0 -> float2Double r
                                 1 -> float2Double g
                                 2 -> float2Double b
                                 _ -> error "readImageConduit: dimension error.")
-                   _ -> error "readImageConduit: image type is not supported"
+                   img ->
+                     let rgbImg = convertRGB8 img
+                     in fromFunction
+                          (Z :. (3 :: Int) :. imageHeight rgbImg :. imageWidth rgbImg)
+                          (\(Z :. k :. j :. i) ->
+                              let !(PixelRGB8 r g b) = pixelAt rgbImg i j
+                              in case k of
+                                   0 -> fromIntegral r
+                                   1 -> fromIntegral g
+                                   2 -> fromIntegral b
+                                   _ ->
+                                     error "readImageConduit: dimension error.")
            in yield arr)
