@@ -1,12 +1,14 @@
 #/bin/bash
 
-export OMP_NUM_THREADS=16
+export OMP_NUM_THREADS=14
 FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3" 
-##FLAG="--make -O2 -rtsopts -j4 -threaded " 
-LIBS="-lgomp -lstdc++ -lblas"
 OBJPATH="../../Classifier/LibLinear/"
-
+LIBS="-lstdc++ -llapack -lblas -lgomp"
 ghc $FLAG $LIBS -i../../ TrainGMM.hs -o trainGMM
-ghc $FLAG $LIBS -i../../ TrainMPPCA.hs -o trainMPPCA
+## ghc $FLAG $LIBS -i../../ TrainMPPCARepa.hs -o trainMPPCARepa
 ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisher.hs -o trainFisher
 ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisher.hs -o predictFisher
+## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisherMPPCA.hs -o trainFisherMPPCA
+## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherMPPCA.hs -o predictFisherMPPCA
+
+## ghc $FLAG $LIBS -i../../ FilterTest.hs -o filterTest

@@ -5,84 +5,70 @@ import           Application.GMM.FisherKernel
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
-import           CV.CUDA.Context
-import           CV.CUDA.DataType
-import           CV.Feature.PolarSeparable
-import           CV.Feature.PolarSeparableAcc
+import           Control.Arrow
+import           Control.Monad
+import qualified Control.Monad.Parallel             as MP
+import           Control.Parallel
+import           CV.Array.LabeledArray
+import           CV.Feature.PolarSeparableRepa
 import           CV.Filter
-import           CV.Filter.FilterStats
 import           CV.Filter.PolarSeparableFilter
-import           CV.Filter.PolarSeparableFilterAcc
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
-import           Data.Array.Accelerate              as A
-import           Data.Array.Accelerate.Data.Complex as A
+import           Data.Array.Repa                    as R
 import           Data.Binary
+import           Data.Complex                       as C
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
+import           Data.List                          as L
+import           Data.Maybe                         as Maybe
 import           Data.Set                           as S
+import           Data.Time.LocalTime
 import           Data.Vector                        as V
 import           Data.Vector.Unboxed                as VU
+import           Foreign.Ptr
 import           Prelude                            as P
 import           System.Environment
-import Control.Monad.IO.Class
 
-main =
-  do args <- getArgs
-     if P.null args
-        then error "run with --help to see options."
-        else return ()
-     params <- parseArgs args
-     gmm <- decodeFile (gmmFile params)
-     let parallelParams =
-           ParallelParams {Parallel.numThread = Parser.numThread params
-                          ,Parallel.batchSize = Parser.batchSize params}
-         filterParams =
-           PolarSeparableFilterParams {getRadius = 128
-                                      ,getScale = S.fromDistinctAscList (scale params)
-                                      ,getRadialFreq =
-                                         S.fromDistinctAscList [0 .. (freq params - 1)]
-                                      ,getAngularFreq =
-                                         S.fromDistinctAscList [0 .. (freq params - 1)]
-                                      ,getName = Pinwheels}
-     print params
-     ctx <- initializeGPUCtx (Option $ gpuId params)
-     let featureConduit =
-           case (gpuDataType params) of
-             GPUFloat ->
-               let filters =
-                     makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
-               in do imagePathSource (inputFile params) =$= grayImageConduit =$=
-                       grayImage2FloatArrayConduit =$=
-                       if isComplex params
-                          then complexConduitFloat parallelParams
-                                                   ctx
-                                                   filters
-                                                   (downsampleFactor params)
-                          else magnitudeConduitFloat parallelParams
-                                                     ctx
-                                                     filters
-                                                     (downsampleFactor params)
-             GPUDouble ->
-               let filters =
-                     makeFilter filterParams :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
-               in do imagePathSource (inputFile params) =$= grayImageConduit =$=
-                       grayImage2DoubleArrayConduit =$=
-                       if isComplex params
-                          then complexConduitDouble parallelParams
-                                                    ctx
-                                                    filters
-                                                    (downsampleFactor params)
-                          else magnitudeConduitDouble parallelParams
-                                                      ctx
-                                                      filters
-                                                      (downsampleFactor params)
-     featureConduit $$
-       CL.map (V.fromList .
-               P.map (\(PolarSeparableFeaturePoint _ _ vec) -> vec)) =$=
-       fisherVectorConduit parallelParams gmm =$=
-       CL.mapM (getFeatureVecPtr . Dense . VU.toList) =$=
-       mergeSource (labelSource $ labelFile params) =$=
-       predict (modelName params)
-               ((modelName params) P.++ ".out")
-     destoryGPUCtx ctx
+main = do
+  args <- getArgs
+  if P.null args
+    then error "run with --help to see options."
+    else return ()
+  params <- parseArgs args
+  gmm <- readGMM (gmmFile params) :: IO [GMM]
+  let parallelParams =
+        ParallelParams
+        { Parallel.numThread = Parser.numThread params
+        , Parallel.batchSize = Parser.batchSize params
+        }
+      filterParamsSet1 =
+        PolarSeparableFilterParamsSet
+        { getSizeSet = (0, 0)
+        , getDownsampleFactorSet = 1
+        , getScaleSet = S.fromDistinctAscList (scale params)
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getNameSet = Pinwheels
+        }
+      filterParamsSet2 =
+        PolarSeparableFilterParamsSet
+        { getSizeSet = (0, 0)
+        , getDownsampleFactorSet = 2
+        , getScaleSet = S.fromDistinctAscList (scale params)
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getNameSet = Pinwheels
+        }
+      filterParamsList = [filterParamsSet1, filterParamsSet2]
+      numFeature =
+        L.sum . L.map L.product . L.tail . L.inits . L.map getFilterNum $ filterParamsList
+  print params
+  readLabeledImagebinarySource (inputFile params) $$ 
+    labeledArrayMagnitudeSetVariedSizeConduit
+      parallelParams
+      filterParamsList
+      (downsampleFactor params) =$=
+    (fisherVectorConduit parallelParams gmm) =$=
+    CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
+    predict (modelName params) ((modelName params) P.++ ".out")
