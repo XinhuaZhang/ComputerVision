@@ -5,6 +5,7 @@ import           Application.GMM.Gaussian
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Control.Monad
+import           Control.Monad.Trans.Resource
 import           CV.Utility.Parallel
 import           Data.Conduit
 import           Data.Conduit.List            as CL
@@ -81,7 +82,7 @@ fisherVectorSigma parallelParams gmms assignments xs =
 fisherVectorConduit
   :: ParallelParams
   -> [GMM]
-  -> Conduit (Int,[VU.Vector Double]) IO (Int,VU.Vector Double)
+  -> Conduit (Int,[VU.Vector Double]) (ResourceT IO) (Int,VU.Vector Double)
 fisherVectorConduit parallelParams gmms =
   awaitForever
     (\(label,x) ->

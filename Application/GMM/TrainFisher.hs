@@ -9,6 +9,7 @@ import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
 import           Control.Monad
 import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Resource
 import           Control.Parallel
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparableRepa
@@ -17,6 +18,7 @@ import           CV.Utility.Parallel            as Parallel
 import           CV.Utility.Time
 import           Data.Array.Repa                as R
 import           Data.Conduit
+import           Data.Conduit.Binary            as CB
 import           Data.Conduit.List              as CL
 import           Data.List                      as L
 import           Data.Set                       as S
@@ -30,12 +32,12 @@ trainSink
   -> FilePath
   -> TrainParams
   -> Bool
-  -> Sink (Int, VU.Vector Double) IO ()
+  -> Sink (Int, VU.Vector Double) (ResourceT IO) ()
 trainSink parallelParams filePath trainParams findCFlag = go [] []
   where
     go :: [[Double]]
        -> [[Ptr C'feature_node]]
-       -> Sink (Int, VU.Vector Double) IO ()
+       -> Sink (Int, VU.Vector Double) (ResourceT IO) ()
     go label pss = do
       xs <- CL.take (Parallel.batchSize parallelParams)
       if P.length xs > 0
@@ -100,13 +102,13 @@ main = do
           then labeledArrayMagnitudeSetFixedSizeConduit
                  parallelParams
                  (L.map makeFilterSet filterParamsList)
-                 (downsampleFactor params) undefined
+                 (downsampleFactor params)
           else labeledArrayMagnitudeSetVariedSizeConduit
                  parallelParams
                  filterParamsList
                  (downsampleFactor params)
   print params
-  readLabeledImagebinarySource (inputFile params) $$
-    magnitudeConduit =$=
+  runResourceT $
+    sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
     (fisherVectorConduit parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)

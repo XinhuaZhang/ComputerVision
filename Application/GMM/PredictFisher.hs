@@ -1,23 +1,25 @@
 module Main where
 
-import           Application.GMM.ArgsParser         as Parser
+import           Application.GMM.ArgsParser     as Parser
 import           Application.GMM.FisherKernel
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
 import           Control.Arrow
 import           Control.Monad
+import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparableRepa
 import           CV.Filter.PolarSeparableFilter
-import           CV.Utility.Parallel                as Parallel
-import           Data.Array.Repa                    as R
+import           CV.Utility.Parallel            as Parallel
+import           Data.Array.Repa                as R
 import           Data.Conduit
-import           Data.Conduit.List                  as CL
-import           Data.List                          as L
-import           Data.Set                           as S
-import           Data.Vector.Unboxed                as VU
-import           Prelude                            as P
+import           Data.Conduit.Binary            as CB
+import           Data.Conduit.List              as CL
+import           Data.List                      as L
+import           Data.Set                       as S
+import           Data.Vector.Unboxed            as VU
+import           Prelude                        as P
 import           System.Environment
 
 main = do
@@ -58,14 +60,14 @@ main = do
           then labeledArrayMagnitudeSetFixedSizeConduit
                  parallelParams
                  (L.map makeFilterSet filterParamsList)
-                 (downsampleFactor params) undefined
+                 (downsampleFactor params)
           else labeledArrayMagnitudeSetVariedSizeConduit
                  parallelParams
                  filterParamsList
                  (downsampleFactor params)
   print params
-  readLabeledImagebinarySource (inputFile params) $$ 
-    magnitudeConduit =$=
+  runResourceT $
+    sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
     (fisherVectorConduit parallelParams gmm) =$=
     CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")
