@@ -9,25 +9,17 @@ import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
 import           Control.Monad
 import           Control.Monad.IO.Class
-import qualified Control.Monad.Parallel         as MP
 import           Control.Parallel
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparableRepa
-import           CV.Filter
 import           CV.Filter.PolarSeparableFilter
-import           CV.IO.ImageIO
 import           CV.Utility.Parallel            as Parallel
 import           CV.Utility.Time
 import           Data.Array.Repa                as R
-import           Data.Binary
-import           Data.Complex                   as C
 import           Data.Conduit
 import           Data.Conduit.List              as CL
 import           Data.List                      as L
-import           Data.Maybe                     as Maybe
 import           Data.Set                       as S
-import           Data.Time.LocalTime
-import           Data.Vector                    as V
 import           Data.Vector.Unboxed            as VU
 import           Foreign.Ptr
 import           Prelude                        as P
@@ -103,11 +95,18 @@ main = do
             else (2 * numFeature) * (numModel $ P.head gmm)
         , trainModel = modelName params
         }
+      magnitudeConduit =
+        if isFixedSize params
+          then labeledArrayMagnitudeSetFixedSizeConduit
+                 parallelParams
+                 (L.map makeFilterSet filterParamsList)
+                 (downsampleFactor params) undefined
+          else labeledArrayMagnitudeSetVariedSizeConduit
+                 parallelParams
+                 filterParamsList
+                 (downsampleFactor params)
   print params
   readLabeledImagebinarySource (inputFile params) $$
-    labeledArrayMagnitudeSetVariedSizeConduit
-      parallelParams
-      filterParamsList
-      (downsampleFactor params) =$=
+    magnitudeConduit =$=
     (fisherVectorConduit parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)

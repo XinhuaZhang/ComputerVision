@@ -21,6 +21,7 @@ data Flag
   | Scale [Double]
   | IsComplex
   | NumGMMExample Int
+  | IsFixedSize
   deriving (Show)
 
 data Params = Params
@@ -39,6 +40,7 @@ data Params = Params
   , scale            :: [Double]
   , isComplex        :: Bool
   , numGMMExample    :: Int
+  , isFixedSize      :: Bool
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -101,15 +103,20 @@ options =
          "[Double]")
       "Set the scale list"
   , Option
-      ['j']
+      ['z']
       ["complex"]
       (NoArg IsComplex)
       "Flag which decides using complex value or magnitude."
   , Option
-      ['k']
+      ['z']
       ["numGMMExample"]
       (ReqArg (Freq . readInt) "INT")
       "Set the radial and angular frequencies. Their ranges are assumed to be the same."
+  , Option
+      ['z']
+      ["fixedSize"]
+      (NoArg IsFixedSize)
+      "Are the images have the same sizes?"
   ]
 
 readInt :: String -> Int
@@ -153,6 +160,7 @@ parseFlag flags = go flags defaultFlag
       , scale = [1]
       , isComplex = False
       , numGMMExample = 1
+      , isFixedSize = False
       }
     go [] params = params
     go (x:xs) params =
@@ -246,6 +254,12 @@ parseFlag flags = go flags defaultFlag
             xs
             (params
              { numGMMExample = v
+             })
+        IsFixedSize ->
+          go
+            xs
+            (params
+             { isFixedSize = True
              })
 
 parseArgs :: [String] -> IO Params

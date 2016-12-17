@@ -19,7 +19,7 @@ magnitudeFixedSizeConduit
   :: ParallelParams
   -> [[PolarSeparableFilter PolarSeparableFilterParams (R.Array U DIM2 (C.Complex Double))]]
   -> Int
-  -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
+  -> Conduit (R.Array U DIM3 Double) (ResourceT IO) [VU.Vector Double]
 magnitudeFixedSizeConduit parallelParams filters factor =
   awaitForever
     (\x ->
@@ -34,24 +34,8 @@ magnitudeVariedSizeConduit
   :: ParallelParams
   -> [[PolarSeparableFilterParams]]
   -> Int
-  -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
-magnitudeVariedSizeConduit parallelParams filterParamsList factor =
-  awaitForever
-    (\x ->
-       yield .
-       L.concat .
-       parMapChunk
-         parallelParams
-         rdeepseq
-         (\filterParams -> multiLayerMagnitudeVariedSize filterParams factor x) $
-       filterParamsList)
-
-magnitudeVariedSizeConduit'
-  :: ParallelParams
-  -> [[PolarSeparableFilterParams]]
-  -> Int
   -> Conduit (R.Array U DIM3 Double) (ResourceT IO) [VU.Vector Double]
-magnitudeVariedSizeConduit' parallelParams filterParamsList factor =
+magnitudeVariedSizeConduit parallelParams filterParamsList factor =
   awaitForever
     (\x ->
        yield .
@@ -67,7 +51,7 @@ labeledArrayMagnitudeSetFixedSizeConduit
   :: ParallelParams
   -> [PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))]
   -> Int
-  -> Conduit (LabeledArray DIM3 Double) IO (Int,[VU.Vector Double])
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int,[VU.Vector Double])
 labeledArrayMagnitudeSetFixedSizeConduit parallelParams filters factor = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -87,7 +71,7 @@ labeledArrayMagnitudeSetVariedSizeConduit
   :: ParallelParams
   -> [PolarSeparableFilterParamsSet]
   -> Int
-  -> Conduit (LabeledArray DIM3 Double) IO (Int,[VU.Vector Double])
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int,[VU.Vector Double])
 labeledArrayMagnitudeSetVariedSizeConduit parallelParams filterParamsList factor = do
   xs <- CL.take (batchSize parallelParams)
   unless

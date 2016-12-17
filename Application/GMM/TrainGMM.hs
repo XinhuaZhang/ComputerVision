@@ -2,26 +2,20 @@ module Main where
 
 import           Application.GMM.ArgsParser     as Parser
 import           Application.GMM.GMM
-import           Control.Monad
 import           Control.Monad                  as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparableRepa
-import           CV.Filter
 import           CV.Filter.PolarSeparableFilter
-import           CV.IO.ImageIO
 import           CV.Utility.Parallel            as Parallel
 import           Data.Array.Repa                as R
 import           Data.Binary
 import           Data.ByteString.Lazy           as BL
-import           Data.Complex
 import           Data.Conduit
 import           Data.Conduit.Binary            as CB
 import           Data.Conduit.List              as CL
 import           Data.List                      as L
 import           Data.Set                       as S
-import           Data.Vector                    as V
-import           Data.Vector.Unboxed            as VU
 import           Prelude                        as P
 import           System.Directory
 import           System.Environment
@@ -65,7 +59,7 @@ main = do
         }
       filterParamsSetList = [filterParamsSet1, filterParamsSet2]
       filterParamsList =
-        splitList (Parser.numThread params) .
+        splitList (Parallel.batchSize parallelParams) .
         P.concatMap generateMultilayerPSFParamsSet . L.tail . L.inits $
         filterParamsSetList
       filePath = gmmFile params
@@ -84,7 +78,17 @@ main = do
             readGMM filePath
           else M.replicateM numFeature $ initializeGMM numM bound
       else M.replicateM numFeature $ initializeGMM numM bound
-  let gmmsList = splitList (Parser.numThread params) gmms
+  let gmmsList = splitList (Parallel.numThread parallelParams) gmms
+      magnitudeConduit paramsList =
+        if isFixedSize params
+          then magnitudeFixedSizeConduit
+                 parallelParams
+                 (L.map (L.map makeFilter) paramsList)
+                 (downsampleFactor params)
+          else magnitudeVariedSizeConduit
+                 parallelParams
+                 paramsList
+                 (downsampleFactor params)
   withBinaryFile
     (gmmFile params)
     WriteMode
@@ -95,10 +99,7 @@ main = do
              runResourceT
                (sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
                 CL.map (\(LabeledArray _ arr) -> arr) =$=
-                magnitudeVariedSizeConduit'
-                  parallelParams
-                  filterParams
-                  (downsampleFactor params) =$=
+                magnitudeConduit filterParams =$=
                 gmmPartSink
                   handle
                   models

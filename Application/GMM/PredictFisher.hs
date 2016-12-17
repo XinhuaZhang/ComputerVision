@@ -7,26 +7,16 @@ import           Application.GMM.MixtureModel
 import           Classifier.LibLinear
 import           Control.Arrow
 import           Control.Monad
-import qualified Control.Monad.Parallel             as MP
-import           Control.Parallel
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparableRepa
-import           CV.Filter
 import           CV.Filter.PolarSeparableFilter
-import           CV.IO.ImageIO
 import           CV.Utility.Parallel                as Parallel
 import           Data.Array.Repa                    as R
-import           Data.Binary
-import           Data.Complex                       as C
 import           Data.Conduit
 import           Data.Conduit.List                  as CL
 import           Data.List                          as L
-import           Data.Maybe                         as Maybe
 import           Data.Set                           as S
-import           Data.Time.LocalTime
-import           Data.Vector                        as V
 import           Data.Vector.Unboxed                as VU
-import           Foreign.Ptr
 import           Prelude                            as P
 import           System.Environment
 
@@ -63,12 +53,19 @@ main = do
       filterParamsList = [filterParamsSet1, filterParamsSet2]
       numFeature =
         L.sum . L.map L.product . L.tail . L.inits . L.map getFilterNum $ filterParamsList
+      magnitudeConduit =
+        if isFixedSize params
+          then labeledArrayMagnitudeSetFixedSizeConduit
+                 parallelParams
+                 (L.map makeFilterSet filterParamsList)
+                 (downsampleFactor params) undefined
+          else labeledArrayMagnitudeSetVariedSizeConduit
+                 parallelParams
+                 filterParamsList
+                 (downsampleFactor params)
   print params
   readLabeledImagebinarySource (inputFile params) $$ 
-    labeledArrayMagnitudeSetVariedSizeConduit
-      parallelParams
-      filterParamsList
-      (downsampleFactor params) =$=
+    magnitudeConduit =$=
     (fisherVectorConduit parallelParams gmm) =$=
     CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")
