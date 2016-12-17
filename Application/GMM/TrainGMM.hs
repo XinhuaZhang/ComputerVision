@@ -34,6 +34,17 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
+  imageSize <-
+    if isFixedSize params
+      then do
+        xs <-
+          runResourceT $
+          sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+          CL.take 1
+        let (LabeledArray _ arr) = L.head xs
+            (Z :. _ :. ny :. nx) = extent arr
+        return (ny, nx)
+      else return (0, 0)
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
@@ -41,7 +52,7 @@ main = do
         }
       filterParamsSet1 =
         PolarSeparableFilterParamsSet
-        { getSizeSet = (0, 0)
+        { getSizeSet = imageSize
         , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
@@ -50,7 +61,7 @@ main = do
         }
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
-        { getSizeSet = (0, 0)
+        { getSizeSet = imageSize
         , getDownsampleFactorSet = 2
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]

@@ -110,7 +110,7 @@ options =
   , Option
       ['z']
       ["numGMMExample"]
-      (ReqArg (Freq . readInt) "INT")
+      (ReqArg (NumGMMExample . readInt) "INT")
       "Set the radial and angular frequencies. Their ranges are assumed to be the same."
   , Option
       ['z']
