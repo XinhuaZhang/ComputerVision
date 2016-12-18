@@ -48,6 +48,7 @@ data EMState a
            !a
   | EMContinue !AssignmentVec
                !Double
+               !Int
                !a
   | EMReset !ResetOption
             !a
@@ -55,7 +56,7 @@ data EMState a
 
 instance NFData a =>
          NFData (EMState a) where
-  rnf (EMContinue x y z) = x `seq` y `seq` z `seq` ()
+  rnf (EMContinue x y n z) = x `seq` y `seq` n `seq` z `seq` ()
   rnf (EMReset x y)      = x `seq` y `seq` ()
   rnf !_                 = ()
 
@@ -91,7 +92,7 @@ resetGMMList bound = P.mapM reset
   where
     reset (EMReset option gmm) = do
       newGMM <- resetGMM option gmm bound
-      return $! EMContinue V.empty 1000 newGMM
+      return $! EMContinue V.empty 1000 0 newGMM
     reset gmmState = return gmmState
 
 getAssignment :: GMM -> Double -> VU.Vector Double
@@ -181,11 +182,11 @@ updateGMM oldGMM oldAssignmentVec xs =
 
 emOneStep :: Double -> EMState GMM -> VU.Vector Double -> EMState GMM
 emOneStep _ x@(EMDone _ _) _ = x
-emOneStep threshold (EMContinue oldAssignmentVec oldAvgLikelihood oldGMM) xs
+emOneStep threshold (EMContinue oldAssignmentVec oldAvgLikelihood count oldGMM) xs
   | not (V.null zeroNaNNKIdx) = EMReset (ResetIndex zeroNaNNKIdx) oldGMM
   | isJust zeroZIdx = EMReset ResetAll oldGMM
-  | rate < threshold = EMDone newAvgLikelihood newGMM
-  | otherwise = EMContinue newAssignmentVec newAvgLikelihood newGMM
+  | rate < threshold || count == 50 = EMDone newAvgLikelihood newGMM
+  | otherwise = EMContinue newAssignmentVec newAvgLikelihood (count+1) newGMM
   where
     !nks = getNks oldAssignmentVec
     !zs = V.map VU.sum oldAssignmentVec
@@ -208,17 +209,17 @@ checkStateContinueDone EMDone {}     = True
 checkStateContinueDone _             = False
 
 computeStateAssignmentLikelihood :: EMState GMM -> VU.Vector Double -> EMState GMM
-computeStateAssignmentLikelihood (EMContinue _ _ m) x =
+computeStateAssignmentLikelihood (EMContinue _ _ c m) x =
   let !assignment = getAssignmentVec m x
       !avgLikelihood = getAvgLikelihood m x
-  in EMContinue assignment avgLikelihood m
+  in EMContinue assignment avgLikelihood c m
 computeStateAssignmentLikelihood EMReset {} _ =
   error
     "computeStateAssignment: All reset state shold have been removed by now."
 computeStateAssignmentLikelihood state _ = state
 
 getStateLikelihood :: EMState a -> Double
-getStateLikelihood (EMContinue _ x _) = x
+getStateLikelihood (EMContinue _ x _ _) = x
 getStateLikelihood (EMDone x _) = x
 getStateLikelihood _ =
   error "getStateLikelihood: All reset state shold have been removed by now."
@@ -228,7 +229,7 @@ getModelDone (EMDone _ m) = m
 getModelDone _ = error "getModelDone: There are states which are not done yet."
 
 getModelContinueDone :: EMState a -> a
-getModelContinueDone (EMContinue _ _ m) = m
+getModelContinueDone (EMContinue _ _ _ m) = m
 getModelContinueDone (EMDone _ m) = m
 getModelContinueDone _ =
   error "getModelContinueDone: There are states which are not EMContinue."
@@ -371,7 +372,7 @@ gmmAllSink parallelParams filePath numM bound threshold numTrain = do
           (\gmm y ->
               let !assignment = getAssignmentVec gmm y
                   !likelihood = getAvgLikelihood gmm y
-              in EMContinue assignment likelihood gmm)
+              in EMContinue assignment likelihood 0 gmm)
           models
           ys
   liftIO $ emAll parallelParams filePath bound threshold stateGMM ys
@@ -400,7 +401,7 @@ gmmPartSink handle gmms bound threshold numTrain = do
           (\gmm y ->
               let !assignment = getAssignmentVec gmm y
                   !likelihood = getAvgLikelihood gmm y
-              in EMContinue assignment likelihood gmm)
+              in EMContinue assignment likelihood 0 gmm)
           gmms
           ys
   liftIO $ hEMPart handle bound threshold stateGMM ys
