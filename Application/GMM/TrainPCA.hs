@@ -1,36 +1,31 @@
 module Main where
 
 import           Application.GMM.ArgsParser     as Parser
-import           Application.GMM.FisherKernel
 import           Application.GMM.GMM
-import           Application.GMM.MixtureModel
 import           Application.GMM.PCA
-import           Classifier.LibLinear
-import           Control.Arrow
-import           Control.Monad
+import           Control.Monad                  as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparableRepa
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel            as Parallel
 import           Data.Array.Repa                as R
+import           Data.Binary
+import           Data.ByteString.Lazy           as BL
 import           Data.Conduit
 import           Data.Conduit.Binary            as CB
 import           Data.Conduit.List              as CL
 import           Data.List                      as L
 import           Data.Set                       as S
-import           Data.Vector.Unboxed            as VU
 import           Prelude                        as P
+import           System.Directory
 import           System.Environment
+import           System.IO                      as IO
 
 main = do
   args <- getArgs
-  if P.null args
-    then error "run with --help to see options."
-    else return ()
+  when (P.null args) $ error "run with --help to see options."
   params <- parseArgs args
-  gmm <- readGMM (gmmFile params) :: IO [GMM]
-  pcaMatrix <- readMatrix (pcaFile params)
   imageSize <-
     if isFixedSize params
       then do
@@ -65,23 +60,22 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsList = [filterParamsSet1, filterParamsSet2]
-      numFeature =
-        L.sum . L.map L.product . L.tail . L.inits . L.map getFilterNum $ filterParamsList
-      magnitudeConduit =
+      filterParamsSetList = [filterParamsSet1, filterParamsSet2]
+      numM = numGaussian params
+      bound = ((0, 10), (0.1, 100))
+      pcaMagnitudeConduit =
         if isFixedSize params
-          then labeledArrayMagnitudeSetFixedSizeConduit
+          then magnitudeSetFixedSizeConduit
                  parallelParams
-                 (L.map makeFilterSet filterParamsList)
+                 (L.map makeFilterSet filterParamsSetList)
                  (downsampleFactor params)
-          else labeledArrayMagnitudeSetVariedSizeConduit
+          else magnitudeSetVariedSizeConduit
                  parallelParams
-                 filterParamsList
+                 filterParamsSetList
                  (downsampleFactor params)
   print params
-  runResourceT $
-    sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
-    pcaLabelConduit parallelParams pcaMatrix =$=
-    (fisherVectorConduit parallelParams gmm) =$=
-    CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
-    predict (modelName params) ((modelName params) P.++ ".out")
+  pcaMatrix <-
+    runResourceT $
+    sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= pcaMagnitudeConduit =$=
+    pcaSink (numGMMExample params) (numPrincipal params)
+  writeMatrix (pcaFile params) pcaMatrix

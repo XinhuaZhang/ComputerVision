@@ -15,6 +15,7 @@ data Flag
   | BatchSize Int
   | DownsampleFactor Int
   | GMMFile String
+  | PCAFile String
   | Threshold Double
   | NumGaussian Int
   | Freq Int
@@ -22,6 +23,7 @@ data Flag
   | IsComplex
   | NumGMMExample Int
   | IsFixedSize
+  | NumPrincipal Int
   deriving (Show)
 
 data Params = Params
@@ -34,6 +36,7 @@ data Params = Params
   , batchSize        :: Int
   , downsampleFactor :: Int
   , gmmFile          :: String
+  , pcaFile          :: String
   , threshold        :: Double
   , numGaussian      :: Int
   , freq             :: Int
@@ -41,6 +44,7 @@ data Params = Params
   , isComplex        :: Bool
   , numGMMExample    :: Int
   , isFixedSize      :: Bool
+  , numPrincipal     :: Int
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -73,7 +77,8 @@ options =
       ["downsampleFactor"]
       (ReqArg (DownsampleFactor . readInt) "INT")
       "Set the DownsampleFactor (Default 1)"
-  , Option ['z'] ["GMMFile"] (ReqArg GMMFile "FILE") "Tree data file."
+  , Option ['z'] ["GMMFile"] (ReqArg GMMFile "FILE") "GMM data file."
+  , Option ['z'] ["PCAFile"] (ReqArg PCAFile "FILE") "PCA data file."
   , Option
       ['h']
       ["threshold"]
@@ -111,12 +116,17 @@ options =
       ['z']
       ["numGMMExample"]
       (ReqArg (NumGMMExample . readInt) "INT")
-      "Set the radial and angular frequencies. Their ranges are assumed to be the same."
+      "Set the number of examples which are used for GMM training."
   , Option
       ['z']
       ["fixedSize"]
       (NoArg IsFixedSize)
       "Are the images have the same sizes?"
+  ,  Option
+       ['z']
+       ["numPrincipal"]
+       (ReqArg (NumPrincipal . readInt) "INT")
+       "Set the output dimension of PCA dimensional reduction."
   ]
 
 readInt :: String -> Int
@@ -154,6 +164,7 @@ parseFlag flags = go flags defaultFlag
       , batchSize = 1
       , downsampleFactor = 1
       , gmmFile = "gmm.dat"
+      , pcaFile = "pca.dat"
       , threshold = -15
       , numGaussian = 1
       , freq = 0
@@ -161,6 +172,7 @@ parseFlag flags = go flags defaultFlag
       , isComplex = False
       , numGMMExample = 1
       , isFixedSize = False
+      , numPrincipal = 1
       }
     go [] params = params
     go (x:xs) params =
@@ -219,6 +231,12 @@ parseFlag flags = go flags defaultFlag
             (params
              { gmmFile = str
              })
+        PCAFile str ->
+          go
+            xs
+            (params
+             { pcaFile = str
+             })
         Threshold v ->
           go
             xs
@@ -260,6 +278,12 @@ parseFlag flags = go flags defaultFlag
             xs
             (params
              { isFixedSize = True
+             })
+        NumPrincipal v ->
+          go
+            xs
+            (params
+             { numPrincipal = v
              })
 
 parseArgs :: [String] -> IO Params
