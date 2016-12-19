@@ -54,13 +54,13 @@ main = do
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
         { getSizeSet = imageSize
-        , getDownsampleFactorSet = 2
+        , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSetList = [filterParamsSet1, filterParamsSet2]
+      filterParamsSetList = [filterParamsSet1]
       numM = numGaussian params
       bound = ((0, 10), (0.1, 100))
       pcaMagnitudeConduit =

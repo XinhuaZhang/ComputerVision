@@ -3,7 +3,8 @@
 module Application.GMM.PCA where
 
 import           Control.Arrow
-import           Control.Monad
+import           Control.Monad as M
+import Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Utility.Parallel
 import           Data.Array
@@ -24,9 +25,9 @@ pcaSink numExample numPrincipal = do
     then error "pcaSink: input data is empty."
     else do
       let !ys = L.map VU.concat . L.transpose $ xs
-          !arr =
+          !arr' =
             listArray (1, L.length ys) . L.map (LA.fromList . VU.toList) $ ys
-          !pcaMatrix = pcaN arr numPrincipal
+          !pcaMatrix = pcaN arr' numPrincipal
       return pcaMatrix
 
 pcaConduit

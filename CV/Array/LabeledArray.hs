@@ -100,7 +100,8 @@ readLabeledImageBinary filePath num =
       do sizeBS <- BL.hGet h 4
          let size' = fromIntegral (decode sizeBS :: Word32) :: Int
          bs <- BL.hGet h size'
-         return $ decode bs
+         let (LabeledArray label arr) = decode bs :: LabeledArray DIM3 Word8
+         return . LabeledArray label . computeUnboxedS . R.map fromIntegral $ arr
 
 
 writeLabeledImageBinarySink :: FilePath

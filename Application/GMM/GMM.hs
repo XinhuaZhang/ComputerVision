@@ -389,7 +389,7 @@ gmmPartSink handle gmms bound threshold numTrain = do
   liftIO . IO.putStrLn $ "Finish reading data."
   when
     ((P.length . P.head $ xs) /= P.length gmms)
-    (liftIO . IO.putStrLn $
+    (error $
      "The number of input features doesn't equal to the number of GMM models. " P.++
      show (P.length . P.head $ xs) P.++
      " vs " P.++
