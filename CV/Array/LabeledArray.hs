@@ -43,16 +43,16 @@ readLabeledImagebinarySource filePath = do
   lenBS <- liftIO $ BL.hGet h 4
   let len = fromIntegral (decode lenBS :: Word32) :: Int
   CL.unfoldM
-    (\(handle, count) ->
-        if count < len
+    (\(handle, count') ->
+        if count' < len
           then do
             sizeBS <- liftIO $ BL.hGet h 4
-            let size = fromIntegral (decode sizeBS :: Word32) :: Int
-            bs <- BL.hGet h size
-            if fromIntegral (BL.length bs) < size
+            let size' = fromIntegral (decode sizeBS :: Word32) :: Int
+            bs <- BL.hGet h size'
+            if fromIntegral (BL.length bs) < size'
               then error $
-                   "Expect " P.++ show size P.++ " images, but only have " P.++
-                   show count P.++
+                   "Expect " P.++ show size' P.++ " images, but only have " P.++
+                   show count' P.++
                    "."
               else let (LabeledArray label arr) =
                          decode bs :: LabeledArray DIM3 Word8
@@ -60,7 +60,7 @@ readLabeledImagebinarySource filePath = do
                       Just
                         ( LabeledArray label . computeUnboxedS . R.map fromIntegral $
                           arr
-                        , (handle, count + 1))
+                        , (handle, count' + 1))
           else do
             isEoF <- hIsEOF handle
             hClose handle
@@ -87,6 +87,20 @@ readLabeledImagebinaryConduit = do
             yield . LabeledArray label . computeUnboxedS . R.map fromIntegral $
               arr
             go)
+            
+
+readLabeledImageBinary :: FilePath -> Int -> IO [LabeledArray DIM3 Double]
+readLabeledImageBinary filePath num =
+  withBinaryFile filePath ReadMode $
+  \h -> do
+    lenBS <- BL.hGet h 4
+    let len = fromIntegral (decode lenBS :: Word32) :: Int
+        len1 = min len num
+    M.replicateM len1 $
+      do sizeBS <- BL.hGet h 4
+         let size' = fromIntegral (decode sizeBS :: Word32) :: Int
+         bs <- BL.hGet h size'
+         return $ decode bs
 
 
 writeLabeledImageBinarySink :: FilePath
@@ -98,8 +112,8 @@ writeLabeledImageBinarySink filePath len = do
   CL.foldMapM
     (\x ->
         let encodedX = encodeLabeledImg x
-            len = fromIntegral . BL.length $ encodedX :: Word32
-        in do BL.hPut h . encode $ len
+            len' = fromIntegral . BL.length $ encodedX :: Word32
+        in do BL.hPut h . encode $ len'
               BL.hPut h encodedX)
   liftIO $ hClose h
   where

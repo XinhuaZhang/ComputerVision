@@ -100,6 +100,7 @@ main = do
                  parallelParams
                  paramsList
                  (downsampleFactor params)
+  images <- readLabeledImageBinary (inputFile params) (numGMMExample params)
   withBinaryFile
     (gmmFile params)
     WriteMode
@@ -108,8 +109,7 @@ main = do
        M.foldM_
          (\handle (models, filterParams) ->
              runResourceT
-               (sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-                CL.map (\(LabeledArray _ arr) -> arr) =$=
+               (CL.sourceList images $$ CL.map (\(LabeledArray _ arr) -> arr) =$=
                 magnitudeConduit filterParams =$=
                 gmmPartSink
                   handle
