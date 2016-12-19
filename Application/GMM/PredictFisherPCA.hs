@@ -4,6 +4,7 @@ import           Application.GMM.ArgsParser     as Parser
 import           Application.GMM.FisherKernel
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
+import           Application.GMM.PCA
 import           Classifier.LibLinear
 import           Control.Arrow
 import           Control.Monad
@@ -29,6 +30,7 @@ main = do
     else return ()
   params <- parseArgs args
   gmm <- readGMM (gmmFile params) :: IO [GMM]
+  pcaMatrix <- readMatrix (pcaFile params)
   imageSize <-
     if isFixedSize params
       then do
@@ -79,6 +81,7 @@ main = do
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
+    pcaLabelConduit parallelParams pcaMatrix =$=
     (fisherVectorConduit parallelParams gmm) =$=
     CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")
