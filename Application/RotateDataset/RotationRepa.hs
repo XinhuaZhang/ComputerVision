@@ -56,7 +56,7 @@ recaleAndRotate2DImageS n degs arr =
     !paddedImg = pad [m, m] arr
     !ds = computeDerivativeS (computeUnboxedS paddedImg)
     !center = fromIntegral (n - 1) / 2
-    !ratio = fromIntegral m / fromIntegral n
+    !ratio = fromIntegral (m - 1) / fromIntegral (n - 1)
 
 rotate2DImageS
   :: (R.Source s Double)
