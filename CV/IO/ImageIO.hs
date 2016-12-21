@@ -123,21 +123,30 @@ readImageConduit isColor =
                                imageWidth img)
                               (\(Z :. _ :. j :. i) ->
                                   let !(PixelRGB8 r g b) = pixelAt img i j
-                                  in fromIntegral (r + g + b) / 3)
+                                  in rgb2Gray
+                                       (fromIntegral r)
+                                       (fromIntegral g)
+                                       (fromIntegral b))
                           ImageRGB16 img ->
                             fromFunction
                               (Z :. (1 :: Int) :. imageHeight img :.
                                imageWidth img)
                               (\(Z :. _ :. j :. i) ->
                                   let !(PixelRGB16 r g b) = pixelAt img i j
-                                  in fromIntegral (r + g + b) / 3)
+                                  in rgb2Gray
+                                       (fromIntegral r)
+                                       (fromIntegral g)
+                                       (fromIntegral b))
                           ImageRGBF img ->
                             fromFunction
                               (Z :. (1 :: Int) :. imageHeight img :.
                                imageWidth img)
                               (\(Z :. _ :. j :. i) ->
                                   let !(PixelRGBF r g b) = pixelAt img i j
-                                  in float2Double (r + g + b) / 3)
+                                  in rgb2Gray
+                                       (float2Double r)
+                                       (float2Double g)
+                                       (float2Double b))
                           img ->
                             let !rgbImg = convertRGB8 img
                             in fromFunction
@@ -145,5 +154,12 @@ readImageConduit isColor =
                                   imageWidth rgbImg)
                                  (\(Z :. _ :. j :. i) ->
                                      let !(PixelRGB8 r g b) = pixelAt rgbImg i j
-                                     in fromIntegral (r + g + b) / 3)
+                                     in rgb2Gray
+                                          (fromIntegral r)
+                                          (fromIntegral g)
+                                          (fromIntegral b))
            in yield arr)
+
+{-# INLINE rgb2Gray #-}
+rgb2Gray :: Double -> Double -> Double -> Double
+rgb2Gray r g b = 0.3 * r + 0.6 * g + 0.11 * b

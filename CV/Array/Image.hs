@@ -25,9 +25,9 @@ normalizeImage
 normalizeImage upperBound img =
   R.map (\x -> (x - minV) / (maxV - minV) * upperBound) img
   where
-    maxV = foldAllS max 0 img
-    minV = foldAllS min 10000 img
-        
+    maxV = foldAllS max (fromIntegral (minBound :: Int)) img
+    minV = foldAllS min (fromIntegral (maxBound :: Word)) img
+
 plotImage :: FilePath -> Array U DIM3 Double -> IO ()
 plotImage filePath img = do
   let Z :. nfp' :. nyp' :. nxp' = extent img
