@@ -21,12 +21,15 @@ import           System.Directory
 import           System.Environment
 import           System.IO                      as IO
 
-splitList :: Int -> [a] -> [[a]]
-splitList n xs
+splitList :: Bool -> Int -> [a] -> [[a]]
+splitList isColor n xs
   | P.null xs = []
-  | otherwise = as : splitList n bs
+  | otherwise = as : splitList isColor n bs
   where
-    (as, bs) = P.splitAt n xs
+    (as, bs) =
+      if isColor
+        then P.splitAt (3 * n) xs
+        else P.splitAt n xs
 
 main = do
   args <- getArgs
@@ -45,6 +48,17 @@ main = do
             (Z :. _ :. ny :. nx) = extent arr
         return (ny, nx)
       else return (0, 0)
+  isColor <-
+    do xs <-
+         runResourceT $
+         sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+         CL.take 1
+       let (LabeledArray _ arr) = L.head xs
+           (Z :. nf :. _ :. _) = extent arr
+       case nf of
+         3 -> return True
+         1 -> return False
+         _ -> error $ "Images have incorrect number of channels: " P.++ show nf
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
@@ -70,13 +84,16 @@ main = do
         }
       filterParamsSetList = [filterParamsSet1, filterParamsSet2]
       filterParamsList =
-        splitList (Parallel.batchSize parallelParams) .
+        splitList False (Parallel.batchSize parallelParams) .
         P.concatMap generateMultilayerPSFParamsSet . L.tail . L.inits $
         filterParamsSetList
       filePath = gmmFile params
       numM = numGaussian params
       bound = ((0, 10), (0.1, 100))
-      numFeature = P.sum . P.map P.length $ filterParamsList
+      numFeature =
+        if isColor
+          then 3 * (P.sum . P.map P.length $ filterParamsList)
+          else P.sum . P.map P.length $ filterParamsList
   print params
   fileFlag <- doesFileExist filePath
   gmms <-
@@ -89,7 +106,7 @@ main = do
             readGMM filePath
           else M.replicateM numFeature $ initializeGMM numM bound
       else M.replicateM numFeature $ initializeGMM numM bound
-  let gmmsList = splitList (Parallel.numThread parallelParams) gmms
+  let gmmsList = splitList isColor (Parallel.batchSize parallelParams) gmms
       magnitudeConduit paramsList =
         if isFixedSize params
           then magnitudeFixedSizeConduit

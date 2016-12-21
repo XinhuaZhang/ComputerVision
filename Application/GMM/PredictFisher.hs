@@ -64,8 +64,6 @@ main = do
         , getNameSet = Pinwheels
         }
       filterParamsList = [filterParamsSet1, filterParamsSet2]
-      numFeature =
-        L.sum . L.map L.product . L.tail . L.inits . L.map getFilterNum $ filterParamsList
       magnitudeConduit =
         if isFixedSize params
           then labeledArrayMagnitudeSetFixedSizeConduit

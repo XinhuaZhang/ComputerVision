@@ -71,6 +71,17 @@ main = do
             (Z :. _ :. ny :. nx) = extent arr
         return (ny, nx)
       else return (0, 0)
+  isColor <-
+    do xs <-
+         runResourceT $
+         sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+         CL.take 1
+       let (LabeledArray _ arr) = L.head xs
+           (Z :. nf :. _ :. _) = extent arr
+       case nf of
+         3 -> return True
+         1 -> return False
+         _ -> error $ "Images have incorrect number of channels: " P.++ show nf
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
@@ -96,7 +107,12 @@ main = do
         }
       filterParamsList = [filterParamsSet1, filterParamsSet2]
       numFeature =
-        L.sum . L.map L.product . L.tail . L.inits . L.map getFilterNum $ filterParamsList
+        if isColor
+          then 3 *
+               (L.sum . L.map L.product . L.tail . L.inits . L.map getFilterNum $
+                filterParamsList)
+          else L.sum . L.map L.product . L.tail . L.inits . L.map getFilterNum $
+               filterParamsList
       trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
