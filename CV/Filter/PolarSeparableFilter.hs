@@ -72,14 +72,13 @@ generatePSFParamsSet (PolarSeparableFilterParamsSet (ny, nx) downsampleFactor sc
 generateMultilayerPSFParamsSet :: [PolarSeparableFilterParamsSet]
                                -> [[PolarSeparableFilterParams]]
 generateMultilayerPSFParamsSet =
-  L.map L.reverse .
   L.foldl'
     (\bss as ->
         [ a : bs
         | bs <- bss
         , a <- as ])
     [[]] .
-  L.map generatePSFParamsSet 
+  L.map generatePSFParamsSet . L.reverse
 
 
 {-# INLINE ejx #-}
@@ -296,8 +295,8 @@ filterSetFunc downsampleFactor filterArr inputArr =
       fromFunction
         (Z :. newNf :. ny' :. nx')
         (\(Z :. k :. j :. i) ->
-            let !kFilter = mod k nfFilter
-                !kInput = div k nfFilter
+            let !kInput = mod k nfInput
+                !kFilter = div k nfInput
             in rArr R.! (Z :. kInput :. j :. i) *
                filterArr R.! (Z :. kFilter :. j :. i))
 
