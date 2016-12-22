@@ -104,13 +104,11 @@ resize2DImageS n arr =
       if ny >= nx
         then n
         else round
-               (fromIntegral n *
-                atan (fromIntegral ny / fromIntegral nx :: Double) :: Double)
+               (fromIntegral n * fromIntegral ny / fromIntegral nx :: Double)
     !newNx =
       if ny >= nx
         then round
-               (fromIntegral n *
-                atan (fromIntegral nx / fromIntegral ny :: Double) :: Double)
+               (fromIntegral n * fromIntegral nx / fromIntegral ny :: Double)
         else n
     !ratioX = fromIntegral (nx - 1) / fromIntegral (newNx - 1)
     !ratioY = fromIntegral (ny - 1) / fromIntegral (newNy - 1)
