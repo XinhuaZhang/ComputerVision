@@ -158,17 +158,25 @@ rescaleRotateLabeledImageConduit parallelParams n deg = do
                         !result =
                           if nf == 1
                             then L.map
-                                   (LabeledArray label . computeUnboxedS .
-                                    R.extend (Z :. (1 :: Int) :. All :. All)) .
+                                   (\x ->
+                                       let arr' =
+                                             computeUnboxedS .
+                                             R.extend
+                                               (Z :. (1 :: Int) :. All :. All) $
+                                             x
+                                       in deepSeqArray arr' $!
+                                          LabeledArray label arr') .
                                  recaleAndRotate2DImageS n degs $
                                  R.slice arr (Z :. (0 :: Int) :. All :. All)
                             else L.map
                                    (\x ->
-                                       LabeledArray label .
-                                       fromUnboxed (Z :. nf :. n :. n) $!!
-                                       VU.concat .
-                                       L.map R.toUnboxed $
-                                       x) .
+                                       let arr' =
+                                             fromUnboxed (Z :. nf :. n :. n) $!!
+                                             VU.concat .
+                                             L.map R.toUnboxed $
+                                             x
+                                       in deepSeqArray arr' $!
+                                          LabeledArray label arr') .
                                  L.transpose .
                                  L.map
                                    (\i ->
@@ -203,17 +211,25 @@ rotateLabeledImageConduit parallelParams deg = do
                         !result =
                           if nf == 1
                             then L.map
-                                   (LabeledArray label . computeUnboxedS .
-                                    R.extend (Z :. (1 :: Int) :. All :. All)) .
+                                   (\x ->
+                                       let arr' =
+                                             computeUnboxedS .
+                                             R.extend
+                                               (Z :. (1 :: Int) :. All :. All) $
+                                             x
+                                       in deepSeqArray arr' $!
+                                          LabeledArray label arr') .
                                  rotate2DImageS degs $
                                  R.slice arr (Z :. (0 :: Int) :. All :. All)
                             else L.map
                                    (\x ->
-                                       LabeledArray label .
-                                       fromUnboxed (Z :. nf :. ny :. nx) $!!
-                                       VU.concat .
-                                       L.map R.toUnboxed $
-                                       x) .
+                                       let arr' =
+                                             fromUnboxed (Z :. nf :. ny :. nx) $!!
+                                             VU.concat .
+                                             L.map R.toUnboxed $
+                                             x
+                                       in deepSeqArray arr' $!
+                                          LabeledArray label arr') .
                                  L.transpose .
                                  L.map
                                    (\i ->
@@ -247,18 +263,23 @@ resizeLabeledImageConduit parallelParams n = do
                     let !(Z :. nf :. ny :. nx) = extent arr
                         !result =
                           if nf == 1
-                            then LabeledArray label . computeUnboxedS .
-                                 R.extend (Z :. (1 :: Int) :. All :. All) .
-                                 resize2DImageS n $
-                                 R.slice arr (Z :. (0 :: Int) :. All :. All)
-                            else LabeledArray label .
-                                 fromUnboxed (Z :. nf :. ny :. nx) $!!
-                                 VU.concat .
-                                 L.map
-                                   (\i ->
-                                       R.toUnboxed . resize2DImageS n $
-                                       R.slice arr (Z :. i :. All :. All)) $
-                                 [0 .. nf - 1]
+                            then let arr' =
+                                       computeUnboxedS .
+                                       R.extend (Z :. (1 :: Int) :. All :. All) .
+                                       resize2DImageS n $
+                                       R.slice
+                                         arr
+                                         (Z :. (0 :: Int) :. All :. All)
+                                 in deepSeqArray arr' $! LabeledArray label arr'
+                            else let arr' =
+                                       fromUnboxed (Z :. nf :. ny :. nx) .
+                                       VU.concat .
+                                       L.map
+                                         (\i ->
+                                             R.toUnboxed . resize2DImageS n $
+                                             R.slice arr (Z :. i :. All :. All)) $
+                                       [0 .. nf - 1]
+                                 in deepSeqArray arr' $! LabeledArray label arr'
                     in result)
                 xs
         sourceList ys
