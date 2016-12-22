@@ -3,8 +3,8 @@
 
 module Application.RotateDataset.RotationRepa where
 
+import           Control.DeepSeq
 import           Control.Monad               as M
-
 import           CV.Array.LabeledArray
 import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
@@ -160,15 +160,17 @@ rescaleRotateLabeledImageConduit parallelParams n deg = do
                         !result =
                           if nf == 1
                             then L.map
-                                   (LabeledArray label .
-                                    computeUnboxedS .
+                                   (LabeledArray label . computeUnboxedS .
                                     R.extend (Z :. (1 :: Int) :. All :. All)) .
                                  recaleAndRotate2DImageS n degs $
                                  R.slice arr (Z :. (0 :: Int) :. All :. All)
                             else L.map
-                                   (LabeledArray label .
-                                    fromUnboxed (Z :. nf :. n :. n) .
-                                    VU.concat . L.map R.toUnboxed) .
+                                   (\x ->
+                                       LabeledArray label .
+                                       fromUnboxed (Z :. nf :. n :. n) $!!
+                                       VU.concat .
+                                       L.map R.toUnboxed $
+                                       x) .
                                  L.transpose .
                                  L.map
                                    (\i ->
@@ -203,15 +205,17 @@ rotateLabeledImageConduit parallelParams deg = do
                         !result =
                           if nf == 1
                             then L.map
-                                   (LabeledArray label .
-                                    computeUnboxedS .
+                                   (LabeledArray label . computeUnboxedS .
                                     R.extend (Z :. (1 :: Int) :. All :. All)) .
                                  rotate2DImageS degs $
                                  R.slice arr (Z :. (0 :: Int) :. All :. All)
                             else L.map
-                                   (LabeledArray label .
-                                    fromUnboxed (Z :. nf :. ny :. nx) .
-                                    VU.concat . L.map R.toUnboxed) .
+                                   (\x ->
+                                       LabeledArray label .
+                                       fromUnboxed (Z :. nf :. ny :. nx) $!!
+                                       VU.concat .
+                                       L.map R.toUnboxed $
+                                       x) .
                                  L.transpose .
                                  L.map
                                    (\i ->
@@ -245,13 +249,12 @@ resizeLabeledImageConduit parallelParams n = do
                     let !(Z :. nf :. ny :. nx) = extent arr
                         !result =
                           if nf == 1
-                            then LabeledArray label .
-                                 computeUnboxedS .
+                            then LabeledArray label . computeUnboxedS .
                                  R.extend (Z :. (1 :: Int) :. All :. All) .
                                  resize2DImageS n $
                                  R.slice arr (Z :. (0 :: Int) :. All :. All)
                             else LabeledArray label .
-                                 fromUnboxed (Z :. nf :. ny :. nx) .
+                                 fromUnboxed (Z :. nf :. ny :. nx) $!!
                                  VU.concat .
                                  L.map
                                    (\i ->

@@ -38,15 +38,15 @@ main = do
   putStrLn $ "isColor: " P.++ isColor
   let parallelParams =
         ParallelParams
-        { numThread = 14
-        , batchSize = 1400
+        { numThread = 4
+        , batchSize = 400
         }
       isColorFlag = read isColor :: Bool
       str =
         if isColorFlag
           then "Color"
           else "Gray"
-      n = 256
+      n = 300
       deg = 90
       rotationLen = round (360 / deg)
       imageSource path labelPath =
@@ -62,22 +62,26 @@ main = do
           (outputPath P.++ "/" P.++ x P.++ "/" P.++ y P.++ "/" P.++ str)) $
     (,) <$> ["Train", "Test"] <*> ["Original", "Rotated"]
   imageSource trainPath trainLabelPath $$
-    rescaleRotateLabeledImageConduit parallelParams n 0 =$=
+    resizeLabeledImageConduit parallelParams n =$=
     writeLabeledImageBinarySink
-      (outputPath P.++ "/Train/Original/" P.++ str P.++ ".bin")
+      (outputPath P.++ "/Train/Original/" P.++ show n P.++ "_" P.++ str P.++
+       ".bin")
       trainLen
+  imageSource testPath testLabelPath $$
+    resizeLabeledImageConduit parallelParams n =$=
+    writeLabeledImageBinarySink
+      (outputPath P.++ "/Test/Original/" P.++ show n P.++ "_" P.++ str P.++
+       ".bin")
+      testLen
   imageSource trainPath trainLabelPath $$
     rescaleRotateLabeledImageConduit parallelParams n deg =$=
     writeLabeledImageBinarySink
-      (outputPath P.++ "/Train/Rotated/" P.++ str P.++ ".bin")
+      (outputPath P.++ "/Train/Rotated/" P.++ show n P.++ "_" P.++ str P.++
+       ".bin")
       (trainLen * rotationLen)
-  imageSource testPath testLabelPath $$
-    rescaleRotateLabeledImageConduit parallelParams n 0 =$=
-    writeLabeledImageBinarySink
-      (outputPath P.++ "/Test/Original/" P.++ str P.++ ".bin")
-      testLen
   imageSource testPath testLabelPath $$
     rescaleRotateLabeledImageConduit parallelParams n deg =$=
     writeLabeledImageBinarySink
-      (outputPath P.++ "/Test/Rotated/" P.++ str P.++ ".bin")
+      (outputPath P.++ "/Test/Rotated/" P.++ show n P.++ "_" P.++ str P.++
+       ".bin")
       (testLen * rotationLen)
