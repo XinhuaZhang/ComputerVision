@@ -87,6 +87,37 @@ rotate2DImageS degs arr =
     !ds = computeDerivativeS (computeUnboxedS paddedImg)
     !center = fromIntegral (n - 1) / 2
 
+-- Set the maximum value of the maximum size, the ratio is intact.
+resize2DImageS
+  :: (R.Source s Double)
+  => Int -> Array s DIM2 Double -> Array U DIM2 Double
+resize2DImageS n arr =
+  computeS . fromFunction (Z :. newNy :. newNx) $
+  \(Z :. j :. i) ->
+     bicubicInterpolation
+       ds
+       (minVal, maxVal)
+       (fromIntegral j * ratioY, fromIntegral i * ratioX)
+  where
+    !(Z :. ny :. nx) = extent arr
+    !newNy =
+      if ny >= nx
+        then n
+        else round
+               (fromIntegral n *
+                atan (fromIntegral ny / fromIntegral nx :: Double) :: Double)
+    !newNx =
+      if ny >= nx
+        then round
+               (fromIntegral n *
+                atan (fromIntegral nx / fromIntegral ny :: Double) :: Double)
+        else n
+    !ratioX = fromIntegral (nx - 1) / fromIntegral (newNx - 1)
+    !ratioY = fromIntegral (ny - 1) / fromIntegral (newNy - 1)
+    !minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !ds = computeDerivativeS . computeUnboxedS . delay $ arr
+
 {-# INLINE rotatePixel #-}
 
 rotatePixel :: VU.Vector Double
@@ -197,3 +228,37 @@ rotateLabeledImageConduit parallelParams deg = do
         then 1
         else round (360 / deg) :: Int
     !degs = L.map (* deg) [0 .. fromIntegral len - 1]
+
+resizeLabeledImageConduit
+  :: ParallelParams
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) IO (LabeledArray DIM3 Double)
+resizeLabeledImageConduit parallelParams n = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label arr) ->
+                    let !(Z :. nf :. ny :. nx) = extent arr
+                        !result =
+                          if nf == 1
+                            then LabeledArray label .
+                                 computeUnboxedS .
+                                 R.extend (Z :. (1 :: Int) :. All :. All) .
+                                 resize2DImageS n $
+                                 R.slice arr (Z :. (0 :: Int) :. All :. All)
+                            else LabeledArray label .
+                                 fromUnboxed (Z :. nf :. ny :. nx) .
+                                 VU.concat .
+                                 L.map
+                                   (\i ->
+                                       R.toUnboxed . resize2DImageS n $
+                                       R.slice arr (Z :. i :. All :. All)) $
+                                 [0 .. nf - 1]
+                    in result)
+                xs
+        sourceList ys
+        resizeLabeledImageConduit parallelParams n)
