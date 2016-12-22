@@ -171,4 +171,14 @@ rgb2Gray bound r g b
   | yLinear <= 0.0031308 = 12.92 * yLinear
   | otherwise = 1.055 * (yLinear ** (1 / 2.4)) - 0.055
   where
-    !yLinear = (0.2126 * r + 0.7152 * g + 0.0722 * b) / bound
+    !yLinear =
+      0.2126 * func bound r + 0.7152 * func bound g + 0.0722 * func bound b
+
+{-# INLINE func #-}
+func :: Double -> Double -> Double
+func bound x 
+  | y < 0.04045 = y / 12.92
+  | otherwise = ((y + 0.055) / 1.055) ** 2.4
+  where !y = x / bound
+
+
