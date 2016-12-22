@@ -73,15 +73,15 @@ main = do
       (outputPath P.++ "/Test/Original/" P.++ show n P.++ "_" P.++ str P.++
        ".bin")
       testLen
-  imageSource trainPath trainLabelPath $$
-    rescaleRotateLabeledImageConduit parallelParams n deg =$=
-    writeLabeledImageBinarySink
-      (outputPath P.++ "/Train/Rotated/" P.++ show n P.++ "_" P.++ str P.++
-       ".bin")
-      (trainLen * rotationLen)
-  imageSource testPath testLabelPath $$
-    rescaleRotateLabeledImageConduit parallelParams n deg =$=
-    writeLabeledImageBinarySink
-      (outputPath P.++ "/Test/Rotated/" P.++ show n P.++ "_" P.++ str P.++
-       ".bin")
-      (testLen * rotationLen)
+  -- imageSource trainPath trainLabelPath $$
+  --   rescaleRotateLabeledImageConduit parallelParams n deg =$=
+  --   writeLabeledImageBinarySink
+  --     (outputPath P.++ "/Train/Rotated/" P.++ show n P.++ "_" P.++ str P.++
+  --      ".bin")
+  --     (trainLen * rotationLen)
+  -- imageSource testPath testLabelPath $$
+  --   rescaleRotateLabeledImageConduit parallelParams n deg =$=
+  --   writeLabeledImageBinarySink
+  --     (outputPath P.++ "/Test/Rotated/" P.++ show n P.++ "_" P.++ str P.++
+  --      ".bin")
+  --     (testLen * rotationLen)
