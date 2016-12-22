@@ -105,7 +105,7 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsList = [filterParamsSet1, filterParamsSet2]
+      filterParamsList = [filterParamsSet1]
       numFeature =
         if isColor
           then 3 *

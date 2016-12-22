@@ -328,7 +328,7 @@ hEMPart handle bound threshold gmms xs =
       hPutGMM handle (P.map getModelDone gmms)
       return handle
     else do
-      printCurrentTime
+      -- printCurrentTime
       gmms1 <- resetGMMList bound gmms
       let !gmms2 = parZipWith rdeepseq computeStateAssignmentLikelihood gmms1 xs
           !newGMMs = parZipWith rdeepseq (emOneStep threshold) gmms2 xs
@@ -337,9 +337,10 @@ hEMPart handle bound threshold gmms xs =
             fromIntegral (P.length gmms2)
       if isNaN avgLikelihood
         then IO.putStrLn "Reset"
-        else do
-          printf "%0.2f\n" avgLikelihood
-          print . P.map getStateLikelihood $ gmms2
+        else return ()
+             -- do
+          -- printf "%0.2f\n" avgLikelihood
+          -- print . P.map getStateLikelihood $ gmms2
       hEMPart handle bound threshold newGMMs xs
 
 gmmAllSink
