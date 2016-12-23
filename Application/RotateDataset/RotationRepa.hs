@@ -112,7 +112,7 @@ resize2DImageS n arr =
         else n
     !ratioX = fromIntegral (nx - 1) / fromIntegral (newNx - 1)
     !ratioY = fromIntegral (ny - 1) / fromIntegral (newNy - 1)
-    !minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !minVal = foldAllS min (fromIntegral (maxBound :: Word32)) arr
     !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
     !ds = computeDerivativeS . computeUnboxedS . delay $ arr
 
@@ -223,10 +223,14 @@ rotateLabeledImageConduit parallelParams deg = do
                                  R.slice arr (Z :. (0 :: Int) :. All :. All)
                             else L.map
                                    (\x ->
-                                       let arr' =
-                                             fromUnboxed (Z :. nf :. ny :. nx) $!!
-                                             VU.concat .
-                                             L.map R.toUnboxed $
+                                       let !n =
+                                             ceiling
+                                               (sqrt . fromIntegral $
+                                                (nx ^ (2 :: Int) +
+                                                 ny ^ (2 :: Int)) :: Double)
+                                           arr' =
+                                             fromUnboxed (Z :. nf :. n :. n) .
+                                             VU.concat . L.map R.toUnboxed $
                                              x
                                        in deepSeqArray arr' $!
                                           LabeledArray label arr') .
@@ -271,8 +275,20 @@ resizeLabeledImageConduit parallelParams n = do
                                          arr
                                          (Z :. (0 :: Int) :. All :. All)
                                  in deepSeqArray arr' $! LabeledArray label arr'
-                            else let arr' =
-                                       fromUnboxed (Z :. nf :. ny :. nx) .
+                            else let !newNy =
+                                       if ny >= nx
+                                         then n
+                                         else round
+                                                (fromIntegral n * fromIntegral ny /
+                                                 fromIntegral nx :: Double)
+                                     !newNx =
+                                       if ny >= nx
+                                         then round
+                                                (fromIntegral n * fromIntegral nx /
+                                                 fromIntegral ny :: Double)
+                                         else n
+                                     arr' =
+                                       fromUnboxed (Z :. nf :. newNy :. newNx) .
                                        VU.concat .
                                        L.map
                                          (\i ->
