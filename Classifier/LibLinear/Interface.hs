@@ -10,6 +10,7 @@ import           Classifier.LibLinear.Bindings
 import           Classifier.LibLinear.Example
 import           Classifier.LibLinear.Solver
 import           Control.Monad.IO.Class        (liftIO)
+import           Control.Monad.Trans.Resource
 import           Data.Conduit
 import           Data.Conduit.List             as CL
 import           Foreign                       as F
@@ -47,35 +48,41 @@ train (TrainParams solver c numExample maxIndex modelName) label feature =
      c'save_model modelName model
 
 predict
-  :: String -> FilePath -> Sink (Double,[C'feature_node]) IO ()
+  :: String -> FilePath -> Sink (Double,[C'feature_node]) (ResourceT IO) ()
 predict predictModel output = do
   modelName <- liftIO $ newCString predictModel
   model <- liftIO $ c'load_model modelName
-  (correct, total) <- CL.foldM (func model) (0, 0)
-  let percent = fromIntegral correct / fromIntegral total * 100
+  (correct, total) <- func model (0, 0)
+  let percent = fromIntegral correct / (fromIntegral total :: Double) * 100
       str = show percent
   liftIO $ putStrLn str
   h <- liftIO $ openFile output WriteMode
   liftIO $ hPutStrLn h str
   liftIO $ hClose h
   where
-    func :: Ptr C'model
-         -> (Int, Int)
-         -> (Double, [C'feature_node])
-         -> IO (Int, Int)
-    func model (!correct, !total) (!target, !xs) = do
-      prediction <- withArray xs (c'predict model)
-      let correctNew =
-            if round target == round prediction
-              then correct + 1
-              else correct
-      putStrLn $
-        show target P.++ " " P.++ show prediction P.++ " " P.++
-        show (fromIntegral correctNew / fromIntegral (total + 1) * 100) P.++
-        "%"
-      if round target == round prediction
-        then return (correct + 1, total + 1)
-        else return (correct, total + 1)
+    func
+      :: Ptr C'model
+      -> (Int, Int)
+      -> Sink (Double, [C'feature_node]) (ResourceT IO) (Int, Int)
+    func model (!correct, !total) = do
+      x <- await
+      case x of
+        Just (!target, !xs) -> do
+          prediction <- liftIO $ withArray xs (c'predict model)
+          let !correctNew =
+                if (round target :: Int) == round prediction
+                  then correct + 1
+                  else correct
+          liftIO $
+            putStrLn $
+            show target P.++ " " P.++ show prediction P.++ " " P.++
+            show
+              (fromIntegral correctNew / fromIntegral (total + 1) * 100 :: Double) P.++
+            "%"
+          if (round target :: Int) == round prediction
+            then func model (correct + 1, total + 1)
+            else func model (correct, total + 1)
+        Nothing -> return (correct, total)
 
 findParameterC
   :: TrainParams -> [Double] -> [Ptr C'feature_node] -> IO ()

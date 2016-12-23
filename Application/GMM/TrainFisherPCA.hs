@@ -6,6 +6,7 @@ import           Application.GMM.ArgsParser     as Parser
 import           Application.GMM.FisherKernel
 import           Application.GMM.GMM
 import           Application.GMM.MixtureModel
+import           Application.GMM.PCA
 import           Classifier.LibLinear
 import           Control.Monad
 import           Control.Monad.IO.Class
@@ -24,6 +25,7 @@ import           Data.List                      as L
 import           Data.Set                       as S
 import           Data.Vector.Unboxed            as VU
 import           Foreign.Ptr
+import           Numeric.LinearAlgebra.Data     as LA
 import           Prelude                        as P
 import           System.Environment
 
@@ -59,6 +61,7 @@ main = do
     else return ()
   params <- parseArgs args
   gmm <- readGMM (gmmFile params) :: IO [GMM]
+  pcaMatrix <- readMatrix (pcaFile params)
   imageListLen <- getArrayNumFile (inputFile params)
   imageSize <-
     if isFixedSize params
@@ -71,17 +74,6 @@ main = do
             (Z :. _ :. ny :. nx) = extent arr
         return (ny, nx)
       else return (0, 0)
-  isColor <-
-    do xs <-
-         runResourceT $
-         sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-         CL.take 1
-       let (LabeledArray _ arr) = L.head xs
-           (Z :. nf :. _ :. _) = extent arr
-       case nf of
-         3 -> return True
-         1 -> return False
-         _ -> error $ "Images have incorrect number of channels: " P.++ show nf
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
@@ -99,20 +91,14 @@ main = do
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
         { getSizeSet = imageSize
-        , getDownsampleFactorSet = 2
+        , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
       filterParamsList = [filterParamsSet1]
-      numFeature =
-        if isColor
-          then 3 *
-               (L.sum . L.map L.product . L.tail . L.inits . L.map getFilterNum $
-                filterParamsList)
-          else L.sum . L.map L.product . L.tail . L.inits . L.map getFilterNum $
-               filterParamsList
+      numFeature = cols pcaMatrix
       trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
@@ -137,5 +123,6 @@ main = do
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
+    pcaLabelConduit parallelParams pcaMatrix =$=
     (fisherVectorConduit parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)

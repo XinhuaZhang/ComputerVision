@@ -1,60 +1,55 @@
+{-# LANGUAGE BangPatterns #-}
 module Main where
 
 import           Application.GMM.ArgsParser     as Parser
 import           Application.GMM.GMM
-import           Control.Monad
+import           Application.GMM.PCA
 import           Control.Monad                  as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparableRepa
-import           CV.Filter
 import           CV.Filter.PolarSeparableFilter
-import           CV.IO.ImageIO
 import           CV.Utility.Parallel            as Parallel
 import           Data.Array.Repa                as R
 import           Data.Binary
 import           Data.ByteString.Lazy           as BL
-import           Data.Complex
 import           Data.Conduit
-import           Data.Conduit.Binary                  as CB
+import           Data.Conduit.Binary            as CB
 import           Data.Conduit.List              as CL
 import           Data.List                      as L
 import           Data.Set                       as S
-import           Data.Vector                    as V
-import           Data.Vector.Unboxed            as VU
+import           Numeric.LinearAlgebra.Data     as LA
 import           Prelude                        as P
 import           System.Directory
 import           System.Environment
 import           System.IO                      as IO
 
-splitList :: Int -> [a] -> [[a]]
-splitList n xs
-  | P.null xs = []
-  | otherwise = as : splitList n bs
-  where (as,bs) = P.splitAt n xs
-
-scaleConduit :: ParallelParams
-             -> Conduit (LabeledArray DIM3 Double) IO (R.Array U DIM3 Double)
-scaleConduit parallelParams = do
-  xs <- CL.take (Parallel.batchSize parallelParams)
-  unless
-    (P.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rseq
-                (\(LabeledArray label arr) -> arr)
-                xs
-        sourceList ys
-        scaleConduit parallelParams)
-
+splitFeature :: Int -> Int -> [(Int,Int)]
+splitFeature !numFeature !numBatch = L.zip (L.scanl' (+) 0 c) c
+  where
+    !a = div numFeature numBatch
+    !b = mod numFeature numBatch
+    !c =
+      if b == 0
+        then L.replicate a numBatch
+        else b : L.replicate a numBatch
 
 main = do
   args <- getArgs
-  if P.null args
-    then error "run with --help to see options."
-    else return ()
+  when (P.null args) $ error "run with --help to see options."
   params <- parseArgs args
+  imageSize <-
+    if isFixedSize params
+      then do
+        xs <-
+          runResourceT $
+          sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+          CL.take 1
+        let (LabeledArray _ arr) = L.head xs
+            (Z :. _ :. ny :. nx) = extent arr
+        return (ny, nx)
+      else return (0, 0)
+  pcaMatrix <- readMatrix (pcaFile params)
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
@@ -62,7 +57,7 @@ main = do
         }
       filterParamsSet1 =
         PolarSeparableFilterParamsSet
-        { getSizeSet = (0, 0)
+        { getSizeSet = imageSize
         , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
@@ -71,22 +66,29 @@ main = do
         }
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
-        { getSizeSet = (0, 0)
-        , getDownsampleFactorSet = 2
+        { getSizeSet = imageSize
+        , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSetList = [filterParamsSet1, filterParamsSet2]
-      filterParamsList =
-        splitList (Parser.numThread params) .
-        P.concatMap generateMultilayerPSFParamsSet . L.tail . L.inits $
-        filterParamsSetList
+      filterParamsSetList = [filterParamsSet1]
       filePath = gmmFile params
       numM = numGaussian params
       bound = ((0, 10), (0.1, 100))
-      numFeature = P.sum . P.map P.length $ filterParamsList
+      numFeature = cols pcaMatrix
+      magnitudeConduit =
+        if isFixedSize params
+          then magnitudeSetFixedSizeConduit
+                 parallelParams
+                 (L.map makeFilterSet filterParamsSetList)
+                 (downsampleFactor params)
+          else magnitudeSetVariedSizeConduit
+                 parallelParams
+                 filterParamsSetList
+                 (downsampleFactor params)
+      dropTakeList = splitFeature numFeature (Parallel.batchSize parallelParams)
   print params
   fileFlag <- doesFileExist filePath
   gmms <-
@@ -99,21 +101,22 @@ main = do
             readGMM filePath
           else M.replicateM numFeature $ initializeGMM numM bound
       else M.replicateM numFeature $ initializeGMM numM bound
-  let gmmsList = splitList (Parser.numThread params) gmms
+  images <- readLabeledImageBinary (inputFile params) (numGMMExample params)
   withBinaryFile
     (gmmFile params)
     WriteMode
     (\h -> do
        BL.hPut h (encode (fromIntegral numFeature :: Word32))
        M.foldM_
-         (\handle (models, filterParams) ->
+         (\handle (numDrop, numTake) ->
              runResourceT
-               (sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-                CL.map (\(LabeledArray _ arr) -> arr) =$=
-                magnitudeVariedSizeConduit'
-                  parallelParams
-                  filterParams
-                  (downsampleFactor params) =$=
-                gmmSink2' handle models bound (threshold params)))
+               (CL.sourceList images $$ magnitudeConduit =$=
+                pcaConduit parallelParams pcaMatrix (numDrop, numTake) =$=
+                gmmPartSink
+                  handle
+                  (L.take numTake . L.drop numDrop $ gmms)
+                  bound
+                  (threshold params)
+                  (numGMMExample params)))
          h $
-         P.zip gmmsList filterParamsList)
+         dropTakeList)

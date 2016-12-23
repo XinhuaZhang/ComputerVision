@@ -19,7 +19,7 @@ magnitudeFixedSizeConduit
   :: ParallelParams
   -> [[PolarSeparableFilter PolarSeparableFilterParams (R.Array U DIM2 (C.Complex Double))]]
   -> Int
-  -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
+  -> Conduit (R.Array U DIM3 Double) (ResourceT IO) [VU.Vector Double]
 magnitudeFixedSizeConduit parallelParams filters factor =
   awaitForever
     (\x ->
@@ -34,24 +34,8 @@ magnitudeVariedSizeConduit
   :: ParallelParams
   -> [[PolarSeparableFilterParams]]
   -> Int
-  -> Conduit (R.Array U DIM3 Double) IO [VU.Vector Double]
-magnitudeVariedSizeConduit parallelParams filterParamsList factor =
-  awaitForever
-    (\x ->
-       yield .
-       L.concat .
-       parMapChunk
-         parallelParams
-         rdeepseq
-         (\filterParams -> multiLayerMagnitudeVariedSize filterParams factor x) $
-       filterParamsList)
-
-magnitudeVariedSizeConduit'
-  :: ParallelParams
-  -> [[PolarSeparableFilterParams]]
-  -> Int
   -> Conduit (R.Array U DIM3 Double) (ResourceT IO) [VU.Vector Double]
-magnitudeVariedSizeConduit' parallelParams filterParamsList factor =
+magnitudeVariedSizeConduit parallelParams filterParamsList factor =
   awaitForever
     (\x ->
        yield .
@@ -67,7 +51,7 @@ labeledArrayMagnitudeSetFixedSizeConduit
   :: ParallelParams
   -> [PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))]
   -> Int
-  -> Conduit (LabeledArray DIM3 Double) IO (Int,[VU.Vector Double])
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int,[VU.Vector Double])
 labeledArrayMagnitudeSetFixedSizeConduit parallelParams filters factor = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -87,7 +71,7 @@ labeledArrayMagnitudeSetVariedSizeConduit
   :: ParallelParams
   -> [PolarSeparableFilterParamsSet]
   -> Int
-  -> Conduit (LabeledArray DIM3 Double) IO (Int,[VU.Vector Double])
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int,[VU.Vector Double])
 labeledArrayMagnitudeSetVariedSizeConduit parallelParams filterParamsList factor = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -105,8 +89,50 @@ labeledArrayMagnitudeSetVariedSizeConduit parallelParams filterParamsList factor
           parallelParams
           filterParamsList
           factor)
+          
 
--- The following twos functions give results of the last layer
+-- The following two functions are for computing PCA
+magnitudeSetFixedSizeConduit
+  :: ParallelParams
+  -> [PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))]
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) [VU.Vector Double]
+magnitudeSetFixedSizeConduit parallelParams filters factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray _ x) ->
+                    multiLayerMagnitudeSetFixedSize filters factor x)
+                xs
+        sourceList ys
+        magnitudeSetFixedSizeConduit parallelParams filters factor)
+        
+
+magnitudeSetVariedSizeConduit
+  :: ParallelParams
+  -> [PolarSeparableFilterParamsSet]
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) [VU.Vector Double]
+magnitudeSetVariedSizeConduit parallelParams filterParamsList factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray _ x) ->
+                    multiLayerMagnitudeSetVariedSize filterParamsList factor x)
+                xs
+        sourceList ys
+        magnitudeSetVariedSizeConduit parallelParams filterParamsList factor)
+
+
+-- The following twos functions give feature-wise results of the last layer
 {-# INLINE multiLayerMagnitudeFixedSize #-}
 
 multiLayerMagnitudeFixedSize
@@ -128,34 +154,7 @@ multiLayerMagnitudeFixedSize filters facotr img =
   in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
       (Z :. k :. All :. All)
      | k <- [0 .. nf - 1] ]
-
-
--- The following twos functions give a concatnation of results from layer 1 to layer n.
-{-# INLINE multiLayerMagnitudeSetFixedSize #-}
-
-multiLayerMagnitudeSetFixedSize
-  :: [PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))]
-  -> Int
-  -> R.Array U DIM3 Double
-  -> [VU.Vector Double]
-multiLayerMagnitudeSetFixedSize filters facotr img =
-  L.concatMap
-    (\arr ->
-        let !(Z :. nf :. _ :. _) = extent downSampledArr
-            !downSampledArr = RU.downsample [facotr, facotr, 1] arr
-        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
-            (Z :. k :. All :. All)
-           | k <- [0 .. nf - 1] ]) .
-  L.tail .
-  L.scanl'
-    (\arr filter' ->
-        computeUnboxedS .
-        R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $
-        arr)
-    img $
-  filters
-
-
+     
 
 {-# INLINE multiLayerMagnitudeVariedSize #-}
 
@@ -180,6 +179,31 @@ multiLayerMagnitudeVariedSize filterParamsList facotr img =
       (Z :. k :. All :. All)
      | k <- [0 .. nf - 1] ]
 
+
+-- The following twos functions give a concatnation of feature-wise results from layer 1 to layer n.
+{-# INLINE multiLayerMagnitudeSetFixedSize #-}
+
+multiLayerMagnitudeSetFixedSize
+  :: [PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))]
+  -> Int
+  -> R.Array U DIM3 Double
+  -> [VU.Vector Double]
+multiLayerMagnitudeSetFixedSize filters facotr img =
+  L.concatMap
+    (\arr ->
+        let !(Z :. nf :. _ :. _) = extent downSampledArr
+            !downSampledArr = RU.downsample [facotr, facotr, 1] arr
+        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
+            (Z :. k :. All :. All)
+           | k <- [0 .. nf - 1] ]) .
+  L.tail .
+  L.scanl'
+    (\arr filter' ->
+        computeUnboxedS .
+        R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $
+        arr)
+    img $
+  filters
 
 {-# INLINE multiLayerMagnitudeSetVariedSize #-}
 
