@@ -82,7 +82,7 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSetList = [filterParamsSet1]
+      filterParamsSetList = [filterParamsSet1, filterParamsSet2]
       filterParamsList =
         splitList False (Parallel.batchSize parallelParams) .
         P.concatMap generateMultilayerPSFParamsSet . L.tail . L.inits $

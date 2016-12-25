@@ -32,7 +32,7 @@ labelSource filePath =
 
 
 main = do
-  (inputPath:labelPath:_) <- getArgs
+  (inputPath:labelPath:degStr:_) <- getArgs
   let parallelParams =
         ParallelParams
         { numThread = 4
@@ -43,11 +43,13 @@ main = do
         { getSizeSet = (0, 0)
         , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList [6]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (1 - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
         , getNameSet = Pinwheels
         }
-      deg = 36 :: Int
+      deg = if L.null degStr
+               then 90
+               else read degStr :: Int
   img <-
     imagePathSource inputPath $$ readImageConduit False =$=
     mergeSource (labelSource labelPath) =$=
