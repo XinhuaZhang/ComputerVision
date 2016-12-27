@@ -35,7 +35,8 @@ gaussian2D'
   :: (Floating a)
   => Int -> a -> Int -> Int -> a
 gaussian2D' af sd i j =
-  1 / ((2 * pi) * sd * sd) * exp (-(sqrt r - r0)^2 / (2 * (sd ^ 2)))
+  1 / ((2 * pi) * sd * sd) *
+  exp (-(sqrt r - r0) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
   where
     r = fromIntegral (i * i + j * j)
-    r0 = fromIntegral (10 * af) / pi
+    r0 = (2 * sd * fromIntegral af) / pi
