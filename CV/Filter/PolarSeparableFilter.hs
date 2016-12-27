@@ -130,9 +130,9 @@ bullseye scale rf _af x y
 
 pinwheels :: Double -> Int -> Int -> PixelOp (C.Complex Double)
 pinwheels scale rf af x y
-  | scale == 0 = real2Complex (gaussian2D scale x y) * angularFunc af x y
+  | scale == 0 = angularFunc af x y * radialFunc rf x y
   | otherwise =
-    real2Complex (gaussian2D scale x y) * angularFunc af x y * radialFunc rf x y
+    real2Complex (gaussian2D' af scale x y) * angularFunc af x y * radialFunc rf x y
 
 {-# INLINE getFilterFunc #-}
 

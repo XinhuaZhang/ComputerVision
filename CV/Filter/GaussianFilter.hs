@@ -28,3 +28,14 @@ gaussian2D
 gaussian2D sd i j = 1 / ((2 * pi) * sd * sd) * exp (-r / (2 * (sd ^ 2)))
   where
     r = fromIntegral (i * i + j * j)
+    
+
+{-# INLINE gaussian2D' #-}
+gaussian2D'
+  :: (Floating a)
+  => Int -> a -> Int -> Int -> a
+gaussian2D' af sd i j =
+  1 / ((2 * pi) * sd * sd) * exp (-(sqrt r - r0)^2 / (2 * (sd ^ 2)))
+  where
+    r = fromIntegral (i * i + j * j)
+    r0 = fromIntegral (10 * af) / pi
