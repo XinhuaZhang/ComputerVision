@@ -1,0 +1,3 @@
+#!/bin/bash
+
+ghc -i../.. -j4 -O2 Main -o main
