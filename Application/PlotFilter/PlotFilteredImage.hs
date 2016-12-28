@@ -45,6 +45,7 @@ main = do
        magnitudeVariedSizeConduit parallelParams filterParamsList 1 =$=
        CL.consume)
   let imgs = L.map (fromUnboxed (Z :. 1 :. ny :. nx)) . L.head $ filteredImg
+  plotImage "0.png" . (\(LabeledArray _ arr) -> arr) . L.head $ images
   M.zipWithM
     (\img i -> plotImage (show i L.++ ".png") img)
     imgs
