@@ -43,7 +43,7 @@ main = do
         { getSizeSet = (0, 0)
         , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList [6]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (1 - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
         , getNameSet = Pinwheels
         }
@@ -57,7 +57,7 @@ main = do
     CL.take 1
   rotatedLabeledImg <-
     CL.sourceList img $$
-    rescaleRotateLabeledImageConduit parallelParams 255 (fromIntegral deg) =$=
+    rescaleRotateLabeledImageConduit parallelParams 299 (fromIntegral deg) =$=
     CL.consume
   let !ex@(Z :. _ :. nRows :. numCols) =
         extent $ (\(LabeledArray _ arr) -> arr) $ L.head $ rotatedLabeledImg
@@ -78,7 +78,7 @@ main = do
     do layout_title .= "Magnitude"
        M.zipWithM_
          (\xs i -> plot $ line (show i) [L.zip [0,deg .. (360 - deg)] xs])
-         centerMag
+         (centerMag)
          [1 ..]
   toFile def "normalized.png" $
     do layout_title .= "Magnitude"

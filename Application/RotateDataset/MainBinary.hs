@@ -46,7 +46,7 @@ main = do
         if isColorFlag
           then "Color"
           else "Gray"
-      n = 300
+      n = 299
       deg = 90
       rotationLen = round (360 / deg)
       imageSource path labelPath =
@@ -61,27 +61,39 @@ main = do
           True
           (outputPath P.++ "/" P.++ x P.++ "/" P.++ y P.++ "/" P.++ str)) $
     (,) <$> ["Train", "Test"] <*> ["Original", "Rotated"]
+  -- imageSource trainPath trainLabelPath $$
+  --   resizeLabeledImageConduit parallelParams n =$=
+  --   writeLabeledImageBinarySink
+  --     (outputPath P.++ "/Train/Original/" P.++ show n P.++ "_" P.++ str P.++
+  --      ".bin")
+  --     trainLen
+  -- imageSource testPath testLabelPath $$
+  --   resizeLabeledImageConduit parallelParams n =$=
+  --   writeLabeledImageBinarySink
+  --     (outputPath P.++ "/Test/Original/" P.++ show n P.++ "_" P.++ str P.++
+  --      ".bin")
+  --     testLen
   imageSource trainPath trainLabelPath $$
-    resizeLabeledImageConduit parallelParams n =$=
+    rescaleRotateLabeledImageConduit parallelParams n 0 =$=
     writeLabeledImageBinarySink
       (outputPath P.++ "/Train/Original/" P.++ show n P.++ "_" P.++ str P.++
-       ".bin")
+       "_fixed.bin")
       trainLen
   imageSource testPath testLabelPath $$
-    resizeLabeledImageConduit parallelParams n =$=
+    rescaleRotateLabeledImageConduit parallelParams n 0 =$=
     writeLabeledImageBinarySink
       (outputPath P.++ "/Test/Original/" P.++ show n P.++ "_" P.++ str P.++
-       ".bin")
+       "_fixed.bin")
       testLen
-  -- imageSource trainPath trainLabelPath $$
-  --   rescaleRotateLabeledImageConduit parallelParams n deg =$=
-  --   writeLabeledImageBinarySink
-  --     (outputPath P.++ "/Train/Rotated/" P.++ show n P.++ "_" P.++ str P.++
-  --      ".bin")
-  --     (trainLen * rotationLen)
-  -- imageSource testPath testLabelPath $$
-  --   rescaleRotateLabeledImageConduit parallelParams n deg =$=
-  --   writeLabeledImageBinarySink
-  --     (outputPath P.++ "/Test/Rotated/" P.++ show n P.++ "_" P.++ str P.++
-  --      ".bin")
-  --     (testLen * rotationLen)
+  imageSource trainPath trainLabelPath $$
+    rescaleRotateLabeledImageConduit parallelParams n deg =$=
+    writeLabeledImageBinarySink
+      (outputPath P.++ "/Train/Rotated/" P.++ show n P.++ "_" P.++ str P.++
+       "_fixed.bin")
+      (trainLen * rotationLen)
+  imageSource testPath testLabelPath $$
+    rescaleRotateLabeledImageConduit parallelParams n deg =$=
+    writeLabeledImageBinarySink
+      (outputPath P.++ "/Test/Rotated/" P.++ show n P.++ "_" P.++ str P.++
+       "_fixed.bin")
+      (testLen * rotationLen)

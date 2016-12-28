@@ -76,7 +76,7 @@ main = do
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
         { getSizeSet = imageSize
-        , getDownsampleFactorSet = 2
+        , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
@@ -89,7 +89,7 @@ main = do
         filterParamsSetList
       filePath = gmmFile params
       numM = numGaussian params
-      bound = ((0, 10), (0.1, 100))
+      bound = ((0, 100), (100, 10000))
       numFeature =
         if isColor
           then 3 * (P.sum . P.map P.length $ filterParamsList)
