@@ -44,6 +44,14 @@ main = do
       (CL.sourceList images $$ CL.map (\(LabeledArray _ arr) -> arr) =$=
        magnitudeVariedSizeConduit parallelParams filterParamsList 1 =$=
        CL.consume)
+  filteredImg1 <-
+    runResourceT
+      (CL.sourceList images $$
+       labeledArrayMagnitudeSetVariedSizeConduit
+         parallelParams
+         [filterParamsSet]
+         1 =$=
+       CL.consume)
   let imgs = L.map (fromUnboxed (Z :. 1 :. ny :. nx)) . L.head $ filteredImg
   plotImage "0.png" . (\(LabeledArray _ arr) -> arr) . L.head $ images
   M.zipWithM
