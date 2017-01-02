@@ -76,13 +76,13 @@ main = do
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
         { getSizeSet = imageSize
-        , getDownsampleFactorSet = 1
+        , getDownsampleFactorSet = 4
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSetList = [filterParamsSet1, filterParamsSet2]
+      filterParamsSetList = [filterParamsSet1,filterParamsSet2]
       filterParamsList =
         splitList False (Parallel.batchSize parallelParams) .
         P.concatMap generateMultilayerPSFParamsSet . L.tail . L.inits $
@@ -126,7 +126,8 @@ main = do
        M.foldM_
          (\handle (models, filterParams) ->
              runResourceT
-               (CL.sourceList images $$ CL.map (\(LabeledArray _ arr) -> arr) =$=
+               (CL.sourceList images $$ meanSubtractConduit parallelParams =$=
+                CL.map (\(LabeledArray _ arr) -> arr) =$=
                 magnitudeConduit filterParams =$=
                 gmmPartSink
                   handle

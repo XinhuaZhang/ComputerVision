@@ -92,5 +92,26 @@ fisherVectorConduit parallelParams gmms =
            !vecSigma = fisherVectorSigma parallelParams gmms assignments x
            !vec = vecMu VU.++ vecSigma
            !l2Norm = sqrt (VU.foldl' (\a b -> a + b ^ (2 :: Int)) 0 vec)
-       in yield (label,VU.map (/ l2Norm) vec))
+       in yield (label,VU.map (/ l2Norm) vec)
+    )
 
+avgPoolConduit :: ParallelParams -> Conduit (Int, [VU.Vector Double]) (ResourceT IO) (Int,VU.Vector Double)
+avgPoolConduit parallelParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(label, xs) ->
+                    let !vec =
+                          VU.fromList $
+                          L.map
+                            (\x -> VU.sum x / (fromIntegral $ VU.length x))
+                            xs
+                        !norm = sqrt . VU.sum . VU.map (^ 2) $ vec
+                    in (label, VU.map (/ norm) vec))
+                xs
+        sourceList ys
+        avgPoolConduit parallelParams)

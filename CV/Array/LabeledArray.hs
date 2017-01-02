@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs  #-}
 module CV.Array.LabeledArray where
@@ -17,6 +18,7 @@ import           Data.Vector.Unboxed          as VU
 import           GHC.Generics
 import           Prelude                      as P
 import           System.IO
+import           CV.Utility.Parallel           
 
 data LabeledArray sh e =
   LabeledArray !Int
@@ -135,3 +137,29 @@ getArrayNumFile filePath =
        lenBS <- liftIO $ BL.hGet h 4
        let len = fromIntegral (decode lenBS :: Word32) :: Int
        return len)
+
+
+meanSubtractConduit
+  :: ParallelParams
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+meanSubtractConduit parallelParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (P.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label arr) ->
+                    let !m = sumAllS arr / fromIntegral (nf * nx * ny)
+                        (Z :. nf :. ny :. nx) = extent arr
+                        !result = computeUnboxedS $ R.map (\x -> x - m) arr
+                    in deepSeqArray result (LabeledArray label result))
+                xs
+        sourceList ys
+        meanSubtractConduit parallelParams)
+-- awaitForever
+--   (\(LabeledArray label arr) ->
+--       let !m = sumAllS arr / fromIntegral (nf * nx * ny)
+--           (Z :. nf :. ny :. nx) = extent arr
+--       in yield $! LabeledArray label . computeUnboxedS $ R.map (\x -> x - m) arr)
