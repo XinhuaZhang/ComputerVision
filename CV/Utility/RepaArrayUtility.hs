@@ -132,8 +132,8 @@ bicubicInterpolation
 bicubicInterpolation ds (minVal, maxVal) (y, x)
   | (x < 0) ||
       (x > (fromIntegral nx - 1)) || (y < 0) || (y > (fromIntegral ny - 1)) = 0
-  | result < minVal = minVal
-  | result > maxVal = maxVal
+  -- | result < minVal = minVal
+  -- | result > maxVal = maxVal
   | otherwise = result
   where
     (Z :. ny :. nx) = extent . P.head $ ds

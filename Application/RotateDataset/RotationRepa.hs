@@ -86,6 +86,32 @@ rotate2DImageS degs arr =
     !paddedImg = pad [n, n] arr
     !ds = computeDerivativeS (computeUnboxedS paddedImg)
     !center = fromIntegral (n - 1) / 2
+    
+
+rotateSquare2DImageS
+  :: (R.Source s Double)
+  => [Double] -> Array s DIM2 Double -> [Array U DIM2 Double]
+rotateSquare2DImageS degs arr =
+  parMap
+    rseq
+    (\deg ->
+        computeS $
+        fromFunction
+          (Z :. ny :. nx)
+          (\(Z :. j :. i) ->
+              bicubicInterpolation ds (minVal, maxVal) .
+              rotatePixel
+                (VU.fromListN 4 $
+                 P.map (\f -> f (deg2Rad deg)) [cos, sin, \x -> -(sin x), cos])
+                (center, center) $
+              (fromIntegral j, fromIntegral i)))
+    degs
+  where
+    !minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !(Z :. ny :. nx) = extent arr
+    !ds = computeDerivativeS (computeUnboxedS . delay $ arr)
+    !center = fromIntegral (nx - 1) / 2
 
 -- Set the maximum value of the maximum size, the ratio is intact.
 resize2DImageS
