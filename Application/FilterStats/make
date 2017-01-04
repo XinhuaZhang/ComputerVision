@@ -1,0 +1,5 @@
+#/bin/bash
+
+FLAG="--make -O2 -rtsopts -j4 -threaded " 
+
+ghc $FLAG -i../../ Main.hs -o main
