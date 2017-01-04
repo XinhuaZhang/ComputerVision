@@ -1,0 +1,6 @@
+#/bin/bash
+
+export OMP_NUM_THREADS=14
+FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3"
+LIBS="-lstdc++ -llapack -lblas -lgomp"
+ghc $FLAG $LIBS -i../../ PlotFeatureHistogram.hs -o plotFeatureHistogram
