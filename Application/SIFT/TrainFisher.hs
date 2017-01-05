@@ -104,10 +104,7 @@ main = do
         , trainFeatureIndexMax = (2 * numFeature) * (numModel $ L.head gmm)
         , trainModel = modelName params
         }
-      numFeature =
-        if isColor
-          then 3 * 128
-          else 128
+      numFeature = numPrincipal params
       gaussianFilter = makeFilter gaussianParams
       featureConduit =
         if isFixedSize params

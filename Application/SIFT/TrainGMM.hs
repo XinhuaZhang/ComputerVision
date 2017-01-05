@@ -65,10 +65,7 @@ main = do
       filePath = gmmFile params
       numM = numGaussian params
       bound = ((0, 1), (1, 100))
-      numFeature =
-        if isColor
-          then 3 * 128
-          else 128
+      numFeature = numPrincipal params
       gaussianFilter = makeFilter gaussianParams
       featureConduit =
         if isFixedSize params
