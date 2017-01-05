@@ -103,7 +103,9 @@ getDescriptor (mag, ori) =
       startPointList
     normalizeVec v =
       let !norm = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ v
-      in VU.map (/ norm) v
+      in if norm == 0
+           then v
+           else VU.map (/ norm) v
 
 {-# INLINE orientationHist #-}
 
