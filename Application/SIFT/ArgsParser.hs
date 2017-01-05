@@ -21,7 +21,7 @@ data Flag
   | Freq Int
   | Scale [Double]
   | IsComplex
-  | NumGMMExample Int
+  | NumExample Int
   | IsFixedSize
   | NumPrincipal Int
   deriving (Show)
@@ -42,7 +42,7 @@ data Params = Params
   , freq             :: Int
   , scale            :: [Double]
   , isComplex        :: Bool
-  , numGMMExample    :: Int
+  , numExample    :: Int
   , isFixedSize      :: Bool
   , numPrincipal     :: Int
   } deriving (Show)
@@ -114,8 +114,8 @@ options =
       "Flag which decides using complex value or magnitude."
   , Option
       ['z']
-      ["numGMMExample"]
-      (ReqArg (NumGMMExample . readInt) "INT")
+      ["numExample"]
+      (ReqArg (NumExample . readInt) "INT")
       "Set the number of examples which are used for GMM training."
   , Option
       ['z']
@@ -170,7 +170,7 @@ parseFlag flags = go flags defaultFlag
       , freq = 0
       , scale = [1]
       , isComplex = False
-      , numGMMExample = 1
+      , numExample = 1
       , isFixedSize = False
       , numPrincipal = 1
       }
@@ -267,11 +267,11 @@ parseFlag flags = go flags defaultFlag
             (params
              { isComplex = True
              })
-        NumGMMExample v ->
+        NumExample v ->
           go
             xs
             (params
-             { numGMMExample = v
+             { numExample = v
              })
         IsFixedSize ->
           go

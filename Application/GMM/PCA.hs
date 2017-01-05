@@ -4,7 +4,6 @@ module Application.GMM.PCA where
 
 import           Control.Arrow
 import           Control.Monad as M
-import Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Utility.Parallel
 import           Data.Array

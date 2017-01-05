@@ -1,4 +1,5 @@
 import           Application.FilterStats.FilterStats
+import           Application.GMM.PCA
 import           Application.SIFT.ArgsParser
 import           Control.Monad                       as M
 import           Control.Monad.IO.Class
@@ -13,13 +14,13 @@ import           Data.List                           as L
 import           Data.Vector.Unboxed                 as VU
 import           System.Environment
 
-plotHistSink :: Sink [VU.Vector Double] (ResourceT IO) ()
-plotHistSink = do
+plotHistSink :: String -> Sink [VU.Vector Double] (ResourceT IO) ()
+plotHistSink str = do
   xs <- CL.consume
   let ys = L.map VU.fromList . L.transpose . L.map VU.toList . L.concat $ xs
   liftIO $
     M.zipWithM_
-      (\i vec -> plotHist vec (0, 1) 100 (show i) (show i L.++ ".png"))
+      (\i vec -> plotHist vec (0, 1) 100 (show i) (str L.++ show i L.++ ".png"))
       [1 ..]
       ys
 
@@ -46,7 +47,14 @@ main = do
         { getGaussianFilterSigma = scaleSIFT siftParams
         , getGaussianFilterSize = (0, 0)
         }
-  images <- readLabeledImageBinary (inputFile params) (numGMMExample params)
+      numTake = numPrincipal params
+      numDrop = 0
+  pcaMatrix <- readMatrix (pcaFile params)
+  images <- readLabeledImageBinary (inputFile params) (numExample params)
   runResourceT $
     sourceList images $$ siftVariedSizeConduit parallelParams siftParams gaussianParams =$=
-    plotHistSink
+    plotHistSink ""
+  runResourceT $
+    sourceList images $$ siftVariedSizeConduit parallelParams siftParams gaussianParams =$=
+    pcaConduit parallelParams pcaMatrix (numDrop, numTake) =$=
+    plotHistSink "pca_"
