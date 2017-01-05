@@ -19,7 +19,7 @@ plotHistSink = do
   let ys = L.map VU.fromList . L.transpose . L.map VU.toList . L.concat $ xs
   liftIO $
     M.zipWithM_
-      (\i vec -> plotHist vec (0, 0.25) 10 (show i) (show i L.++ ".png"))
+      (\i vec -> plotHist vec (0, 1) 100 (show i) (show i L.++ ".png"))
       [1 ..]
       ys
 

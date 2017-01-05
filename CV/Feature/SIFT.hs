@@ -28,7 +28,8 @@ getGradient
   :: (R.Source s Double)
   => Array s DIM2 Double -> (Array U DIM2 Double, Array U DIM2 Double)
 getGradient arr =
-  deepSeqArrays [magnitude', orientation] (magnitude', orientation)
+  -- deepSeqArrays [magnitude', orientation] 
+  (magnitude', orientation)
   where
     xStencil =
       [stencil2| 0 0 0
@@ -44,7 +45,11 @@ getGradient arr =
       computeS . traverse2 xArr yArr const $
       \fx fy idx -> sqrt $ fx idx ^ (2 :: Int) + fy idx ^ (2 :: Int)
     !orientation =
-      computeS . traverse2 xArr yArr const $ \fx fy idx -> atan $ fy idx / fx idx
+      computeS . traverse2 xArr yArr const $
+      \fx fy idx ->
+         if fx idx == 0 && fy idx == 0
+           then 0
+           else atan $ fy idx / fx idx
 
 {-# INLINE gaussianWindow #-}
 
@@ -91,29 +96,35 @@ getDescriptor (mag, ori) =
       VU.concat .
       L.map
         (\start ->
-            let !croppedMag = computeS $ cropUnsafe start [4, 4] weightedMag
-                !croppedOri = computeS $ cropUnsafe start [4, 4] ori
+            let !croppedMag = computeS $ crop start [4, 4] weightedMag
+                !croppedOri = computeS $ crop start [4, 4] ori
             in orientationHist $
                VU.zip (toUnboxed croppedMag) (toUnboxed croppedOri)) $
       startPointList
     normalizeVec v =
-      let !norm = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+      let !norm = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ v
       in VU.map (/ norm) v
 
 {-# INLINE orientationHist #-}
 
 orientationHist :: VU.Vector (Double, Double) -> VU.Vector Double
+
 orientationHist =
   VU.accumulate (+) (VU.replicate 8 0) .
   VU.map
     (\(mag, ori) ->
-        let normalizedOri =
+        let !normalizedOri =
               if ori < 0 || ori >= (2 * pi)
                 then if ori < 0
                        then ori + 2 * pi
                        else ori - 2 * pi
                 else ori
-        in (floor (4 * normalizedOri / pi), mag))
+            !idx = floor (4 * normalizedOri / pi)
+            !idx1 =
+              if idx >= 8
+                then 7
+                else idx
+        in (idx1, mag))
 
 getSIFTFeatureFromGradient
   :: (R.Source s Double)
@@ -121,20 +132,21 @@ getSIFTFeatureFromGradient
 getSIFTFeatureFromGradient stride (mag, ori) =
   L.map
     (\start ->
-        let !croppedMag = cropUnsafe start [16, 16] mag
-            !croppedOri = cropUnsafe start [16, 16] ori
+        let !croppedMag = crop start [patchSize, patchSize] mag
+            !croppedOri = crop start [patchSize, patchSize] ori
         in getDescriptor (croppedMag, croppedOri))
     startPairList
   where
     !(Z :. nRows :. nCols) = extent mag
+    !patchSize = 16
     !startPairList =
       [ [x, y]
-      | x <- computeStartPointList nRows
-      , y <- computeStartPointList nCols ]
+      | x <- computeStartPointList nCols
+      , y <- computeStartPointList nRows ]
     computeStartPointList x =
       let !num = div x stride
           !margin = div (x - stride * num) 2
-      in L.take num [margin,margin + stride .. x]
+      in L.filter (\y -> y + patchSize <= x) $ L.take num [margin,margin + stride .. x]
 
 -- The vectors are point-wise vector
 siftFixedSizeConduit
