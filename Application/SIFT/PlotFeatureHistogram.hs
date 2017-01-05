@@ -17,7 +17,7 @@ import           System.Environment
 plotHistSink :: String -> Sink [VU.Vector Double] (ResourceT IO) ()
 plotHistSink str = do
   xs <- CL.consume
-  let ys = L.map VU.fromList . L.transpose . L.map VU.toList . L.concat $ xs
+  let ys = L.map VU.concat . L.transpose $ xs
   liftIO $
     M.zipWithM_
       (\i vec -> plotHist vec (0, 1) 100 (show i) (str L.++ show i L.++ ".png"))
@@ -39,7 +39,7 @@ main = do
         }
       siftParams =
         SIFTParams
-        { scaleSIFT = 2
+        { scaleSIFT = L.head $ scale params
         , strideSIFT = 8
         }
       gaussianParams =

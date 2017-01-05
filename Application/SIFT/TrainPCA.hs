@@ -28,7 +28,7 @@ main = do
         }
       siftParams =
         SIFTParams
-        { scaleSIFT = 2
+        { scaleSIFT = L.head $ scale params
         , strideSIFT = 8
         }
       gaussianParams =

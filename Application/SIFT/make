@@ -3,4 +3,9 @@
 export OMP_NUM_THREADS=14
 FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3"
 LIBS="-lstdc++ -llapack -lblas -lgomp"
+OBJPATH="../../Classifier/LibLinear/"
 ghc $FLAG $LIBS -i../../ PlotFeatureHistogram.hs -o plotFeatureHistogram
+ghc $FLAG $LIBS -i../../ TrainPCA.hs -o trainPCA
+ghc $FLAG $LIBS -i../../ TrainGMM.hs -o trainGMM
+ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisher.hs -o trainFisher
+ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisher.hs -o predictFisher
