@@ -49,10 +49,13 @@ pcaConduit parallelParams pcaMatrix (numDrop, numTake) = do
                        x)
                       pcaMatrix)
                 xs
-        sourceList .
+        {-sourceList .
           L.map
             (L.map (VU.fromList . LA.toList) .
              L.take numTake . L.drop numDrop . elems) $
+          ys-}
+        sourceList .
+          L.map (L.map VU.fromList . L.transpose . L.map LA.toList . elems) $
           ys
         pcaConduit parallelParams pcaMatrix (numDrop, numTake))
 

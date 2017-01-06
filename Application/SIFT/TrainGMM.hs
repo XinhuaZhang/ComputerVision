@@ -1,4 +1,5 @@
-import           Application.GMM.GMM
+--import           Application.GMM.GMM
+import           Application.MultiDimensionalGMM.GMM
 import           Application.SIFT.ArgsParser  as Parser
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
@@ -73,25 +74,8 @@ main = do
           else siftVariedSizeConduit parallelParams siftParams gaussianParams
       numTake = numPrincipal params
       numDrop = 0
-  fileFlag <- doesFileExist filePath
-  gmms <-
-    if fileFlag
-      then do
-        fileSize <- getFileSize filePath
-        if fileSize > 0
-          then do
-            putStrLn $ "Read GMM data file: " L.++ filePath
-            readGMM filePath
-          else M.replicateM numFeature $ initializeGMM numM bound
-      else M.replicateM numFeature $ initializeGMM numM bound
   pcaMatrix <- readMatrix (pcaFile params)
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= featureConduit =$=
     pcaConduit parallelParams pcaMatrix (numDrop, numTake) =$=
-    gmmAllSink
-      parallelParams
-      (gmmFile params)
-      numM
-      bound
-      (threshold params)
-      (numExample params)
+    gmmSink (gmmFile params) numM bound (threshold params) (numExample params)
