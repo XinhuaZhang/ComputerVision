@@ -132,14 +132,12 @@ getSIFTFeatureFromGradient
   :: (R.Source s Double)
   => Int -> (Array s DIM2 Double, Array s DIM2 Double) -> [VU.Vector Double]
 getSIFTFeatureFromGradient stride (mag, ori) =
-  L.map VU.fromList .
-  L.transpose .
   L.map
     (\start ->
         let !croppedMag = crop start [patchSize, patchSize] mag
             !croppedOri = crop start [patchSize, patchSize] ori
-        in VU.toList $ getDescriptor (croppedMag, croppedOri)) $
-  startPairList
+        in getDescriptor (croppedMag, croppedOri))
+    startPairList
   where
     !(Z :. nRows :. nCols) = extent mag
     !patchSize = 16
@@ -169,14 +167,16 @@ siftFixedSizeConduit parallelParams sp@(SIFTParams _ stride) filter' = do
                 rdeepseq
                 (\(LabeledArray _ arr) ->
                     let !(Z :. nf' :. _ :. _) = extent arr
-                    in L.concatMap
+                    in L.map VU.concat .
+                       L.transpose .
+                       L.map
                          (\i ->
                              let !filterArr = applyFilterFixedSize filter' arr
                                  !magOri =
                                    getGradient $
                                    R.slice filterArr (Z :. i :. All :. All)
-                             in getSIFTFeatureFromGradient stride magOri)
-                         [0 .. nf' - 1])
+                             in getSIFTFeatureFromGradient stride magOri) $
+                       [0 .. nf' - 1])
                 xs
         sourceList ys
         siftFixedSizeConduit parallelParams sp filter')
@@ -196,15 +196,17 @@ siftVariedSizeConduit parallelParams sp@(SIFTParams _ stride) filterParams = do
                 rdeepseq
                 (\(LabeledArray _ arr) ->
                     let !(Z :. nf' :. _ :. _) = extent arr
-                    in L.concatMap
+                    in L.map VU.concat .
+                       L.transpose .
+                       L.map
                          (\i ->
                              let !filterArr =
                                    applyFilterVariedSize filterParams arr
                                  !magOri =
                                    getGradient $
                                    R.slice filterArr (Z :. i :. All :. All)
-                             in getSIFTFeatureFromGradient stride magOri)
-                         [0 .. nf' - 1])
+                             in getSIFTFeatureFromGradient stride magOri) $
+                       [0 .. nf' - 1])
                 xs
         sourceList ys
         siftVariedSizeConduit parallelParams sp filterParams)
@@ -226,13 +228,15 @@ labeledArraySIFTFixedSizeConduit parallelParams sp@(SIFTParams _ stride) filter'
                 (\(LabeledArray label arr) ->
                     let !(Z :. nf' :. _ :. _) = extent arr
                     in ( label
-                       , L.concatMap
+                       , L.map VU.concat .
+                         L.transpose .
+                         L.map
                            (\i ->
                                let !filterArr = applyFilterFixedSize filter' arr
                                    !magOri =
                                      getGradient $
                                      R.slice filterArr (Z :. i :. All :. All)
-                               in getSIFTFeatureFromGradient stride magOri) 
+                               in getSIFTFeatureFromGradient stride magOri) $
                          [0 .. nf' - 1]))
                 xs
         sourceList ys
@@ -254,15 +258,17 @@ labeledArraySIFTVariedSizeConduit parallelParams sp@(SIFTParams _ stride) filter
                 (\(LabeledArray label arr) ->
                     let !(Z :. nf' :. _ :. _) = extent arr
                     in ( label
-                       , L.concatMap
+                       , L.map VU.concat .
+                         L.transpose .
+                         L.map
                            (\i ->
                                let !filterArr =
                                      applyFilterVariedSize filterParams arr
                                    !magOri =
                                      getGradient $
                                      R.slice filterArr (Z :. i :. All :. All)
-                               in getSIFTFeatureFromGradient stride magOri)
-                           [0 .. nf' - 1]))
+                               in getSIFTFeatureFromGradient stride magOri) $
+                         [0 .. nf' - 1]))
                 xs
         sourceList ys
         labeledArraySIFTVariedSizeConduit parallelParams sp filterParams)

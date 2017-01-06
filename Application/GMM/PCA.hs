@@ -25,7 +25,9 @@ pcaSink numExample numPrincipal = do
     else do
       let !ys = L.map VU.concat . L.transpose $ xs
           !arr' =
-            listArray (1, L.length ys) . L.map (LA.fromList . VU.toList) $ ys
+            listArray (1, L.length ys) .
+            L.map LA.fromList . L.transpose . L.map VU.toList $
+            ys
           !pcaMatrix = pcaN arr' numPrincipal
       return pcaMatrix
 
@@ -45,15 +47,10 @@ pcaConduit parallelParams pcaMatrix (numDrop, numTake) = do
                 (\x ->
                     pcaTransform
                       (listArray (1, L.length x) .
-                       L.map (LA.fromList . VU.toList) $
+                       L.map LA.fromList . L.transpose . L.map VU.toList $
                        x)
                       pcaMatrix)
                 xs
-        {-sourceList .
-          L.map
-            (L.map (VU.fromList . LA.toList) .
-             L.take numTake . L.drop numDrop . elems) $
-          ys-}
         sourceList .
           L.map (L.map VU.fromList . L.transpose . L.map LA.toList . elems) $
           ys
@@ -69,19 +66,7 @@ pcaLabelConduit parallelParams pcaMatrix = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
-    (do let -- !ys =
-            --   parMapChunk
-            --     parallelParams
-            --     rdeepseq
-            --     (second $
-            --      \x ->
-            --         pcaTransform
-            --           (listArray (1, L.length x) .
-            --            L.map (LA.fromList . VU.toList) $
-            --            x)
-            --           pcaMatrix)
-            --     xs
-            !ys =
+    (do let !ys =
               parMapChunk
                 parallelParams
                 rdeepseq
@@ -89,11 +74,13 @@ pcaLabelConduit parallelParams pcaMatrix = do
                  \x ->
                     pcaTransform
                       (listArray (1, L.length x) .
-                       L.map (LA.fromList . VU.toList) $
+                       L.map LA.fromList . L.transpose . L.map VU.toList $
                        x)
                       pcaMatrix)
                 xs
-        sourceList . L.map (second $ L.map (VU.fromList . LA.toList) . elems) $
+        sourceList .
+          L.map
+            (second $ L.map VU.fromList . L.transpose . L.map LA.toList . elems) $
           ys
         pcaLabelConduit parallelParams pcaMatrix)
 
