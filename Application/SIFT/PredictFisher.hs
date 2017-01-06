@@ -1,25 +1,26 @@
-import           Application.GMM.FisherKernel
-import           Application.GMM.GMM
-import           Application.GMM.MixtureModel
 import           Application.GMM.PCA
-import           Application.SIFT.ArgsParser  as Parser
+import           Application.MultiDimensionalGMM.FisherKernel
+import           Application.MultiDimensionalGMM.GMM
+import           Application.MultiDimensionalGMM.MixtureModel
+import           Application.SIFT.ArgsParser                  as Parser
 import           Classifier.LibLinear
 import           Control.Arrow
-import           Control.Monad                as M
+import           Control.Monad                                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Feature.SIFT
 import           CV.Filter.GaussianFilter
 import           CV.Filter.GaussianFilter
-import           CV.Utility.Parallel          as Par
+import           CV.Utility.Parallel                          as Par
 import           CV.Utility.Time
-import           Data.Array.Repa              as R
+import           Data.Array.Repa                              as R
+import           Data.Binary
 import           Data.Conduit
-import           Data.Conduit.Binary          as CB
-import           Data.Conduit.List            as CL
-import           Data.List                    as L
-import           Data.Vector.Unboxed          as VU
+import           Data.Conduit.Binary                          as CB
+import           Data.Conduit.List                            as CL
+import           Data.List                                    as L
+import           Data.Vector.Unboxed                          as VU
 import           System.Directory
 import           System.Environment
 
@@ -30,7 +31,7 @@ main = do
     else return ()
   params <- parseArgs args
   print params
-  gmm <- readGMM (gmmFile params) :: IO [GMM]
+  gmm <- decodeFile (gmmFile params) :: IO GMM
   pcaMatrix <- readMatrix (pcaFile params)
   imageListLen <- getArrayNumFile (inputFile params)
   imageSize <-

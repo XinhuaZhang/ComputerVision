@@ -69,7 +69,19 @@ pcaLabelConduit parallelParams pcaMatrix = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
-    (do let !ys =
+    (do let -- !ys =
+            --   parMapChunk
+            --     parallelParams
+            --     rdeepseq
+            --     (second $
+            --      \x ->
+            --         pcaTransform
+            --           (listArray (1, L.length x) .
+            --            L.map (LA.fromList . VU.toList) $
+            --            x)
+            --           pcaMatrix)
+            --     xs
+            !ys =
               parMapChunk
                 parallelParams
                 rdeepseq
