@@ -65,7 +65,7 @@ main = do
         }
       filePath = gmmFile params
       numM = numGaussian params
-      bound = ((0, 1), (1, 100))
+      bound = ((0, 0.5), (1, 1))
       numFeature = numPrincipal params
       gaussianFilter = makeFilter gaussianParams
       featureConduit =

@@ -73,7 +73,7 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSetList = [filterParamsSet1]
+      filterParamsSetList = [filterParamsSet1,filterParamsSet2]
       filePath = gmmFile params
       numM = numGaussian params
       bound = ((0, 10), (0.1, 100))

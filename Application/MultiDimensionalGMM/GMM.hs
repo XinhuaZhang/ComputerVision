@@ -84,7 +84,9 @@ resetGMM (ResetIndex idx) (MixtureModel n models) bound = do
 
 
 getAssignment :: GMM -> VU.Vector Double -> [Double]
-getAssignment (MixtureModel _n models) x = L.map (/ s) ys
+getAssignment (MixtureModel _n models) x
+  | s == 0 = ys
+  | otherwise = L.map (/ s) ys
   where
     !ys =
       L.map
@@ -95,27 +97,26 @@ getAssignment (MixtureModel _n models) x = L.map (/ s) ys
 getAssignmentVec :: GMM -> [VU.Vector Double] -> AssignmentVec
 getAssignmentVec gmm = L.map (getAssignment gmm)
 
-getNks :: AssignmentVec -> VU.Vector Double
-getNks = VU.fromList . L.foldl1' (L.zipWith (+))
+getNks :: AssignmentVec -> [Double]
+getNks = L.foldl1' (L.zipWith (+))
 
-updateMu
-  :: AssignmentVec
-  -> VU.Vector Double
-  -> [VU.Vector Double]
-  -> [VU.Vector Double]
+updateMu :: AssignmentVec
+         -> [Double]
+         -> [VU.Vector Double]
+         -> [VU.Vector Double]
 updateMu assignmentVec nks =
-  L.map (VU.zipWith (flip (/)) nks) .
+  L.zipWith (\nk x -> VU.map (/ nk) x) nks .
   L.foldl1' (L.zipWith (VU.zipWith (+))) .
   L.zipWith (\assignment x -> L.map (\y -> VU.map (* y) x) assignment) assignmentVec
 
 updateSigma
   :: AssignmentVec
-  -> VU.Vector Double
+  -> [Double]
   -> [VU.Vector Double]
   -> [VU.Vector Double]
   -> [VU.Vector Double]
 updateSigma assignmentVec nks newMu =
-  L.map (VU.zipWith (flip (/)) nks) .
+  L.zipWith (\nk x -> VU.map (/ nk) x) nks .
   L.foldl1' (L.zipWith (VU.zipWith (+))) .
   L.zipWith
     (\assignment x ->
@@ -125,16 +126,16 @@ updateSigma assignmentVec nks newMu =
           newMu)
     assignmentVec
 
-updateW :: Int -> VU.Vector Double -> VU.Vector Double
-updateW n w = VU.map (/ VU.sum vec) vec
+updateW :: Int -> [Double] -> [Double]
+updateW n w = L.map (/ L.sum vec) vec
   where
-    !vec = VU.map (/ fromIntegral n) w
+    !vec = L.map (/ fromIntegral n) w
 
 updateGMM :: GMM -> AssignmentVec -> [VU.Vector Double] -> GMM
 updateGMM oldGMM oldAssignmentVec xs =
   MixtureModel
     (numModel oldGMM)
-    (L.zipWith3 (\w m s -> Model (w, Gaussian m s)) (VU.toList newW) newMu newSigma)
+    (L.zipWith3 (\w m s -> Model (w, Gaussian m s)) newW newMu newSigma)
   where
     !nks = getNks oldAssignmentVec
     !newMu = updateMu oldAssignmentVec nks xs
@@ -162,18 +163,20 @@ getAvgLikelihood gmm xs =
 em :: Double -> Int -> GMM -> ((Double, Double), (Double, Double)) -> [VU.Vector Double] -> IO GMM
 em threshold count' oldGMM bound xs
   | not (L.null zeroNaNNKIdx) = do
+    print zeroNaNNKIdx
     gmm <- resetGMM (ResetIndex zeroNaNNKIdx) oldGMM bound
     em threshold count' gmm bound xs
   | isJust zeroZIdx = do
+    putStrLn "Reset all"
     gmm <- resetGMM ResetAll oldGMM bound
     em threshold count' gmm bound xs
   | rate < threshold || count' == 50 = do
     printCurrentTime
-    printf "%0.2f" oldAvgLikelihood
+    printf "%0.2f\n" oldAvgLikelihood
     return oldGMM
   | otherwise = do
     printCurrentTime
-    printf "%0.2f" oldAvgLikelihood
+    printf "%0.2f\n" oldAvgLikelihood
     em threshold (count' + 1) newGMM bound xs
   where
     !oldAssignmentVec = getAssignmentVec oldGMM xs
@@ -181,7 +184,7 @@ em threshold count' oldGMM bound xs
     !nks = getNks oldAssignmentVec
     !zs = L.map L.sum oldAssignmentVec
     !zeroZIdx = L.elemIndex 0 zs
-    !zeroNaNNKIdx = VU.toList $ VU.findIndices (\x -> x == 0 || isNaN x) nks
+    !zeroNaNNKIdx = L.findIndices (\x -> x == 0 || isNaN x) nks
     !newGMM = updateGMM oldGMM oldAssignmentVec xs
     !newAvgLikelihood = getAvgLikelihood newGMM xs
     !rate = abs $ (oldAvgLikelihood - newAvgLikelihood) / oldAvgLikelihood

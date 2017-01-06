@@ -97,6 +97,7 @@ fisherVectorConduit parallelParams gmms =
             !vecMu = fisherVectorMu parallelParams gmms assignments x
             !vecSigma = fisherVectorSigma parallelParams gmms assignments x
             !vec = vecMu VU.++ vecSigma
+            -- !powerVec = VU.map (\x' -> signum x' * ((abs x') ** 0.5)) vec
             !l2Norm = sqrt (VU.foldl' (\a b -> a + b ^ (2 :: Int)) 0 vec)
             !result =
               if l2Norm == 0
