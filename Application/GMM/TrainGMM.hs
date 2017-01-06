@@ -1,7 +1,7 @@
 module Main where
 
 import           Application.GMM.ArgsParser     as Parser
-import           Application.GMM.GMM
+import           Application.MultiDimensionalGMM.GMM
 import           Control.Monad                  as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray

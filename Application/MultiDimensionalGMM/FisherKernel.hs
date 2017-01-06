@@ -70,10 +70,10 @@ fisherVectorConduit parallelParams gmm =
         let !vecMu = fisherVectorMu parallelParams gmm x
             !vecSigma = fisherVectorSigma parallelParams gmm x
             !vec = vecMu VU.++ vecSigma
-            -- !powerVec = VU.map (\x' -> signum x' * ((abs x') ** 0.5)) vec
-            !l2Norm = sqrt (VU.foldl' (\a b -> a + b ^ (2 :: Int)) 0 vec)
+            !powerVec = VU.map (\x' -> signum x' * ((abs x') ** 0.5)) vec
+            !l2Norm = sqrt (VU.foldl' (\a b -> a + b ^ (2 :: Int)) 0 powerVec)
             !result =
               if l2Norm == 0
-                then vec
-                else VU.map (/ l2Norm) vec
+                then powerVec
+                else VU.map (/ l2Norm) powerVec
         in yield (label, result))

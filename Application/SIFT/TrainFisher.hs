@@ -102,7 +102,7 @@ main = do
         { trainSolver = L2R_L2LOSS_SVC_DUAL
         , trainC = c params
         , trainNumExamples = imageListLen
-        , trainFeatureIndexMax = (2 * numFeature) * (numModel $ L.head gmm)
+        , trainFeatureIndexMax = (2 * numFeature) * (numModel gmm)
         , trainModel = modelName params
         }
       numFeature = numPrincipal params

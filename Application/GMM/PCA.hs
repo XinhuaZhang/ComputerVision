@@ -23,9 +23,9 @@ pcaSink numExample numPrincipal = do
   if L.null xs
     then error "pcaSink: input data is empty."
     else do
-      let !ys = L.map VU.concat . L.transpose $ xs
+      let !ys = L.concat xs
           !arr' =
-            listArray (1, L.length ys) .
+            listArray (1, VU.length $ L.head ys) .
             L.map LA.fromList . L.transpose . L.map VU.toList $
             ys
           !pcaMatrix = pcaN arr' numPrincipal
@@ -46,7 +46,7 @@ pcaConduit parallelParams pcaMatrix (numDrop, numTake) = do
                 rdeepseq
                 (\x ->
                     pcaTransform
-                      (listArray (1, L.length x) .
+                      (listArray (1, VU.length . L.head $ x) .
                        L.map LA.fromList . L.transpose . L.map VU.toList $
                        x)
                       pcaMatrix)
@@ -73,7 +73,7 @@ pcaLabelConduit parallelParams pcaMatrix = do
                 (second $
                  \x ->
                     pcaTransform
-                      (listArray (1, L.length x) .
+                      (listArray (1, VU.length . L.head $ x) .
                        L.map LA.fromList . L.transpose . L.map VU.toList $
                        x)
                       pcaMatrix)
