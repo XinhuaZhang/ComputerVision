@@ -2,25 +2,28 @@
 
 module Application.MultiDimensionalGMM.GMM where
 
-import           Application.MultiDimensionalGMM.MixtureModel
 import           Application.MultiDimensionalGMM.Gaussian
-import           Control.DeepSeq                          as DS
-import           Control.Monad                            as M
+import           Application.MultiDimensionalGMM.MixtureModel
+import           Control.DeepSeq                              as DS
+import           Control.Monad                                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
+import           CV.Feature.PolarSeparable
+import           CV.Utility.Parallel
 import           CV.Utility.Time
+import           Data.Array.Repa                              as R
 import           Data.Binary
+import qualified Data.ByteString.Lazy                         as BL
 import           Data.Conduit
-import           Data.Conduit.List                        as CL
-import           Data.List                                as L
+import           Data.Conduit.List                            as CL
+import           Data.List                                    as L
 import           Data.Maybe
-import           Data.Vector                      as V
-import           Data.Vector.Unboxed                      as VU
-import           Prelude                                  as P
+import           Data.Vector                                  as V
+import           Data.Vector.Unboxed                          as VU
+import           Prelude                                      as P
 import           System.Directory
-import           System.IO                                as IO
+import           System.IO                                    as IO
 import           Text.Printf
-
 
 type GMM = MixtureModel Gaussian
 
@@ -32,8 +35,7 @@ data ResetOption
   deriving (Show)
 
 instance NFData ResetOption where
-  rnf (ResetIndex x) = x `seq` ()
-  rnf !_             = ()
+  rnf !_ = ()
 
 data EMState a
   = EMDone !Double
@@ -48,20 +50,18 @@ data EMState a
 
 instance NFData a =>
          NFData (EMState a) where
-  rnf (EMContinue x y n z) = x `seq` y `seq` n `seq` z `seq` ()
-  rnf (EMReset x y)      = x `seq` y `seq` ()
-  rnf !_                 = ()
+  rnf !_ = ()
 
 initializeGMM :: Int -> Int -> ((Double, Double), (Double, Double)) -> IO GMM
 initializeGMM numModel' numDim bound = do
   gs <- M.replicateM numModel' (randomGaussian numDim bound)
   initializeMixture numModel' gs
-  
+
 resetGMM :: ResetOption -> GMM -> ((Double, Double), (Double, Double)) -> IO GMM
 resetGMM ResetAll gmm bound =
   initializeGMM
     (numModel gmm)
-    (VU.length . gaussianMu . snd . (\(Model x) -> x) . L.head . model $ gmm)
+    (VU.length . gaussianMu . snd . (\(Model x') -> x') . L.head . model $ gmm)
     bound
 resetGMM (ResetIndex idx) (MixtureModel n models) bound = do
   gs <- V.replicateM (V.length vec) (randomGaussian nd bound)
@@ -75,22 +75,21 @@ resetGMM (ResetIndex idx) (MixtureModel n models) bound = do
          (\i ->
              let mi@(Model (wi, _)) = modelVec V.! i
              in case V.find (\(j, _) -> i == j) idxModels of
-                  Nothing -> mi
+                  Nothing      -> mi
                   Just (_, gm) -> Model (wi, gm)))
   where
     !vec = V.fromList idx
     !modelVec = V.fromListN n models
-    !nd = VU.length . gaussianMu . snd . (\(Model x) -> x) . L.head $ models
-
+    !nd = VU.length . gaussianMu . snd . (\(Model x') -> x') . L.head $ models
 
 getAssignment :: GMM -> VU.Vector Double -> [Double]
-getAssignment (MixtureModel _n models) x
+getAssignment (MixtureModel _n models) x'
   | s == 0 = ys
   | otherwise = L.map (/ s) ys
   where
     !ys =
       L.map
-        (\(Model (weight, gaussianModel)) -> weight * gaussian gaussianModel x)
+        (\(Model (weight, gaussianModel)) -> weight * gaussian gaussianModel x')
         models
     !s = L.sum ys
 
@@ -105,9 +104,9 @@ updateMu :: AssignmentVec
          -> [VU.Vector Double]
          -> [VU.Vector Double]
 updateMu assignmentVec nks =
-  L.zipWith (\nk x -> VU.map (/ nk) x) nks .
+  L.zipWith (\nk x' -> VU.map (/ nk) x') nks .
   L.foldl1' (L.zipWith (VU.zipWith (+))) .
-  L.zipWith (\assignment x -> L.map (\y -> VU.map (* y) x) assignment) assignmentVec
+  L.zipWith (\assignment x' -> L.map (\y' -> VU.map (* y') x') assignment) assignmentVec
 
 updateSigma
   :: AssignmentVec
@@ -116,12 +115,12 @@ updateSigma
   -> [VU.Vector Double]
   -> [VU.Vector Double]
 updateSigma assignmentVec nks newMu =
-  L.zipWith (\nk x -> VU.map (/ nk) x) nks .
+  L.zipWith (\nk x' -> VU.map (/ nk) x') nks .
   L.foldl1' (L.zipWith (VU.zipWith (+))) .
   L.zipWith
-    (\assignment x ->
+    (\assignment x' ->
         L.zipWith
-          (\a mu -> VU.map (* a) $ VU.zipWith (\y m -> (y - m) ^ (2 :: Int)) x mu)
+          (\a mu -> VU.map (* a) $ VU.zipWith (\y' m -> (y' - m) ^ (2 :: Int)) x' mu)
           assignment
           newMu)
     assignmentVec
@@ -141,17 +140,16 @@ updateGMM oldGMM oldAssignmentVec xs =
     !newMu = updateMu oldAssignmentVec nks xs
     !newSigma = updateSigma oldAssignmentVec nks newMu xs
     !newW = updateW (L.length xs) nks
-    
 
 getAvgLikelihood :: GMM -> [VU.Vector Double] -> Double
 getAvgLikelihood gmm xs =
   L.foldl'
-    (\ss x ->
+    (\ss x' ->
         ss +
         (log .
          L.foldl'
            (\s (Model (weight, gaussianModel)) ->
-               s + weight * gaussian gaussianModel x)
+               s + weight * gaussian gaussianModel x')
            0 .
          model $
          gmm))
@@ -159,8 +157,13 @@ getAvgLikelihood gmm xs =
     xs /
   fromIntegral (L.length xs)
 
-
-em :: Double -> Int -> GMM -> ((Double, Double), (Double, Double)) -> [VU.Vector Double] -> IO GMM
+em
+  :: Double
+  -> Int
+  -> GMM
+  -> ((Double, Double), (Double, Double))
+  -> [VU.Vector Double]
+  -> IO GMM
 em threshold count' oldGMM bound xs
   | not (L.null zeroNaNNKIdx) = do
     print zeroNaNNKIdx
@@ -184,11 +187,10 @@ em threshold count' oldGMM bound xs
     !nks = getNks oldAssignmentVec
     !zs = L.map L.sum oldAssignmentVec
     !zeroZIdx = L.elemIndex 0 zs
-    !zeroNaNNKIdx = L.findIndices (\x -> x == 0 || isNaN x) nks
+    !zeroNaNNKIdx = L.findIndices (\x' -> x' == 0 || isNaN x') nks
     !newGMM = updateGMM oldGMM oldAssignmentVec xs
     !newAvgLikelihood = getAvgLikelihood newGMM xs
     !rate = abs $ (oldAvgLikelihood - newAvgLikelihood) / oldAvgLikelihood
-
 
 gmmSink
   :: FilePath
@@ -215,3 +217,46 @@ gmmSink filePath numM bound threshold numTrain = do
       else initializeGMM numM nd bound
   newGMM <- liftIO $ em threshold 0 gmm bound ys
   liftIO $ encodeFile filePath newGMM
+
+hGMMSink
+  :: ParallelParams
+  -> Handle
+  -> Int
+  -> ((Double, Double), (Double, Double))
+  -> Double
+  -> Int
+  -> Sink (Array U DIM3 Double) (ResourceT IO) [Array U DIM3 Double]
+hGMMSink parallelParams handle numM bound threshold numTrain = do
+  arrs <- CL.take numTrain
+  let !xs = parMapChunk parallelParams rdeepseq extractPointwiseFeature arrs
+      !nd = VU.length . L.head . L.head $ xs
+      !ys = L.concat xs
+  gmm <- liftIO $ initializeGMM numM nd bound
+  newGMM <- liftIO $ em threshold 0 gmm bound ys
+  liftIO $ hPutGMM handle newGMM
+  return arrs
+
+hPutGMM :: Handle -> GMM -> IO ()
+hPutGMM handle gmm = do
+  BL.hPut handle (encode len)
+  BL.hPut handle encodedGMM
+  where
+    !encodedGMM = encode gmm
+    !len = fromIntegral $ BL.length encodedGMM :: Word32
+
+readGMM :: FilePath -> IO [GMM]
+readGMM filePath = withBinaryFile filePath ReadMode hGetGMM
+  where
+    hGetGMM h = do
+      sizebs <- BL.hGet h 4
+      if BL.length sizebs < 4
+        then return []
+        else do
+          let !size' = fromIntegral (decode sizebs :: Word32) :: Int
+          bs <- BL.hGet h size'
+          gmms <- hGetGMM h
+          return $! decode bs : gmms
+
+writeGMM :: FilePath -> [GMM] -> IO ()
+writeGMM filePath gmms =
+  withBinaryFile filePath WriteMode (\h -> M.mapM_ (hPutGMM h) gmms)
