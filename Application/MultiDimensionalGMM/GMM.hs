@@ -168,11 +168,13 @@ em threshold count' oldGMM bound xs
   | not (L.null zeroNaNNKIdx) = do
     print zeroNaNNKIdx
     gmm <- resetGMM (ResetIndex zeroNaNNKIdx) oldGMM bound
-    em threshold count' gmm bound xs
+    em threshold 0 gmm bound xs
   | isJust zeroZIdx = do
+    printCurrentTime
     putStrLn "Reset all"
+    print (xs !! (fromJust zeroZIdx))
     gmm <- resetGMM ResetAll oldGMM bound
-    em threshold count' gmm bound xs
+    em threshold 0 gmm bound xs
   | rate < threshold || count' == 50 = do
     printCurrentTime
     printf "%0.2f\n" oldAvgLikelihood

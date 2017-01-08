@@ -45,7 +45,7 @@ instance (Binary a) =>
 instance Functor PolarSeparableFeaturePoint where
   fmap f (PolarSeparableFeaturePoint x' y' feature') =
     PolarSeparableFeaturePoint x' y' (f feature')
-    
+
 
 singleLayerMagnitudeFixedSizedConduit
   :: (R.Source s Double)
@@ -94,10 +94,9 @@ singleLayerMagnitudeVariedSizedConduit parallelParams filterParams factor = do
         singleLayerMagnitudeVariedSizedConduit parallelParams filterParams factor)
 
 multiLayerMagnitudeFixedSizedConduit
-  :: (R.Source s Double)
-  => ParallelParams
+  :: ParallelParams
   -> [PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))]
-  -> Int -> Conduit (Array s DIM3 Double) (ResourceT IO) [[VU.Vector Double]]
+  -> Int -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [[VU.Vector Double]])
 multiLayerMagnitudeFixedSizedConduit parallelParams filters' factor = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -106,16 +105,17 @@ multiLayerMagnitudeFixedSizedConduit parallelParams filters' factor = do
               parMapChunk
                 parallelParams
                 rdeepseq
-                (multiLayerMagnitudeFixedSize filters' factor)
+                (\(LabeledArray label arr') ->
+                    (label, multiLayerMagnitudeFixedSize filters' factor arr'))
                 xs
         sourceList ys
         multiLayerMagnitudeFixedSizedConduit parallelParams filters' factor)
-        
+
 multiLayerMagnitudeVariedSizedConduit
-  :: (R.Source s Double)
-  => ParallelParams
+  :: ParallelParams
   -> [PolarSeparableFilterParamsSet]
-  -> Int -> Conduit (Array s DIM3 Double) (ResourceT IO) [[VU.Vector Double]]
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [[VU.Vector Double]])
 multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList factor = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -124,7 +124,8 @@ multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList factor = d
               parMapChunk
                 parallelParams
                 rdeepseq
-                (multiLayerMagnitudeVariedSize filterParamsList factor)
+                (\(LabeledArray label arr') ->
+                    (label, multiLayerMagnitudeVariedSize filterParamsList factor arr'))
                 xs
         sourceList ys
         multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList factor)
@@ -154,17 +155,17 @@ multiLayerMagnitudeFixedSize
   -> [[Vector Double]]
 multiLayerMagnitudeFixedSize filters' factor inputArr =
   L.map
-    (\arr ->
+    (\arr' ->
         let !(Z :. _ :. ny' :. nx') = extent downSampledArr
-            !downSampledArr = RU.downsample [factor, factor, 1] arr
-        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
+            !downSampledArr = RU.downsample [factor, factor, 1] arr'
+        in [ l2normVec . toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. All :. j :. i)
            | j <- [0 .. ny' - 1]
            , i <- [0 .. nx' - 1] ]) .
   L.tail .
   L.scanl'
-    (\arr filter' ->
-        R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $ arr)
+    (\arr' filter' ->
+        R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $ arr')
     (delay inputArr) $
   filters'
 
@@ -193,29 +194,37 @@ multiLayerMagnitudeVariedSize
   -> [[Vector Double]]
 multiLayerMagnitudeVariedSize filterParamsList factor inputArr =
   L.map
-    (\arr ->
+    (\arr' ->
         let !(Z :. _ :. ny' :. nx') = extent downSampledArr
-            !downSampledArr = RU.downsample [factor, factor, 1] arr
-        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
+            !downSampledArr = RU.downsample [factor, factor, 1] arr'
+        in [ l2normVec . toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. All :. j :. i)
            | j <- [0 .. ny' - 1]
            , i <- [0 .. nx' - 1] ]) .
   L.tail .
   L.scanl'
-    (\arr filterParams ->
+    (\arr' filterParams ->
         R.map C.magnitude . applyFilterSetVariedSize filterParams . R.map (:+ 0) $
-        arr)
+        arr')
     (delay inputArr) $
   filterParamsList
 
 {-# INLINE extractPointwiseFeature #-}
 
 extractPointwiseFeature
-  :: (R.Source s a, Unbox a)
-  => Array s DIM3 a -> [Vector a]
-extractPointwiseFeature arr =
-  [ toUnboxed . computeUnboxedS . R.slice arr $ (Z :. All :. j :. i)
+  :: (R.Source s Double)
+  => Array s DIM3 Double -> [Vector Double]
+extractPointwiseFeature arr' =
+  [ l2normVec . toUnboxed . computeUnboxedS . R.slice arr' $ (Z :. All :. j :. i)
   | j <- [0 .. ny' - 1]
   , i <- [0 .. nx' - 1] ]
   where
-    !(Z :. _ :. ny' :. nx') = extent arr
+    !(Z :. _ :. ny' :. nx') = extent arr'
+
+{-# INLINE l2normVec #-}
+l2normVec :: VU.Vector Double -> VU.Vector Double
+l2normVec vec
+  | norm == 0 = vec
+  | otherwise = VU.map (/ norm) vec
+  where
+    !norm = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec

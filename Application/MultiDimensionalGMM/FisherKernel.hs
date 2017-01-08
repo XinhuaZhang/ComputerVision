@@ -77,3 +77,28 @@ fisherVectorConduit parallelParams gmm =
                 then powerVec
                 else VU.map (/ l2Norm) powerVec
         in yield (label, result))
+        
+
+
+fisherVectorConduit1
+  :: ParallelParams
+  -> [GMM]
+  -> Conduit (Int, [[VU.Vector Double]]) (ResourceT IO) (Int, VU.Vector Double)
+fisherVectorConduit1 parallelParams gmms =
+  awaitForever
+    (\(label, xs) ->
+        let !vecMus = L.zipWith (fisherVectorMu parallelParams) gmms xs
+            !vecSigmas = L.zipWith (fisherVectorSigma parallelParams) gmms xs
+            !vecs = L.zipWith (VU.++) vecMus vecSigmas
+            !powerVecs = L.map (VU.map (\x' -> signum x' * (abs x' ** 0.5))) vecs
+            !l2Norms = L.map (sqrt . VU.foldl' (\a b -> a + b ^ (2 :: Int)) 0) powerVecs
+            !result =
+              VU.concat $
+              L.zipWith
+                (\l2Norm powerVec ->
+                    if l2Norm == 0
+                      then powerVec
+                      else VU.map (/ l2Norm) powerVec)
+                l2Norms
+                powerVecs
+        in yield (label, result))
