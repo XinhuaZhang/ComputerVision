@@ -72,10 +72,8 @@ main = do
         if isFixedSize params
           then siftFixedSizeConduit parallelParams siftParams gaussianFilter
           else siftVariedSizeConduit parallelParams siftParams gaussianParams
-      numTake = numPrincipal params
-      numDrop = 0
   pcaMatrix <- readMatrix (pcaFile params)
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= featureConduit =$=
-    pcaConduit parallelParams pcaMatrix (numDrop, numTake) =$=
+    pcaConduit parallelParams pcaMatrix =$=
     gmmSink (gmmFile params) numM bound (threshold params) (numExample params)

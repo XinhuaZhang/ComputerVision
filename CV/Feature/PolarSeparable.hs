@@ -208,6 +208,17 @@ multiLayerMagnitudeVariedSize filterParamsList factor inputArr =
         arr')
     (delay inputArr) $
   filterParamsList
+  
+extractPointwiseFeatureConduit
+  :: (R.Source s Double)
+  => ParallelParams -> Conduit (Array s DIM3 Double) (ResourceT IO) [Vector Double]
+extractPointwiseFeatureConduit parallelParams = do
+  xs' <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs')
+    (do let ys' = parMapChunk parallelParams rdeepseq extractPointwiseFeature xs'
+        sourceList ys'
+        extractPointwiseFeatureConduit parallelParams)
 
 {-# INLINE extractPointwiseFeature #-}
 
@@ -223,7 +234,7 @@ extractPointwiseFeature arr' =
 
 {-# INLINE l2normVec #-}
 l2normVec :: VU.Vector Double -> VU.Vector Double
-l2normVec vec
+l2normVec vec  
   | norm == 0 = vec
   | otherwise = VU.map (/ norm) vec
   where

@@ -3,9 +3,9 @@
 module Main where
 
 import           Application.GMM.ArgsParser     as Parser
-import           Application.GMM.FisherKernel
-import           Application.GMM.GMM
-import           Application.GMM.MixtureModel
+import           Application.MultiDimensionalGMM.FisherKernel
+import           Application.MultiDimensionalGMM.GMM
+import           Application.MultiDimensionalGMM.MixtureModel
 import           Application.GMM.PCA
 import           Classifier.LibLinear
 import           Control.Monad
@@ -13,7 +13,7 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           Control.Parallel
 import           CV.Array.LabeledArray
-import           CV.Feature.PolarSeparableRepa
+import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel            as Parallel
 import           CV.Utility.Time
@@ -61,7 +61,7 @@ main = do
     else return ()
   params <- parseArgs args
   gmm <- readGMM (gmmFile params) :: IO [GMM]
-  pcaMatrix <- readMatrix (pcaFile params)
+  pcaMatrixes <- readMatrixes (pcaFile params)
   imageListLen <- getArrayNumFile (inputFile params)
   imageSize <-
     if isFixedSize params
@@ -97,8 +97,8 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsList = [filterParamsSet1,filterParamsSet2]
-      numFeature = cols pcaMatrix
+      filterParamsList = [filterParamsSet1]
+      numFeature = L.sum . L.map cols $ pcaMatrixes
       trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
@@ -112,17 +112,17 @@ main = do
         }
       magnitudeConduit =
         if isFixedSize params
-          then labeledArrayMagnitudeSetFixedSizeConduit
+          then multiLayerMagnitudeFixedSizedConduit
                  parallelParams
                  (L.map makeFilterSet filterParamsList)
                  (downsampleFactor params)
-          else labeledArrayMagnitudeSetVariedSizeConduit
+          else multiLayerMagnitudeVariedSizedConduit
                  parallelParams
                  filterParamsList
                  (downsampleFactor params)
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
-    pcaLabelConduit parallelParams pcaMatrix =$=
-    (fisherVectorConduit parallelParams gmm) =$=
+    pcaLabelMultiLayerConduit parallelParams pcaMatrixes =$=
+    (fisherVectorConduit1 parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)

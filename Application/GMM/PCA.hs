@@ -3,10 +3,13 @@
 module Application.GMM.PCA where
 
 import           Control.Arrow
-import           Control.Monad as M
+import           Control.Monad                as M
+import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
+import           CV.Feature.PolarSeparable
 import           CV.Utility.Parallel
 import           Data.Array
+import           Data.Array.Repa              as R
 import           Data.Binary
 import           Data.ByteString.Lazy         as BL
 import           Data.Conduit
@@ -31,12 +34,31 @@ pcaSink numExample numPrincipal = do
           !pcaMatrix = pcaN arr' numPrincipal
       return pcaMatrix
 
+hPCASink
+  :: Handle
+  -> Int
+  -> Int
+  -> Sink (R.Array U DIM3 Double) (ResourceT IO) [R.Array U DIM3 Double]
+hPCASink h numExample numPrincipal = do
+  arrs <- CL.take numExample
+  if L.null arrs
+    then error "pcaSink: input data is empty."
+    else do
+      let !xs = L.map extractPointwiseFeature arrs
+          !ys = L.concat xs
+          !arr' =
+            listArray (1, VU.length $ L.head ys) .
+            L.map LA.fromList . L.transpose . L.map VU.toList $
+            ys
+          !pcaMatrix = pcaN arr' numPrincipal
+      liftIO $ hPutMatrix h pcaMatrix
+      return arrs
+
 pcaConduit
   :: ParallelParams
   -> Matrix Double
-  -> (Int, Int)
   -> Conduit [VU.Vector Double] (ResourceT IO) [VU.Vector Double]
-pcaConduit parallelParams pcaMatrix (numDrop, numTake) = do
+pcaConduit parallelParams pcaMatrix = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -44,17 +66,17 @@ pcaConduit parallelParams pcaMatrix (numDrop, numTake) = do
               parMapChunk
                 parallelParams
                 rdeepseq
-                (\x ->
+                (\x' ->
                     pcaTransform
-                      (listArray (1, VU.length . L.head $ x) .
+                      (listArray (1, VU.length . L.head $ x') .
                        L.map LA.fromList . L.transpose . L.map VU.toList $
-                       x)
+                       x')
                       pcaMatrix)
                 xs
         sourceList .
           L.map (L.map VU.fromList . L.transpose . L.map LA.toList . elems) $
           ys
-        pcaConduit parallelParams pcaMatrix (numDrop, numTake))
+        pcaConduit parallelParams pcaMatrix)
 
 
 
@@ -71,11 +93,11 @@ pcaLabelConduit parallelParams pcaMatrix = do
                 parallelParams
                 rdeepseq
                 (second $
-                 \x ->
+                 \x' ->
                     pcaTransform
-                      (listArray (1, VU.length . L.head $ x) .
+                      (listArray (1, VU.length . L.head $ x') .
                        L.map LA.fromList . L.transpose . L.map VU.toList $
-                       x)
+                       x')
                       pcaMatrix)
                 xs
         sourceList .
@@ -83,7 +105,60 @@ pcaLabelConduit parallelParams pcaMatrix = do
             (second $ L.map VU.fromList . L.transpose . L.map LA.toList . elems) $
           ys
         pcaLabelConduit parallelParams pcaMatrix)
+        
 
+pcaLabelMultiLayerConduit
+  :: ParallelParams
+  -> [Matrix Double]
+  -> Conduit (Int, [[VU.Vector Double]]) (ResourceT IO) (Int, [[VU.Vector Double]])
+pcaLabelMultiLayerConduit parallelParams pcaMatrixes = do
+  xs' <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs')
+    (do let ys' =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (second $
+                 L.zipWith
+                   (\pcaMatrix x' ->
+                       pcaTransform
+                         (listArray (1, VU.length . L.head $ x') .
+                          L.map LA.fromList . L.transpose . L.map VU.toList $
+                          x')
+                         pcaMatrix)
+                   pcaMatrixes)
+                xs'
+        sourceList .
+          L.map
+            (second $
+             L.map (L.map VU.fromList . L.transpose . L.map LA.toList . elems)) $
+          ys'
+        pcaLabelMultiLayerConduit parallelParams pcaMatrixes)
+
+
+
+
+hPutMatrix :: Handle -> Matrix Double -> IO ()
+hPutMatrix h mat = do
+  BL.hPut h (encode len)
+  BL.hPut h bs
+  where
+    !bs = encode . LA.toLists $ mat
+    !len = fromIntegral $ BL.length bs :: Word32
+    
+readMatrixes :: FilePath -> IO [Matrix Double]
+readMatrixes filePath = withBinaryFile filePath ReadMode go
+  where
+    go handle = do
+      lenbs <- BL.hGet handle 4
+      if BL.length lenbs < 4
+        then return []
+        else do
+          let !len = fromIntegral (decode lenbs :: Word32) :: Int
+          bs <- BL.hGet handle len
+          mats <- go handle
+          return $! (LA.fromLists . decode $ bs) : mats
 
 writeMatrix :: FilePath -> Matrix Double -> IO ()
 writeMatrix filePath mat =
@@ -97,8 +172,9 @@ writeMatrix filePath mat =
 readMatrix :: FilePath -> IO (Matrix Double)
 readMatrix filePath =
   withBinaryFile filePath ReadMode $
-  \h -> do
-    lenbs <- BL.hGet h 4
+  \handle -> do
+    lenbs <- BL.hGet handle 4
     let !len = fromIntegral (decode lenbs :: Word32) :: Int
-    bs <- BL.hGet h len
-    return . LA.fromLists . decode $ bs
+    bs <- BL.hGet handle len
+    return . LA.fromLists . decode $ bs 
+

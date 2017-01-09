@@ -12,3 +12,4 @@ ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisher.hs -o p
 ## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherMPPCA.hs -o predictFisherMPPCA
 
 ## ghc $FLAG $LIBS -i../../ FilterTest.hs -o filterTest
+ghc $FLAG $LIBS -i../../ PlotFeatureHistogram.hs -o plotFeatureHistogram

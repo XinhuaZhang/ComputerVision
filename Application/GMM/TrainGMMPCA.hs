@@ -1,13 +1,14 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
 module Main where
 
 import           Application.GMM.ArgsParser     as Parser
-import           Application.GMM.GMM
+import           Application.MultiDimensionalGMM.GMM
 import           Application.GMM.PCA
 import           Control.Monad                  as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Feature.PolarSeparableRepa
+import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel            as Parallel
 import           Data.Array.Repa                as R
@@ -24,20 +25,13 @@ import           System.Directory
 import           System.Environment
 import           System.IO                      as IO
 
-splitFeature :: Int -> Int -> [(Int,Int)]
-splitFeature !numFeature !numBatch = L.zip (L.scanl' (+) 0 c) c
-  where
-    !a = div numFeature numBatch
-    !b = mod numFeature numBatch
-    !c =
-      if b == 0
-        then L.replicate a numBatch
-        else b : L.replicate a numBatch
-
 main = do
   args <- getArgs
-  when (P.null args) $ error "run with --help to see options."
+  if P.null args
+    then error "run with --help to see options."
+    else return ()
   params <- parseArgs args
+  print params
   imageSize <-
     if isFixedSize params
       then do
@@ -49,7 +43,8 @@ main = do
             (Z :. _ :. ny :. nx) = extent arr
         return (ny, nx)
       else return (0, 0)
-  pcaMatrix <- readMatrix (pcaFile params)
+  pcaMatrixes <- readMatrixes (pcaFile params)
+  images <- readLabeledImageBinary (inputFile params) (numGMMExample params)
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
@@ -67,56 +62,42 @@ main = do
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
         { getSizeSet = imageSize
-        , getDownsampleFactorSet = 1
+        , getDownsampleFactorSet = 2
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSetList = [filterParamsSet1,filterParamsSet2]
-      filePath = gmmFile params
+      filterParamsSetList = [filterParamsSet1]
       numM = numGaussian params
-      bound = ((0, 10), (0.1, 100))
-      numFeature = cols pcaMatrix
-      magnitudeConduit =
+      bound = ((-0.5, 0.5), (1, 10))
+      magnitudeConduit filterParams =
         if isFixedSize params
-          then magnitudeSetFixedSizeConduit
+          then singleLayerMagnitudeFixedSizedConduit
                  parallelParams
-                 (L.map makeFilterSet filterParamsSetList)
+                 (makeFilterSet filterParams)
                  (downsampleFactor params)
-          else magnitudeSetVariedSizeConduit
+          else singleLayerMagnitudeVariedSizedConduit
                  parallelParams
-                 filterParamsSetList
+                 filterParams
                  (downsampleFactor params)
-      dropTakeList = splitFeature numFeature (Parallel.batchSize parallelParams)
-  print params
-  fileFlag <- doesFileExist filePath
-  gmms <-
-    if fileFlag
-      then do
-        fileSize <- getFileSize filePath
-        if fileSize > 0
-          then do
-            IO.putStrLn $ "Read GMM data file: " P.++ filePath
-            readGMM filePath
-          else M.replicateM numFeature $ initializeGMM numM bound
-      else M.replicateM numFeature $ initializeGMM numM bound
-  images <- readLabeledImageBinary (inputFile params) (numGMMExample params)
-  withBinaryFile
-    (gmmFile params)
-    WriteMode
-    (\h -> do
-       BL.hPut h (encode (fromIntegral numFeature :: Word32))
-       M.foldM_
-         (\handle (numDrop, numTake) ->
-             runResourceT
-               (CL.sourceList images $$ magnitudeConduit =$=
-                pcaConduit parallelParams pcaMatrix (numDrop, numTake) =$=
-                gmmPartSink
-                  handle
-                  (L.take numTake . L.drop numDrop $ gmms)
-                  bound
-                  (threshold params)
-                  (numGMMExample params)))
-         h $
-         dropTakeList)
+      imgArrs = L.map (\(LabeledArray _ arr) -> arr) images
+  withBinaryFile (gmmFile params) WriteMode $
+    \h ->
+       M.foldM
+         (\arrs (filterParamsSet, pcaMat) -> do
+            filteredArrs <-
+              runResourceT $
+              sourceList arrs $$ magnitudeConduit filterParamsSet =$= CL.consume
+            runResourceT $
+              CL.sourceList filteredArrs $$ extractPointwiseFeatureConduit parallelParams =$=
+              pcaConduit parallelParams pcaMat =$=
+              hGMMSink1
+                h
+                (numGaussian params)
+                bound
+                (threshold params)
+                (numGMMExample params)
+            return filteredArrs)
+         imgArrs $
+       L.zip filterParamsSetList pcaMatrixes

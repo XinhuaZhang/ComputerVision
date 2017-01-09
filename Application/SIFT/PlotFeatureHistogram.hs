@@ -47,8 +47,6 @@ main = do
         { getGaussianFilterSigma = scaleSIFT siftParams
         , getGaussianFilterSize = (0, 0)
         }
-      numTake = numPrincipal params
-      numDrop = 0
   pcaMatrix <- readMatrix (pcaFile params)
   images <- readLabeledImageBinary (inputFile params) (numExample params)
   runResourceT $
@@ -56,5 +54,5 @@ main = do
     plotHistSink ""
   runResourceT $
     sourceList images $$ siftVariedSizeConduit parallelParams siftParams gaussianParams =$=
-    pcaConduit parallelParams pcaMatrix (numDrop, numTake) =$=
+    pcaConduit parallelParams pcaMatrix =$=
     plotHistSink "pca_"

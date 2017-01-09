@@ -172,7 +172,11 @@ em threshold count' oldGMM bound xs
   | isJust zeroZIdx = do
     printCurrentTime
     putStrLn "Reset all"
-    print (xs !! (fromJust zeroZIdx))
+    let !x' = xs !! (fromJust zeroZIdx) 
+    print x'
+    print oldGMM
+    print $ L.map (\(Model (w,gm)) -> gaussian gm x') . model $ oldGMM
+    print $ getAssignment oldGMM x'
     gmm <- resetGMM ResetAll oldGMM bound
     em threshold 0 gmm bound xs
   | rate < threshold || count' == 50 = do
@@ -230,13 +234,28 @@ hGMMSink
   -> Sink (Array U DIM3 Double) (ResourceT IO) [Array U DIM3 Double]
 hGMMSink parallelParams handle numM bound threshold numTrain = do
   arrs <- CL.take numTrain
-  let !xs = parMapChunk parallelParams rdeepseq extractPointwiseFeature arrs
-      !nd = VU.length . L.head . L.head $ xs
-      !ys = L.concat xs
+  let !xs' = parMapChunk parallelParams rdeepseq extractPointwiseFeature arrs
+      !nd = VU.length . L.head . L.head $ xs'
+      !ys = L.concat xs'
   gmm <- liftIO $ initializeGMM numM nd bound
   newGMM <- liftIO $ em threshold 0 gmm bound ys
   liftIO $ hPutGMM handle newGMM
   return arrs
+  
+hGMMSink1
+  :: Handle
+  -> Int
+  -> ((Double, Double), (Double, Double))
+  -> Double
+  -> Int
+  -> Sink [VU.Vector Double] (ResourceT IO) ()
+hGMMSink1 handle numM bound threshold numTrain = do
+  xs' <- CL.take numTrain
+  let !nd = VU.length . L.head . L.head $ xs'
+      !ys = L.concat xs'
+  gmm <- liftIO $ initializeGMM numM nd bound
+  newGMM <- liftIO $ em threshold 0 gmm bound ys
+  liftIO $ hPutGMM handle newGMM
 
 hPutGMM :: Handle -> GMM -> IO ()
 hPutGMM handle gmm = do
