@@ -20,8 +20,8 @@ import           Data.List                    as L
 import           Data.Vector.Unboxed          as VU
 
 data SIFTParams = SIFTParams
-  { scaleSIFT  :: Double
-  , strideSIFT :: Int
+  { scaleSIFT  :: ![Double]
+  , strideSIFT :: !Int
   } deriving (Show)
 
 getGradient
@@ -155,9 +155,9 @@ getSIFTFeatureFromGradient stride (mag, ori) =
 siftFixedSizeConduit
   :: ParallelParams
   -> SIFTParams
-  -> GaussianFilter (R.Array U DIM2 (Complex Double))
+  -> [GaussianFilter (R.Array U DIM2 (Complex Double))]
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) [VU.Vector Double]
-siftFixedSizeConduit parallelParams sp@(SIFTParams _ stride) filter' = do
+siftFixedSizeConduit parallelParams sp@(SIFTParams _ stride) filters' = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -167,24 +167,29 @@ siftFixedSizeConduit parallelParams sp@(SIFTParams _ stride) filter' = do
                 rdeepseq
                 (\(LabeledArray _ arr) ->
                     let !(Z :. nf' :. _ :. _) = extent arr
+                        !filterArrs = L.map (`applyFilterFixedSize` arr) filters'
                     in L.map VU.concat .
                        L.transpose .
                        L.map
-                         (\i ->
-                             let !filterArr = applyFilterFixedSize filter' arr
-                                 !magOri =
-                                   getGradient $
-                                   R.slice filterArr (Z :. i :. All :. All)
-                             in getSIFTFeatureFromGradient stride magOri) $
+                         (\channelIdx ->
+                             L.map VU.concat .
+                             L.transpose .
+                             L.map
+                               (\filterArr ->
+                                   getSIFTFeatureFromGradient stride . getGradient $
+                                   R.slice
+                                     filterArr
+                                     (Z :. channelIdx :. All :. All)) $
+                             filterArrs) $
                        [0 .. nf' - 1])
                 xs
         sourceList ys
-        siftFixedSizeConduit parallelParams sp filter')
+        siftFixedSizeConduit parallelParams sp filters')
         
 siftVariedSizeConduit
   :: ParallelParams
   -> SIFTParams
-  -> GaussianFilterParams
+  -> [GaussianFilterParams]
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) [VU.Vector Double]
 siftVariedSizeConduit parallelParams sp@(SIFTParams _ stride) filterParams = do
   xs <- CL.take (batchSize parallelParams)
@@ -196,16 +201,18 @@ siftVariedSizeConduit parallelParams sp@(SIFTParams _ stride) filterParams = do
                 rdeepseq
                 (\(LabeledArray _ arr) ->
                     let !(Z :. nf' :. _ :. _) = extent arr
+                        !filterArrs = L.map (`applyFilterVariedSize` arr) filterParams
                     in L.map VU.concat .
                        L.transpose .
                        L.map
                          (\i ->
-                             let !filterArr =
-                                   applyFilterVariedSize filterParams arr
-                                 !magOri =
-                                   getGradient $
-                                   R.slice filterArr (Z :. i :. All :. All)
-                             in getSIFTFeatureFromGradient stride magOri) $
+                             L.map VU.concat .
+                             L.transpose .
+                             L.map
+                               (\filterArr ->
+                                   getSIFTFeatureFromGradient stride . getGradient $
+                                   R.slice filterArr (Z :. i :. All :. All)) $
+                             filterArrs) $
                        [0 .. nf' - 1])
                 xs
         sourceList ys
@@ -215,9 +222,9 @@ siftVariedSizeConduit parallelParams sp@(SIFTParams _ stride) filterParams = do
 labeledArraySIFTFixedSizeConduit
   :: ParallelParams
   -> SIFTParams
-  -> GaussianFilter (R.Array U DIM2 (Complex Double))
+  -> [GaussianFilter (R.Array U DIM2 (Complex Double))]
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int,[VU.Vector Double])
-labeledArraySIFTFixedSizeConduit parallelParams sp@(SIFTParams _ stride) filter' = do
+labeledArraySIFTFixedSizeConduit parallelParams sp@(SIFTParams _ stride) filters' = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -227,25 +234,30 @@ labeledArraySIFTFixedSizeConduit parallelParams sp@(SIFTParams _ stride) filter'
                 rdeepseq
                 (\(LabeledArray label arr) ->
                     let !(Z :. nf' :. _ :. _) = extent arr
+                        !filterArrs = L.map (`applyFilterFixedSize` arr) filters'
                     in ( label
                        , L.map VU.concat .
                          L.transpose .
                          L.map
-                           (\i ->
-                               let !filterArr = applyFilterFixedSize filter' arr
-                                   !magOri =
-                                     getGradient $
-                                     R.slice filterArr (Z :. i :. All :. All)
-                               in getSIFTFeatureFromGradient stride magOri) $
+                           (\channelIdx ->
+                               L.map VU.concat .
+                               L.transpose .
+                               L.map
+                                 (\filterArr ->
+                                     getSIFTFeatureFromGradient stride . getGradient $
+                                     R.slice
+                                       filterArr
+                                       (Z :. channelIdx :. All :. All)) $
+                               filterArrs) $
                          [0 .. nf' - 1]))
                 xs
         sourceList ys
-        labeledArraySIFTFixedSizeConduit parallelParams sp filter')
+        labeledArraySIFTFixedSizeConduit parallelParams sp filters')
 
 labeledArraySIFTVariedSizeConduit
   :: ParallelParams
   -> SIFTParams
-  -> GaussianFilterParams
+  -> [GaussianFilterParams]
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [VU.Vector Double])
 labeledArraySIFTVariedSizeConduit parallelParams sp@(SIFTParams _ stride) filterParams = do
   xs <- CL.take (batchSize parallelParams)
@@ -257,17 +269,19 @@ labeledArraySIFTVariedSizeConduit parallelParams sp@(SIFTParams _ stride) filter
                 rdeepseq
                 (\(LabeledArray label arr) ->
                     let !(Z :. nf' :. _ :. _) = extent arr
+                        !filterArrs = L.map (`applyFilterVariedSize` arr) filterParams
                     in ( label
                        , L.map VU.concat .
                          L.transpose .
                          L.map
                            (\i ->
-                               let !filterArr =
-                                     applyFilterVariedSize filterParams arr
-                                   !magOri =
-                                     getGradient $
-                                     R.slice filterArr (Z :. i :. All :. All)
-                               in getSIFTFeatureFromGradient stride magOri) $
+                               L.map VU.concat .
+                               L.transpose .
+                               L.map
+                                 (\filterArr ->
+                                     getSIFTFeatureFromGradient stride . getGradient $
+                                     R.slice filterArr (Z :. i :. All :. All)) $
+                               filterArrs) $
                          [0 .. nf' - 1]))
                 xs
         sourceList ys

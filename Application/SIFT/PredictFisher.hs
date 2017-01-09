@@ -45,17 +45,6 @@ main = do
             (Z :. _ :. ny :. nx) = extent arr
         return (ny, nx)
       else return (0, 0)
-  isColor <-
-    do xs <-
-         runResourceT $
-         sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-         CL.take 1
-       let (LabeledArray _ arr) = L.head xs
-           (Z :. nf :. _ :. _) = extent arr
-       case nf of
-         3 -> return True
-         1 -> return False
-         _ -> error $ "Images have incorrect number of channels: " L.++ show nf
   imageListLen <- getArrayNumFile (inputFile params)
   let parallelParams =
         ParallelParams
@@ -65,14 +54,18 @@ main = do
       siftParams =
         SIFTParams
         { scaleSIFT = L.head $ scale params
-        , strideSIFT = 8
+        , strideSIFT = downsampleFactor params
         }
       gaussianParams =
-        GaussianFilterParams
-        { getGaussianFilterSigma = scaleSIFT siftParams
-        , getGaussianFilterSize = imageSize
-        }
-      gaussianFilter = makeFilter gaussianParams
+        L.map
+          (\s ->
+              GaussianFilterParams
+              { getGaussianFilterSigma = s
+              , getGaussianFilterSize = imageSize
+              }) .
+        scaleSIFT $
+        siftParams
+      gaussianFilter = L.map makeFilter gaussianParams
       featureConduit =
         if isFixedSize params
           then labeledArraySIFTFixedSizeConduit parallelParams siftParams gaussianFilter
