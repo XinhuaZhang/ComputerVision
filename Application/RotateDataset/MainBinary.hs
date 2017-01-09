@@ -38,7 +38,7 @@ main = do
   putStrLn $ "isColor: " P.++ isColor
   let parallelParams =
         ParallelParams
-        { numThread = 4
+        { numThread = 8
         , batchSize = 400
         }
       isColorFlag = read isColor :: Bool
@@ -47,7 +47,7 @@ main = do
           then "Color"
           else "Gray"
       n = 299
-      deg = 36
+      deg = 90
       rotationLen = round (360 / deg)
       imageSource path labelPath =
         imagePathSource path =$= readImageConduit isColorFlag =$=

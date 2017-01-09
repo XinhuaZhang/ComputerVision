@@ -25,7 +25,7 @@ recaleAndRotate2DImageS n degs arr =
   parMap
     rseq
     (\deg ->
-        computeS $
+        computeS $ pad [n+32, n+32] $
         fromFunction
           (Z :. n :. n)
           (\(Z :. j :. i) ->
@@ -47,8 +47,8 @@ recaleAndRotate2DImageS n degs arr =
                           (j' * ratio, i' * ratio)))
     degs
   where
-    !minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
-    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !minVal = 0 -- foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = 255 -- foldAllS max (fromIntegral (minBound :: Int)) arr
     !(Z :. ny :. nx) = extent arr
     !m =
       ceiling
@@ -77,8 +77,8 @@ rotate2DImageS degs arr =
               (fromIntegral j, fromIntegral i)))
     degs
   where
-    !minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
-    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !minVal = 0 -- foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = 255 -- foldAllS max (fromIntegral (minBound :: Int)) arr
     !(Z :. ny :. nx) = extent arr
     !n =
       ceiling
@@ -107,8 +107,8 @@ rotateSquare2DImageS degs arr =
               (fromIntegral j, fromIntegral i)))
     degs
   where
-    !minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
-    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !minVal = 0 -- foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = 255 -- foldAllS max (fromIntegral (minBound :: Int)) arr
     !(Z :. ny :. nx) = extent arr
     !ds = computeDerivativeS (computeUnboxedS . delay $ arr)
     !center = fromIntegral (nx - 1) / 2
@@ -139,7 +139,7 @@ resize2DImageS n arr =
     !ratioX = fromIntegral (nx - 1) / fromIntegral (newNx - 1)
     !ratioY = fromIntegral (ny - 1) / fromIntegral (newNy - 1)
     !minVal = foldAllS min (fromIntegral (maxBound :: Word32)) arr
-    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !maxVal = 255 -- foldAllS max (fromIntegral (minBound :: Int)) arr
     !ds = computeDerivativeS . computeUnboxedS . delay $ arr
 
 {-# INLINE rotatePixel #-}

@@ -1,6 +1,5 @@
 module CV.Filter.GaussianFilter where
 
-import           CV.Filter
 import           CV.Image
 
 data GaussianFilterParams = GaussianFilterParams

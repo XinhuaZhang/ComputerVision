@@ -2,5 +2,5 @@
 
 FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3" 
 
-ghc $FLAG $LIBS -i../../ MainBinary.hs -o mainBinary
-ghc $FLAG $LIBS -i../../ RotationTest.hs -o rotationTest
+cabal exec -- ghc $FLAG $LIBS -i../../ MainBinary.hs -o mainBinary
+cabal exec -- ghc $FLAG $LIBS -i../../ RotationTest.hs -o rotationTest
