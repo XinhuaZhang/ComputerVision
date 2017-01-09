@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns     #-}
 {-# LANGUAGE DeriveGeneric    #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module CV.Feature.PolarSeparable where
 
@@ -156,7 +157,7 @@ multiLayerMagnitudeFixedSize
 multiLayerMagnitudeFixedSize filters' factor inputArr =
   L.map
     (\arr' ->
-        let !(Z :. _ :. ny' :. nx') = extent downSampledArr
+        let !(Z :. (_nf'::Int) :. (ny'::Int) :. (nx'::Int)) = extent downSampledArr
             !downSampledArr = RU.downsample [factor, factor, 1] arr'
         in [ l2normVec . toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. All :. j :. i)
@@ -195,7 +196,7 @@ multiLayerMagnitudeVariedSize
 multiLayerMagnitudeVariedSize filterParamsList factor inputArr =
   L.map
     (\arr' ->
-        let !(Z :. _ :. ny' :. nx') = extent downSampledArr
+        let !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent downSampledArr
             !downSampledArr = RU.downsample [factor, factor, 1] arr'
         in [ l2normVec . toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. All :. j :. i)
@@ -230,7 +231,7 @@ extractPointwiseFeature arr' =
   | j <- [0 .. ny' - 1]
   , i <- [0 .. nx' - 1] ]
   where
-    !(Z :. _ :. ny' :. nx') = extent arr'
+    !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent arr'
 
 {-# INLINE l2normVec #-}
 l2normVec :: VU.Vector Double -> VU.Vector Double
