@@ -169,16 +169,16 @@ em threshold count' oldGMM bound xs
     print zeroNaNNKIdx
     gmm <- resetGMM (ResetIndex zeroNaNNKIdx) oldGMM bound
     em threshold 0 gmm bound xs
-  | isJust zeroZIdx = do
-    printCurrentTime
-    putStrLn "Reset all"
-    let !x' = xs !! (fromJust zeroZIdx) 
-    print x'
-    print oldGMM
-    print $ L.map (\(Model (w,gm)) -> gaussian gm x') . model $ oldGMM
-    print $ getAssignment oldGMM x'
-    gmm <- resetGMM ResetAll oldGMM bound
-    em threshold 0 gmm bound xs
+  -- | isJust zeroZIdx = do
+  --   printCurrentTime
+  --   putStrLn "Reset all"
+  --   let !x' = xs !! (fromJust zeroZIdx) 
+  --   print x'
+  --   print oldGMM
+  --   print $ L.map (\(Model (w,gm)) -> gaussian gm x') . model $ oldGMM
+  --   print $ getAssignment oldGMM x'
+  --   gmm <- resetGMM ResetAll oldGMM bound
+  --   em threshold 0 gmm bound xs
   | rate < threshold || count' == 50 = do
     printCurrentTime
     printf "%0.2f\n" oldAvgLikelihood
