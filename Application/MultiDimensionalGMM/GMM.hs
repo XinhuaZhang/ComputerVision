@@ -205,24 +205,14 @@ gmmSink
   -> Double
   -> Int
   -> Sink [VU.Vector Double] (ResourceT IO) ()
-gmmSink filePath numM bound threshold numTrain = do
-  xs <- CL.take numTrain
-  fileFlag <- liftIO $ doesFileExist filePath
-  let !nd = VU.length . L.head . L.head $ xs
-      !ys = L.concat xs
-  gmm <-
-    liftIO $
-    if fileFlag
-      then do
-        fileSize <- liftIO $ getFileSize filePath
-        if fileSize > 0
-          then do
-            IO.putStrLn $ "Read GMM data file: " P.++ filePath
-            decodeFile filePath
-          else initializeGMM numM nd bound
-      else initializeGMM numM nd bound
-  newGMM <- liftIO $ em threshold 0 gmm bound ys
-  liftIO $ encodeFile filePath newGMM
+gmmSink filePath numM bound threshold numTrain =
+  do xs <- CL.take numTrain
+     fileFlag <- liftIO $ doesFileExist filePath
+     let !nd = VU.length . L.head . L.head $ xs
+         !ys = L.concat xs
+     gmm <- liftIO $ initializeGMM numM nd bound
+     newGMM <- liftIO $ em threshold 0 gmm bound ys
+     liftIO $ encodeFile filePath newGMM
 
 hGMMSink
   :: ParallelParams
