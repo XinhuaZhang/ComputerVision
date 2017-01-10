@@ -79,9 +79,9 @@ main = do
   withBinaryFile (pcaFile params) WriteMode $
     \h ->
        M.foldM
-         (\arrs filterParamsSet -> do
+         (\arrs (filterParamsSet,np) -> do
             runResourceT $
               sourceList arrs $$ magnitudeConduit filterParamsSet =$=
-              hPCASink h (numGMMExample params) (numPrincipal params))
-         imgArrs
-         filterParamsSetList
+              hPCASink h (numGMMExample params) np)
+         imgArrs $ L.zip 
+         filterParamsSetList (numPrincipal params)

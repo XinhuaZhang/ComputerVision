@@ -23,7 +23,7 @@ data Flag
   | IsComplex
   | NumGMMExample Int
   | IsFixedSize
-  | NumPrincipal Int
+  | NumPrincipal [Int]
   deriving (Show)
 
 data Params = Params
@@ -44,7 +44,7 @@ data Params = Params
   , isComplex        :: Bool
   , numGMMExample    :: Int
   , isFixedSize      :: Bool
-  , numPrincipal     :: Int
+  , numPrincipal     :: [Int]
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -125,7 +125,15 @@ options =
   ,  Option
        ['z']
        ["numPrincipal"]
-       (ReqArg (NumPrincipal . readInt) "INT")
+       (ReqArg
+          (\x ->
+              let go xs [] = [xs]
+                  go xs (y:ys) =
+                    if y == ','
+                      then xs : go [] ys
+                      else go (y : xs) ys
+              in NumPrincipal $ map (readInt . L.reverse) $ go [] x)
+          "[Int]")
        "Set the output dimension of PCA dimensional reduction."
   ]
 
@@ -172,7 +180,7 @@ parseFlag flags = go flags defaultFlag
       , isComplex = False
       , numGMMExample = 1
       , isFixedSize = False
-      , numPrincipal = 1
+      , numPrincipal =  [1]
       }
     go [] params = params
     go (x:xs) params =

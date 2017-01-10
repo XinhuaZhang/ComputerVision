@@ -235,7 +235,7 @@ extractPointwiseFeature arr' =
 
 {-# INLINE l2normVec #-}
 l2normVec :: VU.Vector Double -> VU.Vector Double
-l2normVec vec  
+l2normVec vec 
   | norm == 0 = vec
   | otherwise = VU.map (/norm2) vec2
   where
