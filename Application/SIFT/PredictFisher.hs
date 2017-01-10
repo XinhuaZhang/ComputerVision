@@ -53,7 +53,7 @@ main = do
         }
       siftParams =
         SIFTParams
-        { scaleSIFT = L.head $ scale params
+        { scaleSIFT = scale params
         , strideSIFT = downsampleFactor params
         }
       gaussianParams =

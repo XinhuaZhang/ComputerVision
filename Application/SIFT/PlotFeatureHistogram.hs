@@ -8,7 +8,9 @@ import           CV.Array.LabeledArray
 import           CV.Feature.SIFT
 import           CV.Filter.GaussianFilter
 import           CV.Utility.Parallel                 as Par
+import           Data.Array.Repa                     as R
 import           Data.Conduit
+import           Data.Conduit.Binary                 as CB
 import           Data.Conduit.List                   as CL
 import           Data.List                           as L
 import           Data.Vector.Unboxed                 as VU
@@ -32,6 +34,17 @@ main = do
     else return ()
   params <- parseArgs args
   print params
+  imageSize <-
+    if isFixedSize params
+      then do
+        xs <-
+          runResourceT $
+          sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+          CL.take 1
+        let (LabeledArray _ arr) = L.head xs
+            (Z :. _ :. ny :. nx) = extent arr
+        return (ny, nx)
+      else return (0, 0)
   let parallelParams =
         ParallelParams
         { Par.numThread = 4
@@ -39,14 +52,18 @@ main = do
         }
       siftParams =
         SIFTParams
-        { scaleSIFT = L.head $ scale params
-        , strideSIFT = 8
+        { scaleSIFT = scale params
+        , strideSIFT = downsampleFactor params
         }
       gaussianParams =
-        GaussianFilterParams
-        { getGaussianFilterSigma = scaleSIFT siftParams
-        , getGaussianFilterSize = (0, 0)
-        }
+        L.map
+          (\s ->
+              GaussianFilterParams
+              { getGaussianFilterSigma = s
+              , getGaussianFilterSize = imageSize
+              }) .
+        scaleSIFT $
+        siftParams
   pcaMatrix <- readMatrix (pcaFile params)
   images <- readLabeledImageBinary (inputFile params) (numExample params)
   runResourceT $
