@@ -25,7 +25,7 @@ recaleAndRotate2DImageS n degs arr =
   parMap
     rseq
     (\deg ->
-        computeS $ pad [n+32, n+32] $
+        computeS $ --pad [n+32, n+32] $
         fromFunction
           (Z :. n :. n)
           (\(Z :. j :. i) ->
@@ -245,7 +245,7 @@ rotateLabeledImageConduit parallelParams deg = do
                                              x
                                        in deepSeqArray arr' $!
                                           LabeledArray label arr') .
-                                 rotate2DImageS degs $
+                                 rotateSquare2DImageS degs $
                                  R.slice arr (Z :. (0 :: Int) :. All :. All)
                             else L.map
                                    (\x ->
@@ -263,7 +263,7 @@ rotateLabeledImageConduit parallelParams deg = do
                                  L.transpose .
                                  L.map
                                    (\i ->
-                                       rotate2DImageS degs $
+                                       rotateSquare2DImageS degs $
                                        R.slice arr (Z :. i :. All :. All)) $
                                  [0 .. nf - 1]
                     in result)
