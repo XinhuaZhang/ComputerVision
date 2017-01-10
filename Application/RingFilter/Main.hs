@@ -42,9 +42,9 @@ main = do
         PolarSeparableFilterParamsSet
         { getSizeSet = (0, 0)
         , getDownsampleFactorSet = 1
-        , getScaleSet = S.fromDistinctAscList [6]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
+        , getScaleSet = S.fromDistinctAscList [4]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
         , getNameSet = Pinwheels
         }
       deg = if L.null degStr
@@ -81,7 +81,7 @@ main = do
          (centerMag)
          [1 ..]
   toFile def "normalized.png" $
-    do layout_title .= "Magnitude"
+    do layout_title .= "Normalized Magnitude"
        M.zipWithM_
          (\xs i -> plot $ line (show i) [L.zip [0,deg .. (360 - deg)] xs])
          normlizedCenterMag
