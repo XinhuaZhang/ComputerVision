@@ -10,7 +10,6 @@ import           Data.Complex                as C
 import           Data.List                   as L
 import           Math.FFT
 
-
 data GaussianFilterParams = GaussianFilterParams
   { getGaussianFilterSigma :: !Double
   , getGaussianFilterSize  :: (Int, Int)
@@ -39,8 +38,20 @@ gaussian2D sd i j =
   1 / ((2 * pi) * sd * sd) * exp (-r / (2 * (sd ^ (2 :: Int))))
   where
     r = fromIntegral (i * i + j * j)
-    
 
+{-# INLINE gaussian2DRing #-}
+
+gaussian2DRing
+  :: (Floating a)
+  => Int -> Int -> a -> Int -> Int -> a
+gaussian2DRing af rf sd i j
+  | af == 0 = 1 / ((2 * pi) * sd * sd) * exp (-r / (2 * (sd ^ (2 :: Int))))
+  | otherwise =
+    1 / ((2 * pi) * sd * sd) *
+    exp (-(sqrt r - r0) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
+  where
+    r = fromIntegral (i * i + j * j)
+    r0 = (8 * sd * (2 - exp (fromIntegral (-af) / 10))) / pi
 
 {-# INLINE gaussian2DDouble #-}
 
@@ -98,18 +109,3 @@ dftImageArr arr = threeDCArray2RArray dftCArr
       L.map (:+ 0) . R.toList $
       arr
     !dftCArr = dftN [1, 2] cArr
-
-{-# INLINE gaussian2D' #-}
-gaussian2D'
-  :: (Floating a)
-  => Int -> Int -> a -> Int -> Int -> a
-gaussian2D' af rf sd i j
-  | af == 0  =
-    1 / ((2 * pi) * sd * sd) * exp (-r / (2 * (sd ^ (2 :: Int))))
-  | otherwise =
-    1 / ((2 * pi) * sd * sd) *
-    exp (-(sqrt r - r0) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
-  where
-    r = fromIntegral (i * i + j * j)
-    r0 = (8 * sd * (2 - exp (fromIntegral (-af) / 10))) / pi
-

@@ -132,7 +132,7 @@ pinwheels :: Double -> Int -> Int -> PixelOp (C.Complex Double)
 pinwheels scale rf af x y
   | scale == 0 = angularFunc af x y * radialFunc scale  rf x y
   | otherwise =
-    real2Complex (gaussian2D' af rf scale x y) * angularFunc af x y * radialFunc scale rf x y
+    real2Complex (gaussian2DRing af rf scale x y) * angularFunc af x y * radialFunc scale rf x y
 
 {-# INLINE getFilterFunc #-}
 
