@@ -112,6 +112,31 @@ rotateSquare2DImageS degs arr =
     !(Z :. ny :. nx) = extent arr
     !ds = computeDerivativeS (computeUnboxedS . delay $ arr)
     !center = fromIntegral (nx - 1) / 2
+    
+
+rotate90Square2DImageS
+  :: (R.Source s Double)
+  => Array s DIM2 Double -> [Array U DIM2 Double]
+rotate90Square2DImageS arr =
+  parMap
+    rseq
+    (\deg ->
+        computeS $
+        fromFunction
+          (Z :. ny :. nx)
+          (\(Z :. j :. i) ->
+              (\(j', i') -> arr R.! (Z :. j' :. i')) .
+              rotatePixel
+                (VU.fromListN 4 $
+                 P.map
+                   (\f -> round $ f (deg2Rad deg :: Double))
+                   [cos, sin, \x -> -(sin x), cos])
+                (center, center) $
+              (fromIntegral j, fromIntegral i)))
+    [0, 90, 180, 270]
+  where
+    !(Z :. ny :. nx) = extent arr
+    !center = div (nx - 1) 2
 
 -- Set the maximum value of the maximum size, the ratio is intact.
 resize2DImageS
@@ -144,10 +169,9 @@ resize2DImageS n arr =
 
 {-# INLINE rotatePixel #-}
 
-rotatePixel :: VU.Vector Double
-            -> (Double, Double)
-            -> (Double, Double)
-            -> (Double, Double)
+rotatePixel
+  :: (Num a, Unbox a)
+  => VU.Vector a -> (a, a) -> (a, a) -> (a, a)
 rotatePixel mat (centerY, centerX) (y, x) = (y3, x3)
   where
     x1 = x - centerX
@@ -158,7 +182,9 @@ rotatePixel mat (centerY, centerX) (y, x) = (y3, x3)
 
 {-# INLINE vecMatMult #-}
 
-vecMatMult :: (Double, Double) -> VU.Vector Double -> (Double, Double)
+vecMatMult
+  :: (Num a, Unbox a)
+  => (a, a) -> VU.Vector a -> (a, a)
 vecMatMult (x, y) vec = (a * x + c * y, b * x + d * y)
   where
     a = vec VU.! 0

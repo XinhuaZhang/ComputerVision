@@ -33,22 +33,14 @@ main = do
         if L.null degStr
           then 90
           else read degStr :: Int
-      numTake = 8
-      numDrop = 4
+      numTake = 104
+      numDrop = 100
   images <- readLabeledImageBinary inputPath numTake
   let imgs = L.map (\(LabeledArray _ arr) -> arr) . L.drop numDrop $ images
-      img1 = -- computeS . normalizeImage 255 . 
-        computeS . extend (Z :. (1 :: Int) :. All :. All) . L.head $
-        rotateSquare2DImageS
-          [fromIntegral deg]
-          (R.slice (L.head imgs) (Z :. (0 :: Int) :. All :. All))
-      img2 = -- computeUnboxedS $ normalizeImage 255
-              imgs L.!! 2
-  M.zipWithM_ (\img i -> plotImage (show i L.++ ".png") img) imgs [1 ..]
-  plotImage "2_1.png" img1
-  print $ foldAllS max (fromIntegral (minBound :: Int)) img1
-  print $ foldAllS min (fromIntegral (maxBound :: Word)) img1
-  print $ foldAllS max (fromIntegral (minBound :: Int)) img2
-  print $ foldAllS min (fromIntegral (maxBound :: Word)) img2
-  print . R.sumAllS $ (img1 -^ img2)
-  print . VU.take 10000 . toUnboxed $ (computeS $ img1 -^ img2)
+      img1 = L.head imgs
+      img90s =
+        L.map (computeS . extend (Z :. (1 :: Int) :. All :. All)) . rotate90Square2DImageS $
+        R.slice img1 (Z :. (0 :: Int) :. All :. All)
+  M.zipWithM_ (\img i -> plotImage (show i L.++ ".png") img) img90s [1 ..]
+  plotImage "1_1.png" img1
+  M.mapM_ (print . R.sumAllS) $ L.zipWith (-^) imgs img90s

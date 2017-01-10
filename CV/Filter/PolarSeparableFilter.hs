@@ -110,7 +110,7 @@ radialFunc scale freq x y =
   ejx
     ((sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * fromIntegral freq *
      (2 * pi) /
-     (4 * scale))
+     (8 * scale))
 -- ejx
 --   ((1 - exp (-1 * P.fromIntegral freq / 8)) *
 --    (sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) *
