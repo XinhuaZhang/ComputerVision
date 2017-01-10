@@ -1,0 +1,3 @@
+#!/bin/bash
+
+ghc -O2 -i../.. -rtsopts -threaded Main.hs -o main

@@ -25,7 +25,7 @@ recaleAndRotate2DImageS n degs arr =
   parMap
     rseq
     (\deg ->
-        computeS $
+        computeS $ --pad [n+32, n+32] $
         fromFunction
           (Z :. n :. n)
           (\(Z :. j :. i) ->
@@ -47,8 +47,8 @@ recaleAndRotate2DImageS n degs arr =
                           (j' * ratio, i' * ratio)))
     degs
   where
-    !minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
-    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !minVal = 0 -- foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = 255 -- foldAllS max (fromIntegral (minBound :: Int)) arr
     !(Z :. ny :. nx) = extent arr
     !m =
       ceiling
@@ -77,8 +77,8 @@ rotate2DImageS degs arr =
               (fromIntegral j, fromIntegral i)))
     degs
   where
-    !minVal = foldAllS min (fromIntegral (maxBound :: Word64)) arr
-    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !minVal = 0 -- foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = 255 -- foldAllS max (fromIntegral (minBound :: Int)) arr
     !(Z :. ny :. nx) = extent arr
     !n =
       ceiling
@@ -86,6 +86,32 @@ rotate2DImageS degs arr =
     !paddedImg = pad [n, n] arr
     !ds = computeDerivativeS (computeUnboxedS paddedImg)
     !center = fromIntegral (n - 1) / 2
+    
+
+rotateSquare2DImageS
+  :: (R.Source s Double)
+  => [Double] -> Array s DIM2 Double -> [Array U DIM2 Double]
+rotateSquare2DImageS degs arr =
+  parMap
+    rseq
+    (\deg ->
+        computeS $
+        fromFunction
+          (Z :. ny :. nx)
+          (\(Z :. j :. i) ->
+              bicubicInterpolation ds (minVal, maxVal) .
+              rotatePixel
+                (VU.fromListN 4 $
+                 P.map (\f -> f (deg2Rad deg)) [cos, sin, \x -> -(sin x), cos])
+                (center, center) $
+              (fromIntegral j, fromIntegral i)))
+    degs
+  where
+    !minVal = 0 -- foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = 255 -- foldAllS max (fromIntegral (minBound :: Int)) arr
+    !(Z :. ny :. nx) = extent arr
+    !ds = computeDerivativeS (computeUnboxedS . delay $ arr)
+    !center = fromIntegral (nx - 1) / 2
 
 -- Set the maximum value of the maximum size, the ratio is intact.
 resize2DImageS
@@ -113,7 +139,7 @@ resize2DImageS n arr =
     !ratioX = fromIntegral (nx - 1) / fromIntegral (newNx - 1)
     !ratioY = fromIntegral (ny - 1) / fromIntegral (newNy - 1)
     !minVal = foldAllS min (fromIntegral (maxBound :: Word32)) arr
-    !maxVal = foldAllS max (fromIntegral (minBound :: Int)) arr
+    !maxVal = 255 -- foldAllS max (fromIntegral (minBound :: Int)) arr
     !ds = computeDerivativeS . computeUnboxedS . delay $ arr
 
 {-# INLINE rotatePixel #-}
@@ -219,7 +245,7 @@ rotateLabeledImageConduit parallelParams deg = do
                                              x
                                        in deepSeqArray arr' $!
                                           LabeledArray label arr') .
-                                 rotate2DImageS degs $
+                                 rotateSquare2DImageS degs $
                                  R.slice arr (Z :. (0 :: Int) :. All :. All)
                             else L.map
                                    (\x ->
@@ -237,7 +263,7 @@ rotateLabeledImageConduit parallelParams deg = do
                                  L.transpose .
                                  L.map
                                    (\i ->
-                                       rotate2DImageS degs $
+                                       rotateSquare2DImageS degs $
                                        R.slice arr (Z :. i :. All :. All)) $
                                  [0 .. nf - 1]
                     in result)
