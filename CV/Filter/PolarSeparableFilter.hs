@@ -101,12 +101,16 @@ angularFunc freq x y =
 
 {-# INLINE radialFunc #-}
 
-radialFunc :: Int -> PixelOp (Pixel ComplexImage)
-radialFunc freq x y =
+radialFunc :: Double -> Int -> PixelOp (Pixel ComplexImage)
+radialFunc scale freq x y =
   ejx
-    ((1 - exp (-1 * P.fromIntegral freq / 8)) *
-     (sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) *
-     pi)
+    ((sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * fromIntegral freq *
+     (2 * pi) /
+     (8 * scale))
+-- ejx
+--   ((1 - exp (-1 * P.fromIntegral freq / 8)) *
+--    (sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) *
+--    pi)
 
 {-# INLINE fans #-}
 
@@ -119,16 +123,16 @@ fans scale _rf af x y
 
 bullseye :: Double -> Int -> Int -> PixelOp (C.Complex Double)
 bullseye scale rf _af x y
-  | scale == 0 = radialFunc rf x y
-  | otherwise = radialFunc rf x y * real2Complex (gaussian2D scale x y)
+  | scale == 0 = radialFunc scale rf x y
+  | otherwise = radialFunc scale rf x y * real2Complex (gaussian2D scale x y)
 
 {-# INLINE pinwheels #-}
 
 pinwheels :: Double -> Int -> Int -> PixelOp (C.Complex Double)
 pinwheels scale rf af x y
-  | scale == 0 = real2Complex (gaussian2D scale x y) * angularFunc af x y
+  | scale == 0 = angularFunc af x y * radialFunc scale  rf x y
   | otherwise =
-    real2Complex (gaussian2D scale x y) * angularFunc af x y * radialFunc rf x y
+    real2Complex (gaussian2D' af rf scale x y) * angularFunc af x y * radialFunc scale rf x y
 
 {-# INLINE getFilterFunc #-}
 

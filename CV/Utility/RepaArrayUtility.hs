@@ -148,8 +148,8 @@ bicubicInterpolation ds (minVal, maxVal) (y, x)
   | otherwise = result
   where
     (Z :. ny :. nx) = extent . P.head $ ds
-    x' = x - fromIntegral (floor x :: Int)
-    y' = y - fromIntegral (floor y :: Int)
+    x' = x - fromIntegral (round x :: Int)
+    y' = y - fromIntegral (round y :: Int)
     idx =
       VU.fromListN
         4

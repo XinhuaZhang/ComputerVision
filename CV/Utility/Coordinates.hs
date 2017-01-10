@@ -37,6 +37,8 @@ angleFunctionRad i j
   where
     ratio = atan $ j / i
 
+{-# INLINE deg2Rad #-}
+
 deg2Rad
   :: (Floating a)
   => a -> a

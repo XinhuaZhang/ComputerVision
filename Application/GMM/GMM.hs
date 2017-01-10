@@ -182,11 +182,11 @@ updateGMM oldGMM oldAssignmentVec xs =
 
 emOneStep :: Double -> EMState GMM -> VU.Vector Double -> EMState GMM
 emOneStep _ x@(EMDone _ _) _ = x
-emOneStep threshold (EMContinue oldAssignmentVec oldAvgLikelihood count oldGMM) xs
+emOneStep threshold (EMContinue oldAssignmentVec oldAvgLikelihood count' oldGMM) xs
   | not (V.null zeroNaNNKIdx) = EMReset (ResetIndex zeroNaNNKIdx) oldGMM
   | isJust zeroZIdx = EMReset ResetAll oldGMM
-  | rate < threshold || count == 50 = EMDone newAvgLikelihood newGMM
-  | otherwise = EMContinue newAssignmentVec newAvgLikelihood (count+1) newGMM
+  | rate < threshold || count' == 50 = EMDone newAvgLikelihood newGMM
+  | otherwise = EMContinue newAssignmentVec newAvgLikelihood (count'+1) newGMM
   where
     !nks = getNks oldAssignmentVec
     !zs = V.map VU.sum oldAssignmentVec
@@ -338,7 +338,7 @@ hEMPart handle bound threshold gmms xs =
       if isNaN avgLikelihood
         then IO.putStrLn "Reset"
         else return ()
-             -- do
+          --    do
           -- printf "%0.2f\n" avgLikelihood
           -- print . P.map getStateLikelihood $ gmms2
       hEMPart handle bound threshold newGMMs xs
