@@ -44,11 +44,9 @@ gaussian2D sd i j =
 gaussian2DRing
   :: (Floating a)
   => Int -> Int -> a -> Int -> Int -> a
-gaussian2DRing af rf sd i j
-  | af == 0 = 1 / ((2 * pi) * sd * sd) * exp (-r / (2 * (sd ^ (2 :: Int))))
-  | otherwise =
-    1 / ((2 * pi) * sd * sd) *
-    exp (-(sqrt r - r0) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
+gaussian2DRing af rf sd i j =
+  1 / ((2 * pi) * sd * sd) *
+  exp (-(sqrt r - r0) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
   where
     r = fromIntegral (i * i + j * j)
     r0 = (8 * sd * (2 - exp (fromIntegral (-af) / 10))) / pi
