@@ -66,7 +66,7 @@ main = do
         }
       filterParamsSetList = [filterParamsSet1]
       numM = numGaussian params
-      bound = ((0, 200), (1, 100))
+      bound = ((0, 0.5), (1, 10))
       magnitudeConduit filterParams =
         if isFixedSize params
           then singleLayerMagnitudeFixedSizedConduit

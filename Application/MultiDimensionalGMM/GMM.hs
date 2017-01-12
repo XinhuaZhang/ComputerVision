@@ -256,7 +256,10 @@ hPutGMM handle gmm = do
     !len = fromIntegral $ BL.length encodedGMM :: Word32
 
 readGMM :: FilePath -> IO [GMM]
-readGMM filePath = withBinaryFile filePath ReadMode hGetGMM
+readGMM filePath = do gs <- withBinaryFile filePath ReadMode hGetGMM
+                      if L.null gs
+                         then error "readGMM: empty GMM file!"
+                         else return gs
   where
     hGetGMM h = do
       sizebs <- BL.hGet h 4
