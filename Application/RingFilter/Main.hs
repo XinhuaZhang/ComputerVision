@@ -1,12 +1,13 @@
 {-# LANGUAGE BangPatterns #-}
 module Main where
 
+import           Application.GMM.PCA
 import           Application.RotateDataset.RotationRepa
 import           Control.Monad                          as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
-import           CV.Array.LabeledArray
 import           CV.Array.Image
+import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
 import           CV.IO.ImageIO
@@ -33,7 +34,7 @@ labelSource filePath =
 
 
 main = do
-  (inputPath:labelPath:degStr:_) <- getArgs
+  (inputPath:labelPath:pcaFile:degStr:_) <- getArgs
   let parallelParams =
         ParallelParams
         { numThread = 8
@@ -44,7 +45,7 @@ main = do
         { getSizeSet = (0, 0)
         , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList [4]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (1 - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
         , getNameSet = Pinwheels
         }
@@ -61,6 +62,7 @@ main = do
     CL.sourceList img $$
     rescaleRotateLabeledImageConduit parallelParams 299 (fromIntegral deg) =$=
     CL.consume
+  pcaMatrixes <- readMatrixes pcaFile
   let !ex@(Z :. _ :. nRows :. numCols) =
         extent $ (\(LabeledArray _ arr) -> arr) $ L.head $ rotatedLabeledImg
       !centerIdx = (div nRows 2) * numCols + (div numCols 2)
@@ -69,11 +71,16 @@ main = do
     runResourceT $
     (CL.sourceList rotatedLabeledImg $$
      multiLayerMagnitudeVariedSizedConduit parallelParams [filterParamsSet1] 1 =$=
+     pcaLabelMultiLayerConduit parallelParams pcaMatrixes =$=
      CL.consume)
   let !centerMag =
         L.transpose $
-        L.map (VU.toList . (flip L.genericIndex) centerIdx . L.head . snd) mag
-      !normlizedCenterMag = L.map (\x -> L.map (/ L.maximum x) x) centerMag
+        parMap
+          rdeepseq
+          (VU.toList . l2normVec . (flip L.genericIndex) centerIdx . L.head . snd)
+          mag
+      !normlizedCenterMag = parMap rdeepseq (\x -> L.map (/ L.maximum (L.map abs x)) x) centerMag
+      -- !centerMagPositive = L.filter 
   M.zipWithM_
     (\(LabeledArray _ im) i -> plotImage (show (i * deg) L.++ ".png") im)
     rotatedLabeledImg
@@ -81,12 +88,12 @@ main = do
   toFile def "original.png" $
     do layout_title .= "Magnitude"
        M.zipWithM_
-         (\xs i -> plot $ line (show i) [L.zip [0,deg .. (360 - deg)] xs])
-         (centerMag)
+         (\xs i -> plot $ line "" [L.zip [0,deg .. (360 - deg)] xs])
+         centerMag
          [1 ..]
   toFile def "normalized.png" $
     do layout_title .= "Normalized Magnitude"
        M.zipWithM_
-         (\xs i -> plot $ line (show i) [L.zip [0,deg .. (360 - deg)] xs])
+         (\xs i -> plot $ line "" [L.zip [0,deg .. (360 - deg)] xs])
          normlizedCenterMag
          [1 ..]

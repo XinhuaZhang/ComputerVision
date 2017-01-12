@@ -241,7 +241,7 @@ l2normVec vec
   where
     !norm = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
     !vec1 = VU.map (/ norm) vec
-    !vec2 = VU.map (\x -> if x > 0.2
-                             then 0.2
-                             else x) vec1
+    !vec2 = VU.map (\x' -> if x' > 0.2
+                              then 0.2
+                              else x') vec1
     !norm2 = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec2
