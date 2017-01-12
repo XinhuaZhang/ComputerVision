@@ -23,6 +23,7 @@ import           Data.Vector.Unboxed                    as VU
 import           Graphics.Rendering.Chart.Backend.Cairo
 import           Graphics.Rendering.Chart.Easy
 import           System.Environment
+import qualified Numeric.LinearAlgebra.Data     as LA
 
 readLabelFile :: FilePath -> IO [Int]
 readLabelFile filePath = do
@@ -77,10 +78,10 @@ main = do
     (CL.sourceList rotatedLabeledImg $$
      multiLayerMagnitudeVariedSizedConduit parallelParams [filterParamsSet1] 1 =$=
      CL.consume)
-  -- pcaMag <-
-  --   runResourceT $
-  --   sourceList mag $$ pcaLabelMultiLayerConduit parallelParams pcaMatrixes =$=
-  --   consume
+  pcaMag <-
+    runResourceT $
+    sourceList mag $$ pcaLabelMultiLayerConduit parallelParams pcaMatrixes =$=
+    consume
   let ex@(Z :. nf :. nRows :. numCols) = extent . L.head $ img
       centerIdx = (div nRows 2) * numCols + (div numCols 2)
       img0 = img !! 0
@@ -103,22 +104,53 @@ main = do
                ((rotate90Square2DImageS $ R.slice mag0 (Z :. All :. All :. i)) !!
                 1)) $
         [0 .. magNf - 1]
-  print . extent $ mag0
-  print . extent $ mag90
-  print . extent $ mag90'
+      pcaMagArrs =
+        L.map (pointwiseFeature2Array nRows numCols . L.head . snd) pcaMag
+      pcaMagNf = LA.cols . L.head $ pcaMatrixes
+      pcaMag0 = pcaMagArrs !! 0
+      pcaMag90 = pcaMagArrs !! 1
+      pcaMag90' =
+        fromListUnboxed (Z :. nRows :. numCols :. pcaMagNf) .
+        L.concat .
+        L.transpose .
+        L.map
+          (\i ->
+             R.toList
+               ((rotate90Square2DImageS $ R.slice pcaMag0 (Z :. All :. All :. i)) !!
+                1)) $
+        [0 .. pcaMagNf - 1]
+  -- print . extent $ mag0
+  -- print . extent $ mag90
+  -- print . extent $ mag90'
   x1 <- sumAllP . R.map abs $ (img90 -^ img90')
   print x1
-  x2 <- sumAllP . R.map abs $ R.slice  (mag90 -^ mag90') (Z :. All :. All :. (idx :: Int))
+  x2 <-
+    sumAllP . R.map abs $
+    R.slice (mag90 -^ mag90') (Z :. All :. All :. (idx :: Int))
   putStrLn "Avg. difference:"
-  print (x2 / (fromIntegral $ nRows * numCols ))
-  x3 <- computeP . R.map abs $ R.slice  (mag90 -^ mag90') (Z :. All :. All :. (idx :: Int))
+  print (x2 / (fromIntegral $ nRows * numCols))
+  x3 <-
+    computeP . R.map abs $
+    R.slice (mag90 -^ mag90') (Z :. All :. All :. (idx :: Int))
   putStrLn "Max. difference:"
   print . VU.maximum . toUnboxed $ x3
   putStrLn "Max. value"
-  x4 <- computeP . R.map abs $ R.slice  mag90 (Z :. All :. All :. (idx :: Int))
+  x4 <- computeP . R.map abs $ R.slice mag90 (Z :. All :. All :. (idx :: Int))
   print . VU.maximum . toUnboxed $ x4
-  print . VU.take 10 . toUnboxed $ x4
-  print . VU.take 10 . toUnboxed $ img0
+  pcax2 <-
+    sumAllP . R.map abs $
+    R.slice (pcaMag90 -^ pcaMag90') (Z :. All :. All :. (idx :: Int))
+  putStrLn "pca Avg. difference:"
+  print (pcax2 / (fromIntegral $ nRows * numCols))
+  pcax3 <-
+    computeP . R.map abs $
+    R.slice (pcaMag90 -^ pcaMag90') (Z :. All :. All :. (idx :: Int))
+  putStrLn "pca Max. difference:"
+  print . VU.maximum . toUnboxed $ pcax3
+  putStrLn "pca Max. value"
+  pcax4 <-
+    computeP . R.map abs $ R.slice pcaMag90 (Z :. All :. All :. (idx :: Int))
+  print . VU.maximum . toUnboxed $ pcax4
   plotImage "img0.png" img0
   plotImage "img90.png" img90
   plotImage "mag0.png" .
@@ -145,3 +177,14 @@ main = do
     extend
       (Z :. All :. All :. (1 :: Int))
       (R.slice mag90' (Z :. All :. All :. (idx :: Int)))
+  M.mapM_
+    (\i -> do
+       let featureSlice = R.slice pcaMag0 (Z :. All :. All :. (idx :: Int))
+       print . VU.maximum . toUnboxed . computeS $ featureSlice
+       plotImage ("pcaMag" L.++ show i L.++ ".png") .
+         computeS .
+         R.backpermute
+           (Z :. 1 :. nRows :. numCols)
+           (\(Z :. k :. j :. i) -> (Z :. j :. i :. k)) $
+         extend (Z :. All :. All :. (1 :: Int)) featureSlice)
+    [0 .. 47]
