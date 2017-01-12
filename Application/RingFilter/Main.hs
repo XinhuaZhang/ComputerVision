@@ -80,7 +80,6 @@ main = do
           (VU.toList . l2normVec . (flip L.genericIndex) centerIdx . L.head . snd)
           mag
       !normlizedCenterMag = parMap rdeepseq (\x -> L.map (/ L.maximum (L.map abs x)) x) centerMag
-      -- !centerMagPositive = L.filter 
   M.zipWithM_
     (\(LabeledArray _ im) i -> plotImage (show (i * deg) L.++ ".png") im)
     rotatedLabeledImg

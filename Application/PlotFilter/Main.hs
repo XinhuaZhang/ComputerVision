@@ -9,7 +9,7 @@ import           Data.Set                       as S
 
 
 main = do
-  let (ny, nx) = (128, 128)
+  let (ny, nx) = (299, 299)
       filterParamsSet =
         PolarSeparableFilterParamsSet
         { getSizeSet = (ny, nx)
