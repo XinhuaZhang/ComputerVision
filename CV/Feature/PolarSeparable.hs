@@ -235,13 +235,16 @@ extractPointwiseFeature arr' =
 
 {-# INLINE l2normVec #-}
 l2normVec :: VU.Vector Double -> VU.Vector Double
-l2normVec vec 
-  | norm == 0 = vec
+l2normVec vec' 
+  | norm == 0 = vec'
   | otherwise = VU.map (/norm2) vec2
   where
+    !vec = VU.map (\x' -> if x' < 10 ** (-10)
+                             then 0
+                             else x') vec'
     !norm = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
     !vec1 = VU.map (/ norm) vec
-    !vec2 = VU.map (\x -> if x > 0.2
-                             then 0.2
-                             else x) vec1
+    !vec2 = VU.map (\x' -> if x' > 0.2
+                              then 0.2
+                              else x') vec1
     !norm2 = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec2
