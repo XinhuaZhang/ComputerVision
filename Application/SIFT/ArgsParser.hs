@@ -1,4 +1,4 @@
-module Application.GMM.ArgsParser where
+module Application.SIFT.ArgsParser where
 
 import           Data.List             as L
 import           Data.Maybe
@@ -21,9 +21,9 @@ data Flag
   | Freq Int
   | Scale [Double]
   | IsComplex
-  | NumGMMExample Int
+  | NumExample Int
   | IsFixedSize
-  | NumPrincipal [Int]
+  | NumPrincipal Int
   deriving (Show)
 
 data Params = Params
@@ -42,9 +42,9 @@ data Params = Params
   , freq             :: Int
   , scale            :: [Double]
   , isComplex        :: Bool
-  , numGMMExample    :: Int
+  , numExample    :: Int
   , isFixedSize      :: Bool
-  , numPrincipal     :: [Int]
+  , numPrincipal     :: Int
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -114,8 +114,8 @@ options =
       "Flag which decides using complex value or magnitude."
   , Option
       ['z']
-      ["numGMMExample"]
-      (ReqArg (NumGMMExample . readInt) "INT")
+      ["numExample"]
+      (ReqArg (NumExample . readInt) "INT")
       "Set the number of examples which are used for GMM training."
   , Option
       ['z']
@@ -125,15 +125,7 @@ options =
   ,  Option
        ['z']
        ["numPrincipal"]
-       (ReqArg
-          (\x ->
-              let go xs [] = [xs]
-                  go xs (y:ys) =
-                    if y == ','
-                      then xs : go [] ys
-                      else go (y : xs) ys
-              in NumPrincipal $ map (readInt . L.reverse) $ go [] x)
-          "[Int]")
+       (ReqArg (NumPrincipal . readInt) "INT")
        "Set the output dimension of PCA dimensional reduction."
   ]
 
@@ -178,9 +170,9 @@ parseFlag flags = go flags defaultFlag
       , freq = 0
       , scale = [1]
       , isComplex = False
-      , numGMMExample = 1
+      , numExample = 1
       , isFixedSize = False
-      , numPrincipal =  [1]
+      , numPrincipal = 1
       }
     go [] params = params
     go (x:xs) params =
@@ -275,11 +267,11 @@ parseFlag flags = go flags defaultFlag
             (params
              { isComplex = True
              })
-        NumGMMExample v ->
+        NumExample v ->
           go
             xs
             (params
-             { numGMMExample = v
+             { numExample = v
              })
         IsFixedSize ->
           go

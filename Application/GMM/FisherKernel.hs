@@ -12,6 +12,7 @@ import           Data.Conduit.List            as CL
 import           Data.List                    as L
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
+import Control.Monad.IO.Class
 
 fisherVectorMu :: ParallelParams -> [GMM] -> [AssignmentVec] -> [VU.Vector Double] -> VU.Vector Double
 fisherVectorMu parallelParams gmms assignments xs =
@@ -85,33 +86,22 @@ fisherVectorConduit
   -> Conduit (Int,[VU.Vector Double]) (ResourceT IO) (Int,VU.Vector Double)
 fisherVectorConduit parallelParams gmms =
   awaitForever
-    (\(label,x) ->
-       let !assignments =
-             parZipWithChunk parallelParams rdeepseq getAssignmentVecSafe gmms x
-           !vecMu = fisherVectorMu parallelParams gmms assignments x
-           !vecSigma = fisherVectorSigma parallelParams gmms assignments x
-           !vec = vecMu VU.++ vecSigma
-           !l2Norm = sqrt (VU.foldl' (\a b -> a + b ^ (2 :: Int)) 0 vec)
-       in yield (label,VU.map (/ l2Norm) vec)
-    )
-
-avgPoolConduit :: ParallelParams -> Conduit (Int, [VU.Vector Double]) (ResourceT IO) (Int,VU.Vector Double)
-avgPoolConduit parallelParams = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let !ys =
-              parMapChunk
+    (\(label, x) ->
+        let !assignments =
+              parZipWithChunk
                 parallelParams
                 rdeepseq
-                (\(label, xs) ->
-                    let !vec =
-                          VU.fromList $
-                          L.map
-                            (\x -> VU.sum x / (fromIntegral $ VU.length x))
-                            xs
-                        !norm = sqrt . VU.sum . VU.map (^ 2) $ vec
-                    in (label, VU.map (/ norm) vec))
-                xs
-        sourceList ys
-        avgPoolConduit parallelParams)
+                getAssignmentVecSafe
+                gmms
+                x
+            !vecMu = fisherVectorMu parallelParams gmms assignments x
+            !vecSigma = fisherVectorSigma parallelParams gmms assignments x
+            !vec = vecMu VU.++ vecSigma
+            -- !powerVec = VU.map (\x' -> signum x' * ((abs x') ** 0.5)) vec
+            !l2Norm = sqrt (VU.foldl' (\a b -> a + b ^ (2 :: Int)) 0 vec)
+            !result =
+              if l2Norm == 0
+                then vec
+                else VU.map (/ l2Norm) vec
+        in yield (label, result))
+

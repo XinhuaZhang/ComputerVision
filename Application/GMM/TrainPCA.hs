@@ -1,12 +1,13 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Main where
 
 import           Application.GMM.ArgsParser     as Parser
-import           Application.GMM.GMM
+import           Application.MultiDimensionalGMM.GMM
 import           Application.GMM.PCA
 import           Control.Monad                  as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Feature.PolarSeparableRepa
+import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel            as Parallel
 import           Data.Array.Repa                as R
@@ -37,6 +38,7 @@ main = do
             (Z :. _ :. ny :. nx) = extent arr
         return (ny, nx)
       else return (0, 0)
+  images <- readLabeledImageBinary (inputFile params) (numGMMExample params)
   let parallelParams =
         ParallelParams
         { Parallel.numThread = Parser.numThread params
@@ -62,20 +64,24 @@ main = do
         }
       filterParamsSetList = [filterParamsSet1]
       numM = numGaussian params
-      bound = ((0, 10), (0.1, 100))
-      pcaMagnitudeConduit =
+      magnitudeConduit filterParams =
         if isFixedSize params
-          then magnitudeSetFixedSizeConduit
+          then singleLayerMagnitudeFixedSizedConduit
                  parallelParams
-                 (L.map makeFilterSet filterParamsSetList)
+                 (makeFilterSet filterParams)
                  (downsampleFactor params)
-          else magnitudeSetVariedSizeConduit
+          else singleLayerMagnitudeVariedSizedConduit
                  parallelParams
-                 filterParamsSetList
+                 filterParams
                  (downsampleFactor params)
+      imgArrs = L.map (\(LabeledArray _ arr) -> arr) images
   print params
-  pcaMatrix <-
-    runResourceT $
-    sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= pcaMagnitudeConduit =$=
-    pcaSink (numGMMExample params) (numPrincipal params)
-  writeMatrix (pcaFile params) pcaMatrix
+  withBinaryFile (pcaFile params) WriteMode $
+    \h ->
+       M.foldM
+         (\arrs (filterParamsSet,np) -> do
+            runResourceT $
+              sourceList arrs $$ magnitudeConduit filterParamsSet =$=
+              hPCASink h (numGMMExample params) np)
+         imgArrs $ L.zip 
+         filterParamsSetList (numPrincipal params)

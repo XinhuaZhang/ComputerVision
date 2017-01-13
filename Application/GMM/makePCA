@@ -1,0 +1,12 @@
+#/bin/bash
+
+export OMP_NUM_THREADS=14
+FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3" 
+OBJPATH="../../Classifier/LibLinear/"
+LIBS="-lstdc++ -llapack -lblas -lgomp"
+
+cabal exec -- ghc $FLAG $LIBS -i../../ TrainPCA.hs -o trainPCA
+cabal exec -- ghc $FLAG $LIBS -i../../ TrainGMMPCA.hs -o trainGMMPCA
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisherPCA.hs -o trainFisherPCA
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherPCA.hs -o predictFisherPCA
+

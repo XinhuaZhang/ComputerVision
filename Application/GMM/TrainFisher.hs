@@ -1,18 +1,18 @@
 {-# LANGUAGE BangPatterns #-}
-
+{-# LANGUAGE FlexibleContexts #-}
 module Main where
 
 import           Application.GMM.ArgsParser     as Parser
-import           Application.GMM.FisherKernel
-import           Application.GMM.GMM
-import           Application.GMM.MixtureModel
+import           Application.MultiDimensionalGMM.FisherKernel
+import           Application.MultiDimensionalGMM.GMM
+import           Application.MultiDimensionalGMM.MixtureModel
 import           Classifier.LibLinear
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           Control.Parallel
 import           CV.Array.LabeledArray
-import           CV.Feature.PolarSeparableRepa
+import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel            as Parallel
 import           CV.Utility.Time
@@ -126,19 +126,17 @@ main = do
         }
       magnitudeConduit =
         if isFixedSize params
-          then labeledArrayMagnitudeSetFixedSizeConduit
+          then multiLayerMagnitudeFixedSizedConduit
                  parallelParams
                  (L.map makeFilterSet filterParamsList)
                  (downsampleFactor params)
-          else labeledArrayMagnitudeSetVariedSizeConduit
+          else multiLayerMagnitudeVariedSizedConduit
                  parallelParams
                  filterParamsList
                  (downsampleFactor params)
   print params
   runResourceT $
-    sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    meanSubtractConduit parallelParams =$=
-    magnitudeConduit =$=
-    -- avgPoolConduit parallelParams =$=
-    (fisherVectorConduit parallelParams gmm) =$=
+    sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
+    (fisherVectorConduit1 parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)
+ 

@@ -37,6 +37,23 @@ instance (Binary e, Unbox e, Shape sh) =>
     elemList <- get
     return $!
       LabeledArray label' (fromListUnboxed (shapeOfList shList) elemList)
+      
+readLabeledImagebinary :: FilePath -> IO [LabeledArray DIM3 Double]
+readLabeledImagebinary filePath =
+  withBinaryFile
+    filePath
+    ReadMode
+    (\h -> do
+       lenBS <- BL.hGet h 4
+       let len = fromIntegral (decode lenBS :: Word32) :: Int
+       M.replicateM
+         len
+         (do sizeBS <- BL.hGet h 4
+             let size' = fromIntegral (decode sizeBS :: Word32) :: Int
+             bs <- BL.hGet h size'
+             let (LabeledArray label arr) = decode bs :: LabeledArray DIM3 Word8
+             return . LabeledArray label . computeUnboxedS . R.map fromIntegral $
+               arr))
 
 
 readLabeledImagebinarySource :: FilePath -> C.Source IO (LabeledArray DIM3 Double)

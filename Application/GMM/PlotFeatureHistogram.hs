@@ -1,11 +1,9 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE BangPatterns #-}
-module Main where
-
+import           Application.FilterStats.FilterStats
 import           Application.GMM.ArgsParser     as Parser
 import           Application.MultiDimensionalGMM.GMM
 import           Application.GMM.PCA
 import           Control.Monad                  as M
+import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparable
@@ -24,6 +22,21 @@ import           Prelude                        as P
 import           System.Directory
 import           System.Environment
 import           System.IO                      as IO
+import           Data.Vector.Unboxed                 as VU
+
+plotHistSink :: String -> Sink [[VU.Vector Double]] (ResourceT IO) ()
+plotHistSink str = do
+  xs <- CL.consume
+  let ys =
+        L.map VU.concat .
+        L.transpose .
+        L.map (L.concatMap (L.map VU.fromList . L.transpose . L.map VU.toList)) $
+        xs
+  liftIO $
+    M.zipWithM_
+      (\i vec -> plotHist vec (-1, 1) 1000 (show i) (str L.++ show i L.++ ".png"))
+      [1 ..]
+      ys
 
 main = do
   args <- getArgs
@@ -69,35 +82,20 @@ main = do
         , getNameSet = Pinwheels
         }
       filterParamsSetList = [filterParamsSet1]
-      numM = numGaussian params
-      bound = ((-0.5, 0.5), (1, 10))
-      magnitudeConduit filterParams =
+      magnitudeConduit =
         if isFixedSize params
-          then singleLayerMagnitudeFixedSizedConduit
+          then multiLayerMagnitudeFixedSizedConduit
                  parallelParams
-                 (makeFilterSet filterParams)
+                 (L.map makeFilterSet filterParamsSetList)
                  (downsampleFactor params)
-          else singleLayerMagnitudeVariedSizedConduit
+          else multiLayerMagnitudeVariedSizedConduit
                  parallelParams
-                 filterParams
+                 filterParamsSetList
                  (downsampleFactor params)
-      imgArrs = L.map (\(LabeledArray _ arr) -> arr) images
-  withBinaryFile (gmmFile params) WriteMode $
-    \h ->
-       M.foldM
-         (\arrs (filterParamsSet, pcaMat) -> do
-            filteredArrs <-
-              runResourceT $
-              sourceList arrs $$ magnitudeConduit filterParamsSet =$= CL.consume
-            runResourceT $
-              CL.sourceList filteredArrs $$ extractPointwiseFeatureConduit parallelParams =$=
-              pcaConduit parallelParams pcaMat =$=
-              hGMMSink1
-                h
-                (numGaussian params)
-                bound
-                (threshold params)
-                (numGMMExample params)
-            return filteredArrs)
-         imgArrs $
-       L.zip filterParamsSetList pcaMatrixes
+  runResourceT $
+    sourceList images $$ magnitudeConduit =$= CL.map snd =$= plotHistSink ""
+  runResourceT $
+    sourceList images $$ magnitudeConduit =$=
+    pcaLabelMultiLayerConduit parallelParams pcaMatrixes =$=
+    CL.map snd =$=
+    plotHistSink "pca_"

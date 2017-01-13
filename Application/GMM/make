@@ -4,12 +4,14 @@ export OMP_NUM_THREADS=14
 FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3" 
 OBJPATH="../../Classifier/LibLinear/"
 LIBS="-lstdc++ -llapack -lblas -lgomp"
-ghc $FLAG $LIBS -i../../ TrainGMM.hs -o trainGMM
+cabal exec -- ghc $FLAG $LIBS -i../../ TrainGMM.hs -o trainGMM
 ## ghc $FLAG $LIBS -i../../ TrainMPPCARepa.hs -o trainMPPCARepa
-ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisher.hs -o trainFisher
-ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisher.hs -o predictFisher
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisher.hs -o trainFisher
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisher.hs -o predictFisher
 ## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisherMPPCA.hs -o trainFisherMPPCA
 ## ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisherMPPCA.hs -o predictFisherMPPCA
 
 ## ghc $FLAG $LIBS -i../../ FilterTest.hs -o filterTest
-ghc $FLAG $LIBS -i../../ Test.hs -o test
+## cabal exec -- ghc $FLAG $LIBS -i../../ PlotFeatureHistogram.hs -o plotFeatureHistogram
+
+cabal exec -- ghc $FLAG $LIBS -i../../ SimilarityTest.hs -o similarityTest

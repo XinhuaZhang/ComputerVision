@@ -43,4 +43,14 @@ main
 *.pgm
 *.dat*
 *model
+*.pca
+*.bak
+train*
+predict*
+plot*
+/Application/GMM/filterTest
+/Application/GMM/test
+run*
+main*
+/Application/RotateDataset/rotationTest
 *.ppm
