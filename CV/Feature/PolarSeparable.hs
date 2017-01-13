@@ -159,7 +159,7 @@ multiLayerMagnitudeFixedSize filters' factor inputArr =
     (\arr' ->
         let !(Z :. (_nf'::Int) :. (ny'::Int) :. (nx'::Int)) = extent downSampledArr
             !downSampledArr = RU.downsample [factor, factor, 1] arr'
-        in [ l2normVec . toUnboxed . computeUnboxedS . R.slice downSampledArr $
+        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. All :. j :. i)
            | j <- [0 .. ny' - 1]
            , i <- [0 .. nx' - 1] ]) .
@@ -198,7 +198,7 @@ multiLayerMagnitudeVariedSize filterParamsList factor inputArr =
     (\arr' ->
         let !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent downSampledArr
             !downSampledArr = RU.downsample [factor, factor, 1] arr'
-        in [ l2normVec . toUnboxed . computeUnboxedS . R.slice downSampledArr $
+        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. All :. j :. i)
            | j <- [0 .. ny' - 1]
            , i <- [0 .. nx' - 1] ]) .
@@ -227,7 +227,7 @@ extractPointwiseFeature
   :: (R.Source s Double)
   => Array s DIM3 Double -> [Vector Double]
 extractPointwiseFeature arr' =
-  [ l2normVec . toUnboxed . computeUnboxedS . R.slice arr' $ (Z :. All :. j :. i)
+  [ toUnboxed . computeUnboxedS . R.slice arr' $ (Z :. All :. j :. i)
   | j <- [0 .. ny' - 1]
   , i <- [0 .. nx' - 1] ]
   where

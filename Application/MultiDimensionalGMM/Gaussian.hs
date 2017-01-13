@@ -41,8 +41,10 @@ gaussian (Gaussian mu' sigma2') xs =
 
 {-# INLINE randomGaussian #-}
 
-randomGaussian :: Int -> ((Double, Double), (Double, Double)) -> IO Gaussian
-randomGaussian nd (boundMu, boundSigma) = do
-  mu <- M.replicateM nd $ randomRIO boundMu
-  sigma <- M.replicateM nd $ randomRIO boundSigma
+randomGaussian :: [((Double, Double), (Double, Double))] -> IO Gaussian
+randomGaussian bound = do
+  mu <- M.mapM randomRIO boundMu
+  sigma <- M.mapM randomRIO boundSigma
   return $! Gaussian (VU.fromList mu) (VU.fromList sigma)
+  where
+    (boundMu, boundSigma) = L.unzip bound

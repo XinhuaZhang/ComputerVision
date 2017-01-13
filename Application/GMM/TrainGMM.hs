@@ -66,7 +66,6 @@ main = do
         }
       filterParamsSetList = [filterParamsSet1]
       numM = numGaussian params
-      bound = ((0, 0.5), (1, 10))
       magnitudeConduit filterParams =
         if isFixedSize params
           then singleLayerMagnitudeFixedSizedConduit
@@ -88,7 +87,6 @@ main = do
                parallelParams
                h
                (numGaussian params)
-               bound
                (threshold params)
                (numGMMExample params))
          imgArrs

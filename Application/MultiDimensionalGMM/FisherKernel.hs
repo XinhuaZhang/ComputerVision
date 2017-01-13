@@ -76,7 +76,7 @@ fisherVectorConduit parallelParams gmm = do
                             (VU.foldl' (\a b -> a + b ^ (2 :: Int)) 0 powerVec)
                         !result =
                           if l2Norm == 0
-                            then powerVec
+                            then VU.replicate (VU.length vec) 0
                             else VU.map (/ l2Norm) powerVec
                     in (label, result))
                 xs
@@ -113,7 +113,7 @@ fisherVectorConduit1 parallelParams gmms = do
                           L.zipWith
                             (\l2Norm powerVec ->
                                 if l2Norm == 0
-                                  then powerVec
+                                  then VU.replicate (VU.length powerVec) 0
                                   else VU.map (/ l2Norm) powerVec)
                             l2Norms
                             powerVecs

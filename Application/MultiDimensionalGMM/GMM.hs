@@ -21,7 +21,6 @@ import           Data.Maybe
 import           Data.Vector                                  as V
 import           Data.Vector.Unboxed                          as VU
 import           Prelude                                      as P
-import           System.Directory
 import           System.IO                                    as IO
 import           Text.Printf
 
@@ -52,19 +51,15 @@ instance NFData a =>
          NFData (EMState a) where
   rnf !_ = ()
 
-initializeGMM :: Int -> Int -> ((Double, Double), (Double, Double)) -> IO GMM
-initializeGMM numModel' numDim bound = do
-  gs <- M.replicateM numModel' (randomGaussian numDim bound)
+initializeGMM :: Int -> [((Double, Double), (Double, Double))] -> IO GMM
+initializeGMM numModel' bound = do
+  gs <- M.replicateM numModel' (randomGaussian bound)
   initializeMixture numModel' gs
 
-resetGMM :: ResetOption -> GMM -> ((Double, Double), (Double, Double)) -> IO GMM
-resetGMM ResetAll gmm bound =
-  initializeGMM
-    (numModel gmm)
-    (VU.length . gaussianMu . snd . (\(Model x') -> x') . L.head . model $ gmm)
-    bound
+resetGMM :: ResetOption -> GMM -> [((Double, Double), (Double, Double))] -> IO GMM
+resetGMM ResetAll gmm bound = initializeGMM (numModel gmm) bound
 resetGMM (ResetIndex idx) (MixtureModel n models) bound = do
-  gs <- V.replicateM (V.length vec) (randomGaussian nd bound)
+  gs <- V.replicateM (V.length vec) (randomGaussian bound)
   let !idxModels = V.zip vec gs
   return $!
     MixtureModel
@@ -80,7 +75,6 @@ resetGMM (ResetIndex idx) (MixtureModel n models) bound = do
   where
     !vec = V.fromList idx
     !modelVec = V.fromListN n models
-    !nd = VU.length . gaussianMu . snd . (\(Model x') -> x') . L.head $ models
 
 getAssignment :: GMM -> VU.Vector Double -> [Double]
 getAssignment (MixtureModel _n models) x'
@@ -161,7 +155,7 @@ em
   :: Double
   -> Int
   -> GMM
-  -> ((Double, Double), (Double, Double))
+  -> [((Double, Double), (Double, Double))]
   -> [VU.Vector Double]
   -> IO GMM
 em threshold count' oldGMM bound xs
@@ -199,51 +193,48 @@ em threshold count' oldGMM bound xs
     !rate = abs $ (oldAvgLikelihood - newAvgLikelihood) / oldAvgLikelihood
 
 gmmSink
-  :: FilePath
+  :: ParallelParams
+  -> FilePath
   -> Int
-  -> ((Double, Double), (Double, Double))
   -> Double
   -> Int
   -> Sink [VU.Vector Double] (ResourceT IO) ()
-gmmSink filePath numM bound threshold numTrain =
-  do xs <- CL.take numTrain
-     fileFlag <- liftIO $ doesFileExist filePath
-     let !nd = VU.length . L.head . L.head $ xs
-         !ys = L.concat xs
-     gmm <- liftIO $ initializeGMM numM nd bound
-     newGMM <- liftIO $ em threshold 0 gmm bound ys
-     liftIO $ encodeFile filePath newGMM
+gmmSink parallelParams filePath numM threshold numTrain = do
+  xs <- CL.take numTrain
+  let !ys = L.concat xs
+      !bound = getFeatureBound parallelParams ys
+  gmm <- liftIO $ initializeGMM numM bound
+  newGMM <- liftIO $ em threshold 0 gmm bound ys
+  liftIO $ writeGMM filePath [newGMM]
 
 hGMMSink
   :: ParallelParams
   -> Handle
   -> Int
-  -> ((Double, Double), (Double, Double))
   -> Double
   -> Int
   -> Sink (Array U DIM3 Double) (ResourceT IO) [Array U DIM3 Double]
-hGMMSink parallelParams handle numM bound threshold numTrain = do
+hGMMSink parallelParams handle numM  threshold numTrain = do
   arrs <- CL.take numTrain
   let !xs' = parMapChunk parallelParams rdeepseq extractPointwiseFeature arrs
-      !nd = VU.length . L.head . L.head $ xs'
       !ys = L.concat xs'
-  gmm <- liftIO $ initializeGMM numM nd bound
+      !bound = getFeatureBound parallelParams ys
+  gmm <- liftIO $ initializeGMM numM bound
   newGMM <- liftIO $ em threshold 0 gmm bound ys
   liftIO $ hPutGMM handle newGMM
   return arrs
   
 hGMMSink1
-  :: Handle
+  :: ParallelParams -> Handle
   -> Int
-  -> ((Double, Double), (Double, Double))
   -> Double
   -> Int
   -> Sink [VU.Vector Double] (ResourceT IO) ()
-hGMMSink1 handle numM bound threshold numTrain = do
+hGMMSink1 parallelParams handle numM threshold numTrain = do
   xs' <- CL.take numTrain
-  let !nd = VU.length . L.head . L.head $ xs'
-      !ys = L.concat xs'
-  gmm <- liftIO $ initializeGMM numM nd bound
+  let !ys = L.concat xs'
+      !bound = getFeatureBound parallelParams ys
+  gmm <- liftIO $ initializeGMM numM bound
   newGMM <- liftIO $ em threshold 0 gmm bound ys
   liftIO $ hPutGMM handle newGMM
 
@@ -274,3 +265,20 @@ readGMM filePath = do gs <- withBinaryFile filePath ReadMode hGetGMM
 writeGMM :: FilePath -> [GMM] -> IO ()
 writeGMM filePath gmms =
   withBinaryFile filePath WriteMode (\h -> M.mapM_ (hPutGMM h) gmms)
+
+getFeatureBound :: ParallelParams
+                -> [VU.Vector Double]
+                -> [((Double, Double), (Double, Double))]
+getFeatureBound parallelParams xs =
+  parMapChunk
+    parallelParams
+    rdeepseq
+    (\y' ->
+        let m = L.sum y' / (fromIntegral . L.length $ y')
+            d =
+              (L.sum . L.map (^ (2 :: Int)) $ y') /
+              (fromIntegral . L.length $ y')
+        in ((0, 1.5 * m), (1, d - m ^ (2 :: Int))))
+    ys
+  where
+    !ys = L.transpose . L.map VU.toList $ xs
