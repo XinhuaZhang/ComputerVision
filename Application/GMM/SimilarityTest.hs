@@ -31,9 +31,9 @@ avgPoolConduit =
 main =
   do (inputFile:gmmFile:pcaFile:_) <- getArgs
      gmm <- readGMM gmmFile :: IO [GMM]
-     -- pcaMatrixes <- readMatrixes pcaFile
+     pcaMatrixes <- readMatrixes pcaFile
      let parallelParams =
-           ParallelParams {numThread = 2
+           ParallelParams {numThread = 4
                           ,batchSize = 4}
          filterParamsSet1 =
            PolarSeparableFilterParamsSet {getSizeSet = (0,0)
@@ -41,9 +41,9 @@ main =
                                          ,getScaleSet =
                                             S.fromDistinctAscList [4]
                                          ,getRadialFreqSet =
-                                            S.fromDistinctAscList [0 .. (1 - 1)]
+                                            S.fromDistinctAscList [0 .. (8 - 1)]
                                          ,getAngularFreqSet =
-                                            S.fromDistinctAscList [0 .. (1 - 1)]
+                                            S.fromDistinctAscList [0 .. (8 - 1)]
                                          ,getNameSet = Pinwheels}
          filterParamsSet2 =
            PolarSeparableFilterParamsSet {getSizeSet = (0,0)
@@ -56,22 +56,26 @@ main =
                                             S.fromDistinctAscList [0 .. (4 - 1)]
                                          ,getNameSet = Pinwheels}
          filterParamsList = [filterParamsSet1]
-         numTake = 8
-         numDrop = 4
-     labeledArray <- readLabeledImagebinarySource inputFile $$ CL.take numTake
-     let imgs =
-           L.map (\(LabeledArray _ arr) -> arr) . L.drop numDrop $ labeledArray
+         numTake = 200
+         numDrop = 192
+     labeledArray <-
+       readLabeledImagebinarySource inputFile $$
+       (do CL.drop numDrop
+           aa <- CL.take (numTake - numDrop)
+           return aa)
+     print . L.length $ labeledArray
+     let imgs = L.map (\(LabeledArray _ arr) -> arr) labeledArray
      xs <-
        runResourceT $
-       sourceFile inputFile $$ readLabeledImagebinaryConduit =$=
+       sourceList labeledArray $$
        multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList 1 =$=
-       -- pcaLabelMultiLayerConduit parallelParams pcaMatrixes =$=
+       pcaLabelMultiLayerConduit parallelParams pcaMatrixes =$=
        (fisherVectorConduit1 parallelParams gmm) =$=
-       CL.take numTake
+       consume
      M.zipWithM_ (\img i -> plotImage ("Images/" L.++ show i L.++ ".png") img)
                  imgs
                  [1 ..]
-     let ys = L.drop numDrop xs
+     let ys =  xs
          zs = L.map (VU.toList . snd) ys
          labels = L.map fst ys
          as = [L.sum $ L.zipWith (*) a b|a <- zs,b <- zs]
@@ -79,8 +83,7 @@ main =
      putStrLn "hehe"
      M.mapM_ print $ L.transpose zs
      putStrLn "hehe"
-     M.mapM_ print $ splitList (numTake - numDrop) as
-     -- M.mapM_ (print . sumAllS) imgs
+     M.mapM_ print $ splitList (numTake - numDrop) as-- M.mapM_ (print . sumAllS) imgs
 
 splitList :: Int -> [a] -> [[a]]
 splitList n xs

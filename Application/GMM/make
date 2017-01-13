@@ -13,6 +13,6 @@ cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Predict
 
 ## ghc $FLAG $LIBS -i../../ FilterTest.hs -o filterTest
 
-##cabal exec -- ghc $FLAG $LIBS -i../../ PlotFeatureHistogram.hs -o plotFeatureHistogram
+## cabal exec -- ghc $FLAG $LIBS -i../../ PlotFeatureHistogram.hs -o plotFeatureHistogram
 
 cabal exec -- ghc $FLAG $LIBS -i../../ SimilarityTest.hs -o similarityTest
