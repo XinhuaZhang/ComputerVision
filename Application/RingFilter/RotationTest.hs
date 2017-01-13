@@ -62,9 +62,9 @@ main = do
         if L.null degStr
           then 90
           else read degStr :: Int
-      numTake = 16
-      numDrop = 12
-      idx = 1
+      numTake = 8
+      numDrop = 4
+      idx = 47
   pcaMatrixes <- readMatrixes pcaFile
   labeledImgBuf <- readLabeledImageBinary inputPath numTake
   let !labeledImg = L.drop numDrop labeledImgBuf
@@ -119,9 +119,6 @@ main = do
                ((rotate90Square2DImageS $ R.slice pcaMag0 (Z :. All :. All :. i)) !!
                 1)) $
         [0 .. pcaMagNf - 1]
-  -- print . extent $ mag0
-  -- print . extent $ mag90
-  -- print . extent $ mag90'
   x1 <- sumAllP . R.map abs $ (img90 -^ img90')
   print x1
   x2 <-
@@ -177,10 +174,17 @@ main = do
     extend
       (Z :. All :. All :. (1 :: Int))
       (R.slice mag90' (Z :. All :. All :. (idx :: Int)))
+  M.mapM_ (\i -> plotImage ("mag" L.++ show i L.++ ".png") .
+                   computeS .
+                   R.backpermute
+                     (Z :. 1 :. nRows :. numCols)
+                     (\(Z :. k :. j :. i) -> (Z :. j :. i :. k)) $
+                   extend
+                     (Z :. All :. All :. (1 :: Int))
+                     (R.slice mag0 (Z :. All :. All :. (i :: Int)))) [0..magNf-1]
   M.mapM_
     (\i -> do
-       let featureSlice = R.slice pcaMag0 (Z :. All :. All :. (idx :: Int))
-       print . VU.maximum . toUnboxed . computeS $ featureSlice
+       let featureSlice = R.slice pcaMag0 (Z :. All :. All :. (i :: Int))
        plotImage ("pcaMag" L.++ show i L.++ ".png") .
          computeS .
          R.backpermute
