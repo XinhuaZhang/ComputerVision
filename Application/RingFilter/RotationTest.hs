@@ -62,13 +62,14 @@ main = do
         if L.null degStr
           then 90
           else read degStr :: Int
-      numTake = 8
-      numDrop = 4
-      idx = 47
+      numTake = 196
+      numDrop = 192
+      idx = 2
   pcaMatrixes <- readMatrixes pcaFile
   labeledImgBuf <- readLabeledImageBinary inputPath numTake
   let !labeledImg = L.drop numDrop labeledImgBuf
       !img = L.map (\(LabeledArray _ arr) -> arr) labeledImg
+      !label = L.map (\(LabeledArray l _) -> l) labeledImg
   rotatedLabeledImg <-
     CL.sourceList labeledImg $$
     rescaleRotateLabeledImageConduit parallelParams 299 (fromIntegral deg) =$=
@@ -83,17 +84,19 @@ main = do
     sourceList mag $$ pcaLabelMultiLayerConduit parallelParams pcaMatrixes =$=
     consume
   let ex@(Z :. nf :. nRows :. numCols) = extent . L.head $ img
+      refIdx = 0
+      idx90 = 2
       centerIdx = (div nRows 2) * numCols + (div numCols 2)
-      img0 = img !! 0
-      img90 = img !! 1
+      img0 = img !! refIdx
+      img90 = img !! idx90
       img90' =
         extend (Z :. (1 :: Int) :. All :. All) $
         (rotate90Square2DImageS $ R.slice img0 (Z :. (0 :: Int) :. All :. All)) !!
-        1
+        idx90
       magArrs = L.map (pointwiseFeature2Array nRows numCols . L.head . snd) mag
       (Z :. _ :. _ :. magNf) = extent mag0
-      mag0 = magArrs !! 0
-      mag90 = magArrs !! 1
+      mag0 = magArrs !! refIdx
+      mag90 = magArrs !! idx90
       mag90' =
         fromListUnboxed (Z :. nRows :. numCols :. magNf) .
         L.concat .
@@ -102,13 +105,13 @@ main = do
           (\i ->
              R.toList
                ((rotate90Square2DImageS $ R.slice mag0 (Z :. All :. All :. i)) !!
-                1)) $
+                idx90)) $
         [0 .. magNf - 1]
       pcaMagArrs =
         L.map (pointwiseFeature2Array nRows numCols . L.head . snd) pcaMag
       pcaMagNf = LA.cols . L.head $ pcaMatrixes
-      pcaMag0 = pcaMagArrs !! 0
-      pcaMag90 = pcaMagArrs !! 1
+      pcaMag0 = pcaMagArrs !! refIdx
+      pcaMag90 = pcaMagArrs !! idx90
       pcaMag90' =
         fromListUnboxed (Z :. nRows :. numCols :. pcaMagNf) .
         L.concat .
@@ -117,10 +120,16 @@ main = do
           (\i ->
              R.toList
                ((rotate90Square2DImageS $ R.slice pcaMag0 (Z :. All :. All :. i)) !!
-                1)) $
+                idx90)) $
         [0 .. pcaMagNf - 1]
-  x1 <- sumAllP . R.map abs $ (img90 -^ img90')
-  print x1
+  print label
+  x1 <- computeP . R.map abs $ (img90 -^ img90')
+  let vec = toUnboxed x1
+  print . VU.filter (/=0) $ vec
+  print . VU.map (\i -> let a = div i 299
+                            b = mod i 299
+                        in (a,b)) . VU.findIndices (/=0) $ vec
+  print . VU.length . VU.findIndices (/=0) $ vec
   x2 <-
     sumAllP . R.map abs $
     R.slice (mag90 -^ mag90') (Z :. All :. All :. (idx :: Int))
