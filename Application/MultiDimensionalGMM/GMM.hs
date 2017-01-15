@@ -225,7 +225,8 @@ hGMMSink parallelParams handle numM  threshold numTrain = do
   return arrs
   
 hGMMSink1
-  :: ParallelParams -> Handle
+  :: ParallelParams
+  -> Handle
   -> Int
   -> Double
   -> Int

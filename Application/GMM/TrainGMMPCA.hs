@@ -70,7 +70,6 @@ main = do
         }
       filterParamsSetList = [filterParamsSet1]
       numM = numGaussian params
-      bound = ((-0.5, 0.5), (1, 10))
       magnitudeConduit filterParams =
         if isFixedSize params
           then singleLayerMagnitudeFixedSizedConduit
@@ -93,9 +92,9 @@ main = do
               CL.sourceList filteredArrs $$ extractPointwiseFeatureConduit parallelParams =$=
               pcaConduit parallelParams pcaMat =$=
               hGMMSink1
+                parallelParams
                 h
                 (numGaussian params)
-                bound
                 (threshold params)
                 (numGMMExample params)
             return filteredArrs)
