@@ -1,4 +1,4 @@
 #!/bin/bash
 
-ghc -O2 -i../.. -rtsopts -threaded Main.hs -o main
-ghc -O2 -i../.. -rtsopts -threaded RotationTest.hs -o rotationTest
+cabal exec -- ghc -O2 -i../.. -rtsopts -threaded Main.hs -o main
+cabal exec -- ghc -O2 -i../.. -rtsopts -threaded RotationTest.hs -o rotationTest
