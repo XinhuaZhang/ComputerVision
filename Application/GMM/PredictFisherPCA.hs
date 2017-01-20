@@ -59,13 +59,13 @@ main = do
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
         { getSizeSet = imageSize
-        , getDownsampleFactorSet = 1
+        , getDownsampleFactorSet = 2
         , getScaleSet = S.fromDistinctAscList (scale params)
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params  - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params  - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsList = [filterParamsSet1]
+      filterParamsList = [filterParamsSet1, filterParamsSet2,filterParamsSet2]
       magnitudeConduit =
         if isFixedSize params
           then multiLayerMagnitudeFixedSizedConduit

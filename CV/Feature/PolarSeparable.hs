@@ -21,6 +21,7 @@ import           Data.List                      as L
 import           Data.Vector.Unboxed            as VU
 import           GHC.Generics
 import           Prelude                        as P
+import Control.Monad.IO.Class
 
 data PolarSeparableFeaturePoint a = PolarSeparableFeaturePoint
   { x       :: !Int

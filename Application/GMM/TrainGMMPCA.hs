@@ -64,11 +64,11 @@ main = do
         { getSizeSet = imageSize
         , getDownsampleFactorSet = 2
         , getScaleSet = S.fromDistinctAscList (scale params)
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params  - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params  - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSetList = [filterParamsSet1]
+      filterParamsSetList = [filterParamsSet1, filterParamsSet2 ,filterParamsSet2]
       numM = numGaussian params
       magnitudeConduit filterParams =
         if isFixedSize params

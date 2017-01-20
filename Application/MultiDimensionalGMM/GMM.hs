@@ -238,6 +238,7 @@ hGMMSink1 parallelParams handle numM threshold numTrain = do
   gmm <- liftIO $ initializeGMM numM bound
   newGMM <- liftIO $ em threshold 0 gmm bound ys
   liftIO $ hPutGMM handle newGMM
+  liftIO . putStrLn $ "One layer is finished."
 
 hPutGMM :: Handle -> GMM -> IO ()
 hPutGMM handle gmm = do
@@ -275,11 +276,15 @@ getFeatureBound parallelParams xs =
     parallelParams
     rdeepseq
     (\y' ->
-        let m = L.sum y' / (fromIntegral . L.length $ y')
-            d =
-              (L.sum . L.map (^ (2 :: Int)) $ y') /
-              (fromIntegral . L.length $ y')
-        in ((0, 1.5 * m), (1, d - m ^ (2 :: Int))))
+       let m = L.sum y' / (fromIntegral . L.length $ y')
+           d =
+             (L.sum . L.map (^ (2 :: Int)) $ y') /
+             (fromIntegral . L.length $ y')
+           up = d - m ^ (2 :: Int)
+       in ((-1.5 * m,1.5 * m)
+          ,(1
+           ,if up < 1
+               then 1
+               else up)))
     ys
-  where
-    !ys = L.transpose . L.map VU.toList $ xs
+  where !ys = L.transpose . L.map VU.toList $ xs

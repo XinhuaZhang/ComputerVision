@@ -52,6 +52,7 @@ hPCASink h numExample numPrincipal = do
             ys
           !pcaMatrix = pcaN arr' numPrincipal
       liftIO $ hPutMatrix h pcaMatrix
+      liftIO . System.IO.putStrLn $ "One layer is finished."
       return arrs
 
 pcaConduit
