@@ -35,3 +35,7 @@ downsample*
 /Application/FeatureHistogram/main
 /Application/KDTree/run1
 main
+*.ppm
+*.pgm
+*.pca
+*.ll
