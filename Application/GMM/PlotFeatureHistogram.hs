@@ -24,19 +24,36 @@ import           System.Environment
 import           System.IO                      as IO
 import           Data.Vector.Unboxed                 as VU
 
+splitList :: [Int] -> [a] -> [[a]]
+splitList [] _ = []
+splitList (i:is) xs = as : splitList is bs
+  where (as,bs) = L.splitAt i xs 
+
 plotHistSink :: String -> Sink [[VU.Vector Double]] (ResourceT IO) ()
 plotHistSink str = do
   xs <- CL.consume
-  let ys =
+  let index = L.map (VU.length . L.head) . L.head $ xs
+      ys =
         L.map VU.concat .
         L.transpose .
         L.map (L.concatMap (L.map VU.fromList . L.transpose . L.map VU.toList)) $
         xs
   liftIO $
     M.zipWithM_
-      (\i vec -> plotHist vec (-1, 1) 1000 (show i) (str L.++ show i L.++ ".png"))
+      (\j zs ->
+         M.zipWithM_
+           (\i vec ->
+              plotHist
+                vec
+                (VU.minimum vec, VU.maximum vec)
+                1000
+                (show i)
+                (str L.++ show j L.++ "_" L.++ show i L.++ ".png"))
+           [1 ..]
+           zs)
       [1 ..]
-      ys
+      (splitList index ys)
+
 
 main = do
   args <- getArgs
@@ -81,7 +98,7 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSetList = [filterParamsSet1]
+      filterParamsSetList = [filterParamsSet1,filterParamsSet2, filterParamsSet2]
       magnitudeConduit =
         if isFixedSize params
           then multiLayerMagnitudeFixedSizedConduit
@@ -92,8 +109,8 @@ main = do
                  parallelParams
                  filterParamsSetList
                  (downsampleFactor params)
-  runResourceT $
-    sourceList images $$ magnitudeConduit =$= CL.map snd =$= plotHistSink ""
+  -- runResourceT $
+  --   sourceList images $$ magnitudeConduit =$= CL.map snd =$= plotHistSink ""
   runResourceT $
     sourceList images $$ magnitudeConduit =$=
     pcaLabelMultiLayerConduit parallelParams pcaMatrixes =$=

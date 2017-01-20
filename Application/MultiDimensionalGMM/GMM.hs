@@ -163,6 +163,11 @@ em threshold count' oldGMM bound xs
     print zeroNaNNKIdx
     gmm <- resetGMM (ResetIndex zeroNaNNKIdx) oldGMM bound
     em threshold 0 gmm bound xs
+  | not (L.null smallVarianceIdx) = do
+    print smallVarianceIdx
+    putStrLn "reset small variance Gaussian"
+    gmm <- resetGMM (ResetIndex smallVarianceIdx) oldGMM bound
+    em threshold 0 gmm bound xs
   -- | isJust zeroZIdx = do
   --   printCurrentTime
   --   putStrLn "Reset all"
@@ -191,6 +196,7 @@ em threshold count' oldGMM bound xs
     !newGMM = updateGMM oldGMM oldAssignmentVec xs
     !newAvgLikelihood = getAvgLikelihood newGMM xs
     !rate = abs $ (oldAvgLikelihood - newAvgLikelihood) / oldAvgLikelihood
+    !smallVarianceIdx = L.findIndices (\(Model (_,gm)) -> VU.all (<0.01) . gaussianSigma2 $ gm) . model $ oldGMM
 
 gmmSink
   :: ParallelParams
