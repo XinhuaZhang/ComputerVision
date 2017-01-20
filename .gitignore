@@ -35,6 +35,7 @@ downsample*
 /Application/FeatureHistogram/main
 /Application/KDTree/run1
 main
+*.ll
 /Application/GMM/predictFisher
 /Application/GMM/trainFisher
 /Application/GMM/trainFisher1
@@ -54,3 +55,4 @@ run*
 main*
 /Application/RotateDataset/rotationTest
 *.ppm
+
