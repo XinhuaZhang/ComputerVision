@@ -2,3 +2,4 @@
 
 ghc -O2 -i../.. -rtsopts -threaded Main.hs -o main
 ghc -O2 -i../.. -rtsopts -threaded RotationTest.hs -o rotationTest
+ghc -O2 -i../.. -rtsopts -threaded RotationTest1.hs -o rotationTest1

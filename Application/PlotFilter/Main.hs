@@ -14,7 +14,7 @@ main = do
         PolarSeparableFilterParamsSet
         { getSizeSet = (ny, nx)
         , getDownsampleFactorSet = 1
-        , getScaleSet = S.fromDistinctAscList [4]
+        , getScaleSet = S.fromDistinctAscList [2]
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
         , getNameSet = Pinwheels
