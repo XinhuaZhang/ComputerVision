@@ -1,559 +1,250 @@
-{-# LANGUAGE BangPatterns      #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE InstanceSigs      #-}
-{-# LANGUAGE TypeFamilies      #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE BangPatterns     #-}
+{-# LANGUAGE DeriveGeneric    #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module CV.Feature.PolarSeparable where
 
-import           Control.DeepSeq                    as DS
-import           Control.Monad.IO.Class
-import           Control.Parallel
-import           CV.CUDA.ArrayUtil
-import           CV.CUDA.Context
-import           CV.CUDA.DataType
-import           CV.Feature
-import           CV.Filter
-import           CV.Filter.FilterStats
+import           Control.DeepSeq
+import           Control.Monad                  as M
+import           Control.Monad.Trans.Resource
+import           CV.Array.LabeledArray
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel
-import           Data.Array.Accelerate              as A
-import           Data.Array.Accelerate.CUDA         as A
-import           Data.Array.Accelerate.Data.Complex as A
-import           Data.Array.Unboxed                 as AU
+import           CV.Utility.RepaArrayUtility    as RU
+import           Data.Array.Repa                as R
 import           Data.Binary
-import           Data.Binary.Get
-import           Data.Binary.Put
-import           Data.Complex                       as C
+import           Data.Complex                   as C
 import           Data.Conduit
-import           Data.Conduit.List                  as CL
-import           Data.Set                           as S
-import           Data.Vector.Unboxed                as VU
-import           GHC.Float
+import           Data.Conduit.List              as CL
+import           Data.List                      as L
+import           Data.Vector.Unboxed            as VU
 import           GHC.Generics
-import           Prelude                            as P
+import           Prelude                        as P
 
-data PolarSeparableFeaturePoint =
-  PolarSeparableFeaturePoint {x       :: Int
-                             ,y       :: Int
-                             ,feature :: VU.Vector Double}
-  deriving (Show,Read,Generic)
+data PolarSeparableFeaturePoint a = PolarSeparableFeaturePoint
+  { x       :: !Int
+  , y       :: !Int
+  , feature :: a
+  } deriving (Show, Read, Generic)
 
-instance DS.NFData PolarSeparableFeaturePoint where
+instance NFData (PolarSeparableFeaturePoint a) where
   rnf !_ = ()
 
-instance Binary PolarSeparableFeaturePoint where
-  put (PolarSeparableFeaturePoint x y feature) =
-    do put x
-       put y
-       put $ VU.toList feature
-  get =
-    do x <- get :: Get Int
-       y <- get :: Get Int
-       feature <- get :: Get [Double]
-       return (PolarSeparableFeaturePoint x
-                                          y
-                                          (VU.fromList feature))
+instance (Binary a) =>
+         Binary (PolarSeparableFeaturePoint a) where
+  put (PolarSeparableFeaturePoint x' y' feature') = do
+    put x'
+    put y'
+    put feature'
+  get = do
+    x' <- get
+    y' <- get
+    feature' <- get
+    return (PolarSeparableFeaturePoint x' y' feature')
 
-normalizedMagnitudeConduitFloat
-  :: ParallelParams
-  -> [Context]
-  -> PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
-  -> Int
-  -> Acc (A.Array DIM3 Float)
-  -> Acc (A.Array DIM3 Float)
-  -> Conduit (AU.Array (Int,Int,Int) Float) IO [PolarSeparableFeaturePoint]
-normalizedMagnitudeConduitFloat parallelParams ctx filter factor meanArr varArr =
-  do xs <- CL.take (batchSize parallelParams)
-     if P.length xs > 0
-        then do let (_,(nx',ny',nfOld)) = bounds . P.head $ xs
-                    nx = nx' + 1
-                    ny = ny' + 1
-                    scale = getScale . getParams $ filter
-                    nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    ys =
-                      P.map (\x ->
-                               P.map (slice2D x)
-                                     [0 .. nfOld])
-                            xs
-                    zs =
-                      if factor == 1
-                         then P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        A.map A.magnitude >->
-                                        A.zipWith3 (\m v x -> (x - m) / v)
-                                                   meanArr
-                                                   varArr >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) Float]]
-                         else P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        A.map A.magnitude >->
-                                        A.zipWith3 (\m v x -> (x - m) / v)
-                                                   meanArr
-                                                   varArr >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny >->
-                                        downsample25D factor) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) Float]]
-                    (lb,(sizeX,sizeY,nfNew)) = bounds . P.head . P.head $ zs
-                    arrList =
-                      parMapChunk
-                        parallelParams
-                        rseq
-                        (AU.array (lb
-                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
-                         P.concat .
-                         P.zipWith (\offset arr ->
-                                      P.map (\((i,j,k),v) ->
-                                               ((i,j,k + offset * (nfNew + 1))
-                                               ,v)) .
-                                      AU.assocs $
-                                      arr)
-                                   [0,1 ..]) $!!
-                      zs :: [AU.Array (Int,Int,Int) Float]
-                    result =
-                      parMapChunk
-                        parallelParams
-                        rdeepseq
-                        (P.zipWith (\(x,y) z ->
-                                      PolarSeparableFeaturePoint
-                                        x
-                                        y
-                                        (VU.fromList . P.map float2Double $ z))
-                                   (range ((0,0),(sizeX,sizeY))) .
-                         slice1D)
-                        arrList
-                sourceList result
-                liftIO $ performGCCtx ctx
-                normalizedMagnitudeConduitFloat parallelParams ctx filter factor meanArr varArr
-        else return ()
+instance Functor PolarSeparableFeaturePoint where
+  fmap f (PolarSeparableFeaturePoint x' y' feature') =
+    PolarSeparableFeaturePoint x' y' (f feature')
 
-normalizedMagnitudeConduitDouble
-  :: ParallelParams
-  -> [Context]
-  -> PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
-  -> Int
-  -> Acc (A.Array DIM3 Double)
-  -> Acc (A.Array DIM3 Double)
-  -> Conduit (AU.Array (Int,Int,Int) Double) IO [PolarSeparableFeaturePoint]
-normalizedMagnitudeConduitDouble parallelParams ctx filter factor meanArr varArr =
-  do xs <- CL.take (batchSize parallelParams)
-     if P.length xs > 0
-        then do let (_,(nx',ny',nfOld)) = bounds . P.head $ xs
-                    nx = nx' + 1
-                    ny = ny' + 1
-                    scale = getScale . getParams $ filter
-                    nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    ys =
-                      P.map (\x ->
-                               P.map (slice2D x)
-                                     [0 .. nfOld])
-                            xs
-                    zs =
-                      if factor == 1
-                         then P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        A.map A.magnitude >->
-                                        A.zipWith3 (\m v x -> (x - m) / v)
-                                                   meanArr
-                                                   varArr >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) Double]]
-                         else P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        A.map A.magnitude >->
-                                        A.zipWith3 (\m v x -> (x - m) / v)
-                                                   meanArr
-                                                   varArr >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny >->
-                                        downsample25D factor) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) Double]]
-                    (lb,(sizeX,sizeY,nfNew)) = bounds . P.head . P.head $ zs
-                    arrList =
-                      parMapChunk
-                        parallelParams
-                        rseq
-                        (AU.array (lb
-                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
-                         P.concat .
-                         P.zipWith (\offset arr ->
-                                      P.map (\((i,j,k),v) ->
-                                               ((i,j,k + offset * (nfNew + 1))
-                                               ,v)) .
-                                      AU.assocs $
-                                      arr)
-                                   [0,1 ..]) $!!
-                      zs :: [AU.Array (Int,Int,Int) Double]
-                    result =
-                      parMapChunk
-                        parallelParams
-                        rdeepseq
-                        (P.zipWith (\(x,y) z ->
-                                      PolarSeparableFeaturePoint x
-                                                                 y
-                                                                 (VU.fromList z))
-                                   (range ((0,0),(sizeX,sizeY))) .
-                         slice1D)
-                        arrList
-                sourceList result
-                liftIO $ performGCCtx ctx
-                normalizedMagnitudeConduitDouble parallelParams ctx filter factor meanArr varArr
-        else return ()
 
-magnitudeConduitFloat
-  :: ParallelParams
-  -> [Context]
-  -> PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
-  -> Int
-  -> Conduit (AU.Array (Int,Int,Int) Float) IO [PolarSeparableFeaturePoint]
-magnitudeConduitFloat parallelParams ctx filter factor =
-  do xs <- CL.take (batchSize parallelParams)
-     if P.length xs > 0
-        then do let (_,(nx',ny',nfOld)) = bounds . P.head $ xs
-                    nx = nx' + 1
-                    ny = ny' + 1
-                    scale = getScale . getParams $ filter
-                    nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    ys =
-                      parMap rdeepseq
-                             (\x ->
-                                P.map (slice2D x)
-                                      [0 .. nfOld])
-                             xs
-                    zs =
-                      if factor == 1
-                         then P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        A.map A.magnitude >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) Float]]
-                         else P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        A.map A.magnitude >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny >->
-                                        downsample25D factor) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) Float]]
-                    (lb,(sizeX,sizeY,nfNew)) = bounds . P.head . P.head $ zs
-                    result =
-                      parMapChunk
-                        parallelParams
-                        rdeepseq
-                        (P.zipWith (\(x,y) z ->
-                                      PolarSeparableFeaturePoint
-                                        x
-                                        y
-                                        (VU.fromList . P.map float2Double $ z))
-                                   (range ((0,0),(sizeX,sizeY))) .
-                         slice1D .
-                         AU.array (lb
-                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
-                         P.concat .
-                         P.zipWith (\offset arr ->
-                                      P.map (\((i,j,k),v) ->
-                                               ((i,j,k + offset * (nfNew + 1))
-                                               ,v)) .
-                                      AU.assocs $
-                                      arr)
-                                   [0,1 ..]) $!!
-                      zs
-                sourceList result
-                magnitudeConduitFloat parallelParams ctx filter factor
-        else return ()
+singleLayerMagnitudeFixedSizedConduit
+  :: (R.Source s Double)
+  => ParallelParams
+  -> PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))
+  -> Int -> Conduit (Array s DIM3 Double) (ResourceT IO) (Array U DIM3 Double)
+singleLayerMagnitudeFixedSizedConduit parallelParams filter' factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\x' ->
+                    let !y' =
+                          computeUnboxedS .
+                          singleLayerMagnitudeFixedSize filter' factor $
+                          x'
+                    in deepSeqArray y' y')
+                xs
+        sourceList ys
+        singleLayerMagnitudeFixedSizedConduit parallelParams filter' factor)
 
-magnitudeConduitDouble
-  :: ParallelParams
-  -> [Context]
-  -> PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
-  -> Int
-  -> Conduit (AU.Array (Int,Int,Int) Double) IO [PolarSeparableFeaturePoint]
-magnitudeConduitDouble parallelParams ctx filter factor =
-  do xs <- CL.take (batchSize parallelParams)
-     if P.length xs > 0
-        then do let (_,(nx',ny',nfOld)) = bounds . P.head $ xs
-                    nx = nx' + 1
-                    ny = ny' + 1
-                    scale = getScale . getParams $ filter
-                    nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    ys =
-                      P.map (\x ->
-                               P.map (slice2D x)
-                                     [0 .. nfOld])
-                            xs
-                    zs =
-                      if factor == 1
-                         then P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        A.map A.magnitude >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) Double]]
-                         else P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        A.map A.magnitude >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny >->
-                                        downsample25D factor) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) Double]]
-                    (lb,(sizeX,sizeY,nfNew)) = bounds . P.head . P.head $ zs
-                    arrList =
-                      parMapChunk
-                        parallelParams
-                        rseq
-                        (AU.array (lb
-                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
-                         P.concat .
-                         P.zipWith (\offset arr ->
-                                      P.map (\((i,j,k),v) ->
-                                               ((i,j,k + offset * (nfNew + 1))
-                                               ,v)) .
-                                      AU.assocs $
-                                      arr)
-                                   [0,1 ..]) $!!
-                      zs :: [AU.Array (Int,Int,Int) Double]
-                    result =
-                      parMapChunk
-                        parallelParams
-                        rdeepseq
-                        (P.zipWith (\(x,y) z ->
-                                      PolarSeparableFeaturePoint x
-                                                                 y
-                                                                 (VU.fromList z))
-                                   (range ((0,0),(sizeX,sizeY))) .
-                         slice1D)
-                        arrList
-                sourceList result
-                liftIO $ performGCCtx ctx
-                magnitudeConduitDouble parallelParams ctx filter factor
-        else return ()
+singleLayerMagnitudeVariedSizedConduit
+  :: (R.Source s Double)
+  => ParallelParams
+  -> PolarSeparableFilterParamsSet
+  -> Int -> Conduit (Array s DIM3 Double) (ResourceT IO) (Array U DIM3 Double)
+singleLayerMagnitudeVariedSizedConduit parallelParams filterParams factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\x' ->
+                    let !y' =
+                          computeUnboxedS .
+                          singleLayerMagnitudeVariedSize filterParams factor $
+                          x'
+                    in deepSeqArray y' y')
+                xs
+        sourceList ys
+        singleLayerMagnitudeVariedSizedConduit parallelParams filterParams factor)
 
-complexConduitFloat
+multiLayerMagnitudeFixedSizedConduit
   :: ParallelParams
-  -> [Context]
-  -> PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
-  -> Int
-  -> Conduit (AU.Array (Int,Int,Int) Float) IO [PolarSeparableFeaturePoint]
-complexConduitFloat parallelParams ctx filter factor =
-  do xs <- CL.take (batchSize parallelParams)
-     if P.length xs > 0
-        then do let (_,(nx',ny',nfOld)) = bounds . P.head $ xs
-                    nx = nx' + 1
-                    ny = ny' + 1
-                    scale = getScale . getParams $ filter
-                    nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    ys =
-                      P.map (\x ->
-                               P.map (slice2D x)
-                                     [0 .. nfOld])
-                            xs
-                    zs =
-                      if factor == 1
-                         then P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) (C.Complex Float)]]
-                         else P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny >->
-                                        downsample25D factor) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) (C.Complex Float)]]
-                    (lb,(sizeX,sizeY,nfNew)) = bounds . P.head . P.head $ zs
-                    arrList =
-                      parMapChunk
-                        parallelParams
-                        rseq
-                        (AU.array (lb
-                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
-                         P.concat .
-                         P.zipWith (\offset arr ->
-                                      P.map (\((i,j,k),v) ->
-                                               ((i,j,k + offset * (nfNew + 1))
-                                               ,v)) .
-                                      AU.assocs $
-                                      arr)
-                                   [0,1 ..]) $!!
-                      zs :: [AU.Array (Int,Int,Int) (C.Complex Float)]
-                    result =
-                      parMapChunk
-                        parallelParams
-                        rdeepseq
-                        (P.zipWith (\(x,y) z ->
-                                      PolarSeparableFeaturePoint
-                                        x
-                                        y
-                                        (VU.fromList .
-                                         P.map float2Double .
-                                         P.concatMap (\(a :+ b) -> [a,b]) $
-                                         z))
-                                   (range ((0,0),(sizeX,sizeY))) .
-                         slice1D)
-                        arrList
-                sourceList result
-                liftIO $ performGCCtx ctx
-                complexConduitFloat parallelParams ctx filter factor
-        else return ()
+  -> [PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))]
+  -> Int -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [[VU.Vector Double]])
+multiLayerMagnitudeFixedSizedConduit parallelParams filters' factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray label arr') ->
+                    (label, multiLayerMagnitudeFixedSize filters' factor arr'))
+                xs
+        sourceList ys
+        multiLayerMagnitudeFixedSizedConduit parallelParams filters' factor)
 
-complexConduitDouble
+multiLayerMagnitudeVariedSizedConduit
   :: ParallelParams
-  -> [Context]
-  -> PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
+  -> [PolarSeparableFilterParamsSet]
   -> Int
-  -> Conduit (AU.Array (Int,Int,Int) Double) IO [PolarSeparableFeaturePoint]
-complexConduitDouble parallelParams ctx filter factor =
-  do xs <- CL.take (batchSize parallelParams)
-     if P.length xs > 0
-        then do let (_,(nx',ny',nfOld)) = bounds . P.head $ xs
-                    nx = nx' + 1
-                    ny = ny' + 1
-                    scale = getScale . getParams $ filter
-                    nxNew = nx - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    nyNew = ny - (P.round $ (P.head $ S.toDescList scale) * 4)
-                    ys =
-                      P.map (\x ->
-                               P.map (slice2D x)
-                                     [0 .. nfOld])
-                            xs
-                    zs =
-                      if factor == 1
-                         then P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) (C.Complex Double)]]
-                         else P.map (P.map toIArray .
-                                     multiGPUStream
-                                       ctx
-                                       (applyFilter filter >->
-                                        crop25D (div (nx - nxNew) 2)
-                                                (div (ny - nyNew) 2)
-                                                nxNew
-                                                nyNew
-                                                nx
-                                                ny >->
-                                        downsample25D factor) .
-                                     P.map fromIArray)
-                                    ys :: [[AU.Array (Int,Int,Int) (C.Complex Double)]]
-                    (lb,(sizeX,sizeY,nfNew)) = bounds . P.head . P.head $ zs
-                    arrList =
-                      parMapChunk
-                        parallelParams
-                        rseq
-                        (AU.array (lb
-                                  ,(sizeX,sizeY,((nfOld + 1) * (nfNew + 1) - 1))) .
-                         P.concat .
-                         P.zipWith (\offset arr ->
-                                      P.map (\((i,j,k),v) ->
-                                               ((i,j,k + offset * (nfNew + 1))
-                                               ,v)) .
-                                      AU.assocs $
-                                      arr)
-                                   [0,1 ..]) $!!
-                      zs :: [AU.Array (Int,Int,Int) (C.Complex Double)]
-                    result =
-                      parMapChunk
-                        parallelParams
-                        rdeepseq
-                        (P.zipWith (\(x,y) z ->
-                                      PolarSeparableFeaturePoint
-                                        x
-                                        y
-                                        (VU.fromList .
-                                         P.concatMap (\(a :+ b) -> [a,b])
-                                                     $z))
-                                   (range ((0,0),(sizeX,sizeY))) .
-                         slice1D)
-                        arrList
-                sourceList result
-                liftIO $ performGCCtx ctx
-                complexConduitDouble parallelParams ctx filter factor
-        else return ()
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [[VU.Vector Double]])
+multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray label arr') ->
+                    (label, multiLayerMagnitudeVariedSize filterParamsList factor arr'))
+                xs
+        sourceList ys
+        multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList factor)
+
+
+{-# INLINE singleLayerMagnitudeFixedSize #-}
+
+singleLayerMagnitudeFixedSize
+  :: (R.Source s Double)
+  => PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))
+  -> Int
+  -> Array s DIM3 Double
+  -> Array R.D DIM3 Double
+singleLayerMagnitudeFixedSize filter' factor inputArr = downSampledArr
+  where
+    !filteredArr =
+      R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $ inputArr
+    !downSampledArr = RU.downsample [factor, factor, 1] filteredArr
+
+{-# INLINE multiLayerMagnitudeFixedSize #-}
+
+multiLayerMagnitudeFixedSize
+  :: (R.Source s Double)
+  => [PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))]
+  -> Int
+  -> Array s DIM3 Double
+  -> [[Vector Double]]
+multiLayerMagnitudeFixedSize filters' factor inputArr =
+  L.map
+    (\arr' ->
+        let !(Z :. (_nf'::Int) :. (ny'::Int) :. (nx'::Int)) = extent downSampledArr
+            !downSampledArr = RU.downsample [factor, factor, 1] arr'
+        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
+            (Z :. All :. j :. i)
+           | j <- [0 .. ny' - 1]
+           , i <- [0 .. nx' - 1] ]) .
+  L.tail .
+  L.scanl'
+    (\arr' filter' ->
+        R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $ arr')
+    (delay inputArr) $
+  filters'
+
+{-# INLINE singleLayerMagnitudeVariedSize #-}
+
+singleLayerMagnitudeVariedSize
+  :: (R.Source s Double)
+  => PolarSeparableFilterParamsSet
+  -> Int
+  -> Array s DIM3 Double
+  -> Array R.D DIM3 Double
+singleLayerMagnitudeVariedSize filterParams factor inputArr = downSampledArr
+  where
+    !filteredArr =
+      R.map C.magnitude . applyFilterSetVariedSize filterParams . R.map (:+ 0) $
+      inputArr
+    !downSampledArr = RU.downsample [factor, factor, 1] filteredArr
+
+{-# INLINE multiLayerMagnitudeVariedSize #-}
+
+multiLayerMagnitudeVariedSize
+  :: (R.Source s Double)
+  => [PolarSeparableFilterParamsSet]
+  -> Int
+  -> Array s DIM3 Double
+  -> [[Vector Double]]
+multiLayerMagnitudeVariedSize filterParamsList factor inputArr =
+  L.map
+    (\arr' ->
+        let !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent downSampledArr
+            !downSampledArr = RU.downsample [factor, factor, 1] arr'
+        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
+            (Z :. All :. j :. i)
+           | j <- [0 .. ny' - 1]
+           , i <- [0 .. nx' - 1] ]) .
+  L.tail .
+  L.scanl'
+    (\arr' filterParams ->
+        R.map C.magnitude . applyFilterSetVariedSize filterParams . R.map (:+ 0) $
+        arr')
+    (delay inputArr) $
+  filterParamsList
+  
+extractPointwiseFeatureConduit
+  :: (R.Source s Double)
+  => ParallelParams -> Conduit (Array s DIM3 Double) (ResourceT IO) [Vector Double]
+extractPointwiseFeatureConduit parallelParams = do
+  xs' <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs')
+    (do let ys' = parMapChunk parallelParams rdeepseq extractPointwiseFeature xs'
+        sourceList ys'
+        extractPointwiseFeatureConduit parallelParams)
+
+{-# INLINE extractPointwiseFeature #-}
+
+extractPointwiseFeature
+  :: (R.Source s Double)
+  => Array s DIM3 Double -> [Vector Double]
+extractPointwiseFeature arr' =
+  [ toUnboxed . computeUnboxedS . R.slice arr' $ (Z :. All :. j :. i)
+  | j <- [0 .. ny' - 1]
+  , i <- [0 .. nx' - 1] ]
+  where
+    !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent arr'
+
+{-# INLINE l2normVec #-}
+l2normVec :: VU.Vector Double -> VU.Vector Double
+l2normVec vec' 
+  | norm == 0 = vec'
+  | otherwise = VU.map (/norm2) vec2
+  where
+    !vec = VU.map (\x' -> if x' < 10 ** (-10)
+                             then 0
+                             else x') vec'
+    !norm = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+    !vec1 = VU.map (/ norm) vec
+    !vec2 = VU.map (\x' -> if x' > 0.2
+                              then 0.2
+                              else x') vec1
+    !norm2 = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec2

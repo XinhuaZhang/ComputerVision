@@ -1,41 +1,40 @@
-{-# LANGUAGE BangPatterns  #-}
 {-# LANGUAGE DeriveGeneric #-}
 module Application.GMM.Gaussian where
 
+import           Control.DeepSeq
 import           Data.Binary
-import           Data.Vector.Unboxed as VU
 import           GHC.Generics
-import           Prelude             as P
+import           System.Random
 
--- sigma is a diagonal matrix
-data Gaussian =
-  Gaussian {numDims :: Int
-           ,mu      :: VU.Vector Double
-           ,sigma   :: VU.Vector Double}
-  deriving (Show,Generic)
+data Gaussian = Gaussian
+  { gaussianMu    :: !Double
+  , gaussianSigma :: !Double
+  } deriving (Generic)
+  
+instance Show Gaussian where
+  show (Gaussian mu sigma) = "Mu: " ++ show mu ++ " Sigma: " ++ show sigma
 
 instance Binary Gaussian where
-  put (Gaussian numDims' mu' sigma') =
-    do put numDims'
-       put $ toList mu'
-       put $ toList sigma'
-  get =
-    do numDims' <- get
-       mu' <- get
-       sigma' <- get
-       return (Gaussian numDims'
-                        (fromList mu')
-                        (fromList sigma'))
+  put (Gaussian mu' sigma') = do
+    put mu'
+    put sigma'
+  get = do
+    mu' <- get
+    sigma' <- get
+    return (Gaussian mu' sigma')
+    
+instance NFData Gaussian where
+  rnf (Gaussian x y) = x `seq` y `seq` ()
 
-gaussian
-  :: Gaussian -> VU.Vector Double -> Double
-gaussian (Gaussian numDims' mu' sigma') xs = (exp z) / (y)
-  where -- !x = (2 * pi) ** (-0.5 * (fromIntegral numDims'))
-        !y = (VU.foldl1' (*) sigma') ** 0.5
-        !z =
-          (-0.5) *
-          (VU.sum $
-           VU.zipWith3 (\a b c -> (a - b) ^ 2 / c)
-                       xs
-                       mu'
-                       sigma')
+{-# INLINE gaussian #-}
+gaussian :: Gaussian -> Double -> Double
+gaussian (Gaussian mu' sigma') x =
+  exp (-((x - mu') ^ (2 :: Int)) / (2 * sigma')) / sqrt (2 * pi * sigma')
+
+{-# INLINE randomGaussian #-}
+randomGaussian
+  :: ((Double,Double),(Double,Double)) -> IO Gaussian
+randomGaussian (boundMu,boundSigma) =
+  do mu <- randomRIO boundMu
+     sigma <- randomRIO boundSigma
+     return $! Gaussian mu sigma

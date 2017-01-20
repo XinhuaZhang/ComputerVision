@@ -1,0 +1,3 @@
+#!/bin/bash
+
+ghc -i../.. -lgomp -lstdc++ -lblas  -lprotobuf -lopencv_imgcodec caffeData.o -O3 Main.hs -o main

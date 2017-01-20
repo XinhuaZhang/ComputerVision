@@ -9,6 +9,6 @@ class Filter a  where
   type FilterParameter a :: *
   makeFilter :: FilterParameter a -> a
   displayFilter
-    :: (Image img)
-    => a -> img
-  applyFilter :: a -> Input a -> Output a
+    :: FilterParameter a -> ComplexImage
+  applyFilterFixedSize :: a -> Input a -> Output a
+  applyFilterVariedSize :: FilterParameter a -> Input a -> Output a

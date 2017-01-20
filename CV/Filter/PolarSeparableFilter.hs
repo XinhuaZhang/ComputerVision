@@ -1,352 +1,300 @@
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE InstanceSigs      #-}
 {-# LANGUAGE TypeFamilies      #-}
+
 module CV.Filter.PolarSeparableFilter where
 
-import           Control.DeepSeq
-import           Control.Monad.IO.Class                (liftIO)
-import           Control.Parallel
-import           CV.CUDA.ArrayUtil
-import           CV.CUDA.Context
-import           CV.CUDA.FFT
-import           CV.Filter
-import           CV.Filter.FilterStats                 as FS
 import           CV.Filter.GaussianFilter
-import           CV.Image                              as IM
+import           CV.Image                    as IM
 import           CV.Utility.Coordinates
-import           CV.Utility.Parallel
-import           Data.Array.Accelerate                 as A
-import           Data.Array.Accelerate.Data.Complex    as A
-import           Data.Array.Accelerate.Math.DFT.Centre as A
-import           Data.Array.Accelerate.Math.FFT        as A
-import           Data.Array.Unboxed                    as AU
-import           Data.Complex                          as C
-import           Data.Conduit
-import           Data.Conduit.List                     as CL
-import           Data.List                             as L
-import           Data.Set                              as Set
-import           GHC.Float
-import           Prelude                               as P
+import           CV.Utility.RepaArrayUtility as RU
+import           Data.Array.CArray           as CA
+import           Data.Array.Repa             as R
+import           Data.Complex                as C
+import           Data.List                   as L
+import           Data.Set                    as Set
+import           Foreign.Storable
+import           Math.FFT
+import           Prelude                     as P
 
 data PolarSeparableFilterName
   = Fans
   | Bullseye
   | Pinwheels
-  deriving (Show,Read)
+  deriving (Show, Read)
 
-data PolarSeparableFilterParams = PolarSeparableFilterParams
-  { getRadius      :: Int
-  , getScale       :: Set Double
-  , getRadialFreq  :: Set Int
-  , getAngularFreq :: Set Int
-  , getName        :: PolarSeparableFilterName
+data PolarSeparableFilterParamsSet = PolarSeparableFilterParamsSet
+  { getSizeSet             :: !(Int, Int)
+  , getDownsampleFactorSet :: !Int
+  , getScaleSet            :: !(Set Double)
+  , getRadialFreqSet       :: !(Set Int)
+  , getAngularFreqSet      :: !(Set Int)
+  , getNameSet             :: !PolarSeparableFilterName
   } deriving (Show)
 
-data PolarSeparableFilter a = PolarSeparableFilter
-  { getParams :: PolarSeparableFilterParams
-  , getFilter :: a
-  }
+data PolarSeparableFilter a b =
+  PolarSeparableFilter !a
+                       b
+  deriving (Show)
 
-instance Filter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) where
-  type Input (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) = Acc (A.Array DIM2 Double)
-  type Output (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) = Acc (A.Array DIM3 (A.Complex Double))
-  type FilterParameter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) = PolarSeparableFilterParams
-  {- Default format HWD -}
-  makeFilter
-    :: PolarSeparableFilterParams
-    -> (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double))))
-  makeFilter params@(PolarSeparableFilterParams r scale rs as name) =
-    (PolarSeparableFilter params filterArr)
-    where
-      size = 2 * r
-      filterEleList =
-        [ pixelList
-           (IM.makeFilter size size (getFilterFunc params s rf af) :: ComplexImage)
-        | rf <- Set.toList rs
-        , af <- Set.toList as
-        , s <- Set.toList scale ]
-      len = P.length filterEleList
-      filterArr =
-        (centre25D HWD >-> fft25D' A.Forward size size len HWD) .
-        use . A.fromList (Z :. size :. size :. len) . P.concat . L.transpose $
-         filterEleList
-  displayFilter (PolarSeparableFilter _ imgAcc) = undefined
-  applyFilter
-    :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))
-    -> Acc (A.Array DIM2 Double)
-    -> Acc (A.Array DIM3 (A.Complex Double))
-  applyFilter (PolarSeparableFilter params@PolarSeparableFilterParams {getRadius = r} filterArr) imgAcc =
-    fft25D' A.Inverse size size len HWD $ A.zipWith (*) imgArr filterArr
-    where
-      size = 2 * r
-      len = getFilterNum params
-      imgArr =
-        A.replicate (lift (Z :. All :. All :. len)) .
-        A.fft2D' A.Forward size size . centre2D . A.map (\x -> lift $ x C.:+ 0) $
-        imgAcc
+data PolarSeparableFilterParams = PolarSeparableFilterParams
+  { getSize             :: !(Int, Int)
+  , getDownsampleFactor :: !Int
+  , getScale            :: !Double
+  , getRadialFreq       :: !Int
+  , getAngularFreq      :: !Int
+  , getName             :: !PolarSeparableFilterName
+  } deriving (Show)
 
-instance Filter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) where
-  type Input (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) = Acc (A.Array DIM2 Float)
-  type Output (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) = Acc (A.Array DIM3 (A.Complex Float))
-  type FilterParameter (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) = PolarSeparableFilterParams
-  {- Default format HWD -}
-  makeFilter
-    :: PolarSeparableFilterParams
-    -> (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float))))
-  makeFilter params@(PolarSeparableFilterParams r scale rs as name) =
-    (PolarSeparableFilter params filterArr)
-    where
-      size = 2 * r
-      filterEleList =
-        [ pixelList
-           (IM.makeFilter size size (getFilterFunc params s rf af) :: ComplexImage)
-        | rf <- Set.toList rs
-        , af <- Set.toList as
-        , s <- Set.toList scale ]
-      len = P.length filterEleList
-      filterArr =
-        (centre25D HWD >-> fft25D' A.Forward size size len HWD) .
-        use .
-        A.fromList (Z :. size :. size :. len) .
-        P.map (\(x C.:+ y) -> (double2Float x C.:+ double2Float y)) .
-        P.concat . L.transpose $
-        filterEleList
-  displayFilter (PolarSeparableFilter _ imgAcc) = undefined
-  applyFilter
-    :: PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))
-    -> Acc (A.Array DIM2 Float)
-    -> Acc (A.Array DIM3 (A.Complex Float))
-  applyFilter (PolarSeparableFilter params@PolarSeparableFilterParams {getRadius = r} filterArr) imgAcc =
-    fft25D' A.Inverse size size len HWD $ A.zipWith (*) imgArr filterArr
-    where
-      size = 2 * r
-      len = getFilterNum params
-      imgArr =
-        A.replicate (lift (Z :. All :. All :. len)) .
-        A.fft2D' A.Forward size size . centre2D . A.map (\x -> lift $ x C.:+ 0) $
-        imgAcc
+-- this function is to make sure that the params sequence is correct
+{-# INLINE generateParamsSet #-}
 
-instance CUDAStatistics (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) where
-  type GPUDataType (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Float)))) = Float
-  sink parallelParams ctx filePath filter =
-    go 0 undefined (P.cycle [0]) (P.cycle [0])
-    where
-      go n size s1 s2 = do
-        xs <- CL.take (batchSize parallelParams)
-        if P.length xs > 0
-          then let ctx1 =
-                     if P.length ctx > 1
-                       then P.init ctx
-                       else ctx
-                   ctx2 =
-                     if P.length ctx > 1
-                       then P.tail ctx
-                       else ctx
-                   (_, (ny', nx', nf)) = bounds . P.head $ xs
-                   nx = nx' + 1
-                   ny = ny' + 1
-                   ys = P.map (\x -> P.map (slice2D x) [0 .. nf]) xs
-                   zs1 =
-                     P.map
-                       (P.concatMap A.toList .
-                        multiGPUStream
-                          ctx1
-                          (applyFilter filter >->
-                           crop25D
-                             (div ny 4)
-                             (div nx 4)
-                             (div ny 2)
-                             (div nx 2)
-                             ny
-                             nx >->
-                           FS.rotate3D >->
-                           filterSum) .
-                        P.map fromIArray)
-                       ys
-                   zs2 =
-                     P.map
-                       (P.concatMap A.toList .
-                        multiGPUStream
-                          ctx2
-                          (applyFilter filter >->
-                           crop25D
-                             (div ny 4)
-                             (div nx 4)
-                             (div ny 2)
-                             (div nx 2)
-                             ny
-                             nx >->
-                           FS.rotate3D >->
-                           filterSumSquare) .
-                        P.map fromIArray)
-                       ys
-                   listSum = L.foldl' (L.zipWith (+))
-                   ss1 = listSum s1 $!! zs1
-                   ss2 = listSum s2 $!! zs2
-               in par
-                    ss1
-                    (pseq ss2 (go (n + P.length xs) (div (nx * ny) 4) ss1 ss2))
-          else let mean = P.map float2Double $ sampleMean s1 (n * size)
-                   var =
-                     (par
-                        s1
-                        (pseq
-                           s2
-                           (P.map float2Double $ sampleVar s1 s2 (n * size))))
-               in do liftIO $ print . P.length $ mean
-                     liftIO $
-                       writeFilterStats
-                         filePath
-                         (par mean (pseq var (FilterStats mean var [])))
+generateParamsSet :: Set Double -> Set Int -> Set Int -> [(Double, Int, Int)]
+generateParamsSet scaleSet rfSet afSet =
+  [ (scale, rf, af)
+  | scale <- toAscList scaleSet
+  , rf <- toAscList rfSet
+  , af <- toAscList afSet ]
 
+generatePSFParamsSet :: PolarSeparableFilterParamsSet
+                     -> [PolarSeparableFilterParams]
+generatePSFParamsSet (PolarSeparableFilterParamsSet (ny, nx) downsampleFactor scaleSet rfSet afSet name) =
+  L.map
+    (\(scale, rf, af) ->
+        PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af name) $
+  generateParamsSet scaleSet rfSet afSet
 
+-- Input: [layer1, layer2 ...]
+generateMultilayerPSFParamsSet :: [PolarSeparableFilterParamsSet]
+                               -> [[PolarSeparableFilterParams]]
+generateMultilayerPSFParamsSet =
+  L.foldl'
+    (\bss as ->
+        [ a : bs
+        | bs <- bss
+        , a <- as ])
+    [[]] .
+  L.map generatePSFParamsSet . L.reverse
 
-instance CUDAStatistics (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) where
-  type GPUDataType (PolarSeparableFilter (Acc (A.Array DIM3 (A.Complex Double)))) = Double
-  sink parallelParams ctx filePath filter =
-    go 0 undefined (P.cycle [0]) (P.cycle [0])
-    where
-      go n size s1 s2 = do
-        xs <- CL.take (batchSize parallelParams)
-        if P.length xs > 0
-          then let ctx1 =
-                     if P.length ctx > 1
-                       then P.init ctx
-                       else ctx
-                   ctx2 =
-                     if P.length ctx > 1
-                       then P.tail ctx
-                       else ctx
-                   (_, (ny', nx', nf)) = bounds . P.head $ xs
-                   nx = nx' + 1
-                   ny = ny' + 1
-                   ys = P.map (\x -> P.map (slice2D x) [0 .. nf]) xs
-                   zs1 =
-                     P.map
-                       (P.concatMap A.toList .
-                        multiGPUStream
-                          ctx1
-                          (applyFilter filter >->
-                           crop25D
-                             (div ny 4)
-                             (div nx 4)
-                             (div ny 2)
-                             (div nx 2)
-                             ny
-                             nx >->
-                           FS.rotate3D >->
-                           filterSum) .
-                        P.map fromIArray)
-                       ys
-                   zs2 =
-                     P.map
-                       (P.concatMap A.toList .
-                        multiGPUStream
-                          ctx2
-                          (applyFilter filter >->
-                           crop25D
-                             (div ny 4)
-                             (div nx 4)
-                             (div ny 2)
-                             (div nx 2)
-                             ny
-                             nx >->
-                           FS.rotate3D >->
-                           filterSumSquare) .
-                        P.map fromIArray)
-                       ys
-                   listSum = L.foldl' (L.zipWith (+))
-                   ss1 = listSum s1 $!! zs1
-                   ss2 = listSum s2 $!! zs2
-               in par
-                    ss1
-                    (pseq ss2 (go (n + P.length xs) (div (nx * ny) 4) ss1 ss2))
-          else let mean = sampleMean s1 (n * size)
-                   var = (par s1 (pseq s2 (sampleVar s1 s2 (n * size))))
-               in liftIO $
-                  writeFilterStats
-                    filePath
-                    (par mean (pseq var (FilterStats mean var [])))
+{-# INLINE ejx #-}
 
-
-
-
-{- e^jx -}
 ejx
   :: (RealFloat a)
   => a -> C.Complex a
 ejx x = exp (0 C.:+ x)
+
+{-# INLINE real2Complex #-}
 
 real2Complex
   :: (RealFloat a)
   => a -> C.Complex a
 real2Complex x = x C.:+ 0
 
-angularFunc :: Int -> PixelOp (Pixel ComplexImage)
-angularFunc freq =
-  \x y ->
-     ejx
-       ((P.fromIntegral freq) *
-        (angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)))
+{-# INLINE angularFunc #-}
 
-radialFunc :: Int -> PixelOp (Pixel ComplexImage)
-radialFunc freq =
-  \x y ->
-     ejx
-       ((1 - exp (-1 * P.fromIntegral freq / 8)) *
-        (sqrt . P.fromIntegral $ x ^ 2 + y ^ 2) *
-        pi)
+angularFunc :: Int -> PixelOp (Pixel ComplexImage)
+angularFunc freq x y =
+  ejx
+    (P.fromIntegral freq *
+     angleFunctionRad (P.fromIntegral x) (P.fromIntegral y))
+
+{-# INLINE radialFunc #-}
+
+radialFunc :: Double -> Int -> PixelOp (Pixel ComplexImage)
+radialFunc scale freq x y =
+  ejx
+    ((sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * fromIntegral freq *
+     (2 * pi) /
+     (16 * scale))
+-- ejx
+--   ((1 - exp (-1 * P.fromIntegral freq / 8)) *
+--    (sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) *
+--    pi)
+
+{-# INLINE fans #-}
 
 fans :: Double -> Int -> Int -> PixelOp (C.Complex Double)
 fans scale _rf af x y
-  | scale == 0 = (angularFunc af x y)
-  | otherwise = (angularFunc af x y) * (real2Complex (gaussian2D scale x y))
+  | scale == 0 = angularFunc af x y
+  | otherwise = angularFunc af x y * real2Complex (gaussian2D scale x y)
 
-bullseye :: Double
-         -> Int
-         -> Int
-         -> PixelOp (C.Complex Double)
+{-# INLINE bullseye #-}
+
+bullseye :: Double -> Int -> Int -> PixelOp (C.Complex Double)
 bullseye scale rf _af x y
-  | scale == 0 = (radialFunc rf x y)
-  | otherwise = (radialFunc rf x y) * (real2Complex (gaussian2D scale x y))
+  | scale == 0 = radialFunc scale rf x y
+  | otherwise = radialFunc scale rf x y * real2Complex (gaussian2D scale x y)
 
-pinwheels :: Double
-          -> Int
-          -> Int
-          -> PixelOp (C.Complex Double)
+{-# INLINE pinwheels #-}
+
+pinwheels :: Double -> Int -> Int -> PixelOp (C.Complex Double)
 pinwheels scale rf af x y
-  | scale == 0 = (real2Complex (gaussian2D scale x y)) * (angularFunc af x y)
+  | scale == 0 = angularFunc af x y * radialFunc scale  rf x y
   | otherwise =
-    (real2Complex (gaussian2D scale x y)) * (angularFunc af x y) *
-    (radialFunc rf x y)
+    real2Complex (gaussian2DRing af rf scale x y) * angularFunc af x y * radialFunc scale rf x y
 
-getFilterFunc :: PolarSeparableFilterParams
-              -> (Double  -> Int -> Int -> PixelOp (C.Complex Double))
-getFilterFunc PolarSeparableFilterParams {getName = Fans}      = fans
-getFilterFunc PolarSeparableFilterParams {getName = Bullseye}  = bullseye
+{-# INLINE getFilterFunc #-}
+
+getFilterFunc
+  :: PolarSeparableFilterParams
+  -> (Double -> Int -> Int -> PixelOp (C.Complex Double))
+getFilterFunc PolarSeparableFilterParams {getName = Fans} = fans
+getFilterFunc PolarSeparableFilterParams {getName = Bullseye} = bullseye
 getFilterFunc PolarSeparableFilterParams {getName = Pinwheels} = pinwheels
 
-getFilterNum :: PolarSeparableFilterParams -> Int
-getFilterNum (PolarSeparableFilterParams _ scale rs as _) =
+{-# INLINE getFilterSetFunc #-}
+
+getFilterSetFunc
+  :: PolarSeparableFilterParamsSet
+  -> (Double -> Int -> Int -> PixelOp (C.Complex Double))
+getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Fans} = fans
+getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Bullseye} = bullseye
+getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Pinwheels} = pinwheels
+
+getFilterNum :: PolarSeparableFilterParamsSet -> Int
+getFilterNum (PolarSeparableFilterParamsSet _ _ scale rs as _) =
   (P.product . P.map Set.size $ [rs, as]) * Set.size scale
 
-{- HWD format -}
-slice2D :: AU.Array (Int, Int, Int) a -> Int -> AU.Array (Int, Int) a
-slice2D arr featureIdx =
-  array
-    arrRange
-    [ (idx, (\(j, i) -> arr AU.! (j, i, featureIdx)) idx)
-    | idx <- range arrRange ]
+makeFilter
+  :: PolarSeparableFilterParams
+  -> PolarSeparableFilter PolarSeparableFilterParams (R.Array U DIM2 (C.Complex Double))
+makeFilter params@(PolarSeparableFilterParams (ny, nx) downSampleFactor scale rf af _name) =
+  PolarSeparableFilter params .
+  computeS .
+  twoDCArray2RArray . dftN [0, 1] . listArray ((0, 0), (ny' - 1, nx' - 1)) $
+  makeFilterList ny' nx' (getFilterFunc params scale rf af)
   where
-    ((0, 0, 0), (ny, nx, nf)) = bounds arr
-    arrRange = ((0, 0), (ny, nx))
+    ny' = div ny downSampleFactor
+    nx' = div nx downSampleFactor
 
-{- slice the outmost dimension -}
-slice1D :: AU.Array (Int,Int,Int) a -> [[a]]
-slice1D arr =
-  [ [ arr AU.! (j, i, k)
-    | k <- [0 .. nf] ]
-  | (j, i) <- range twoDRange ]
+makeFilterSet
+  :: PolarSeparableFilterParamsSet
+  -> PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))
+makeFilterSet params@(PolarSeparableFilterParamsSet (ny, nx) downSampleFactor scaleSet rfSet afSet _name) =
+  PolarSeparableFilter params filterArr
   where
-    ((0, 0, 0), (ny, nx, nf)) = bounds arr
-    twoDRange = ((0, 0), (ny, nx))
+    !paramsList = generateParamsSet scaleSet rfSet afSet
+    !filterEleList =
+      L.map
+        (\(scale, rf, af) ->
+            makeFilterList ny' nx' (getFilterSetFunc params scale rf af))
+        paramsList
+    !ny' = div ny downSampleFactor
+    !nx' = div nx downSampleFactor
+    !nf' = L.length filterEleList
+    !cArr = listArray ((0, 0, 0), (nf' - 1, ny' - 1, nx' - 1)) . L.concat $ filterEleList
+    !dftCArr = dftN [1, 2] cArr
+    !filterArr = computeS $ threeDCArray2RArray dftCArr
+
+displayFilter :: PolarSeparableFilterParams -> ComplexImage
+displayFilter params@(PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af _name) =
+  IM.makeImage ny' nx' (getFilterFunc params scale rf af) :: ComplexImage
+  where
+    ny' = div ny downsampleFactor
+    nx' = div nx downsampleFactor
+
+applyFilterFixedSize
+  :: (Source s (C.Complex Double))
+  => PolarSeparableFilter PolarSeparableFilterParams (R.Array U DIM2 (C.Complex Double))
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double)
+applyFilterFixedSize (PolarSeparableFilter params filter') =
+  filterFunc (getDownsampleFactor params) filter'
+
+applyFilterSetFixedSize
+  :: (Source s (C.Complex Double))
+  => PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double)
+applyFilterSetFixedSize (PolarSeparableFilter params filter') =
+  filterSetFunc (getDownsampleFactorSet params) filter'
+
+applyFilterVariedSize
+  :: (Source s (C.Complex Double))
+  => PolarSeparableFilterParams
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double)
+applyFilterVariedSize (PolarSeparableFilterParams _ downsampleFactor scale rf af name) inputArr =
+  filterFunc downsampleFactor filter' inputArr
+  where
+    (Z :. _ :. ny :. nx) = extent inputArr
+    (PolarSeparableFilter _ !filter') =
+      CV.Filter.PolarSeparableFilter.makeFilter
+        (PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af name)
+
+applyFilterSetVariedSize
+  :: (Source s (C.Complex Double))
+  => PolarSeparableFilterParamsSet
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double)
+applyFilterSetVariedSize (PolarSeparableFilterParamsSet _ downsampleFactor scaleSet rfSet afSet name) inputArr =
+  filterSetFunc downsampleFactor filter' inputArr
+  where
+    (Z :. _ :. ny :. nx) = extent inputArr
+    (PolarSeparableFilter _ !filter') =
+      makeFilterSet
+        (PolarSeparableFilterParamsSet
+           (ny, nx)
+           downsampleFactor
+           scaleSet
+           rfSet
+           afSet
+           name)
+
+{-# INLINE filterFunc #-}
+
+filterFunc
+  :: (Source s (C.Complex Double))
+  => Int
+  -> R.Array U DIM2 (C.Complex Double)
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double)
+filterFunc downsampleFactor filterArr inputArr =
+  threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
+  where
+    !cArr =
+      if downsampleFactor == 1
+        then threeDRArray2CArray inputArr
+        else threeDRArray2CArray $
+             RU.downsample [downsampleFactor, downsampleFactor, 1] inputArr
+    !dftCArr = dftN [1, 2] cArr
+    !rArr = threeDCArray2RArray dftCArr
+    !multArr =
+      computeUnboxedS $
+      traverse2
+        rArr
+        filterArr
+        const
+        (\f1 f2 idx@(Z :. _k :. j :. i) -> f1 idx * f2 (Z :. j :. i))
+
+{-# INLINE filterSetFunc #-}
+
+filterSetFunc
+  :: (Source s (C.Complex Double))
+  => Int
+  -> R.Array U DIM3 (C.Complex Double)
+  -> R.Array s DIM3 (C.Complex Double)
+  -> R.Array D DIM3 (C.Complex Double)
+filterSetFunc downsampleFactor filterArr inputArr =
+  threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
+  where
+    !cArr =
+      if downsampleFactor == 1
+        then threeDRArray2CArray inputArr
+        else threeDRArray2CArray $
+             RU.downsample [downsampleFactor, downsampleFactor, 1] inputArr
+    !dftCArr = dftN [1, 2] cArr
+    !rArr = threeDCArray2RArray dftCArr
+    !(Z :. nfFilter :. ny' :. nx') = extent filterArr
+    !(Z :. nfInput :. _ :. _) = extent inputArr
+    !newNf = nfFilter * nfInput
+    !multArr =
+      computeUnboxedS $
+      fromFunction
+        (Z :. newNf :. ny' :. nx')
+        (\(Z :. k :. j :. i) ->
+            let !kInput = mod k nfInput
+                !kFilter = div k nfInput
+            in rArr R.! (Z :. kInput :. j :. i) *
+               filterArr R.! (Z :. kFilter :. j :. i))
