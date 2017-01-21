@@ -152,51 +152,54 @@ getAvgLikelihood gmm xs =
   fromIntegral (L.length xs)
 
 em
-  :: Double
-  -> Int
-  -> GMM
+  :: Double -> Double
+  -> Int 
+  -> GMM -> GMM
   -> [((Double, Double), (Double, Double))]
   -> [VU.Vector Double]
   -> IO GMM
-em threshold count' oldGMM bound xs
-  | not (L.null zeroNaNNKIdx) = do
-    print zeroNaNNKIdx
-    gmm <- resetGMM (ResetIndex zeroNaNNKIdx) oldGMM bound
-    em threshold 0 gmm bound xs
-  | not (L.null smallVarianceIdx) = do
-    print smallVarianceIdx
-    putStrLn "reset small variance Gaussian"
-    gmm <- resetGMM (ResetIndex smallVarianceIdx) oldGMM bound
-    em threshold 0 gmm bound xs
-  -- | isJust zeroZIdx = do
-  --   printCurrentTime
-  --   putStrLn "Reset all"
-  --   let !x' = xs !! (fromJust zeroZIdx) 
-  --   print x'
-  --   print oldGMM
-  --   print $ L.map (\(Model (w,gm)) -> gaussian gm x') . model $ oldGMM
-  --   print $ getAssignment oldGMM x'
-  --   gmm <- resetGMM ResetAll oldGMM bound
-  --   em threshold 0 gmm bound xs
-  | rate < threshold || count' == 50 = do
-    printCurrentTime
-    printf "%0.2f\n" oldAvgLikelihood
-    return oldGMM
-  | otherwise = do
-    printCurrentTime
-    printf "%0.2f\n" oldAvgLikelihood
-    em threshold (count' + 1) newGMM bound xs
-  where
-    !oldAssignmentVec = getAssignmentVec oldGMM xs
-    !oldAvgLikelihood = getAvgLikelihood oldGMM xs
-    !nks = getNks oldAssignmentVec
-    !zs = L.map L.sum oldAssignmentVec
-    !zeroZIdx = L.elemIndex 0 zs
-    !zeroNaNNKIdx = L.findIndices (\x' -> x' == 0 || isNaN x') nks
-    !newGMM = updateGMM oldGMM oldAssignmentVec xs
-    !newAvgLikelihood = getAvgLikelihood newGMM xs
-    !rate = abs $ (oldAvgLikelihood - newAvgLikelihood) / oldAvgLikelihood
-    !smallVarianceIdx = L.findIndices (\(Model (_,gm)) -> VU.all (<0.01) . gaussianSigma2 $ gm) . model $ oldGMM
+em threshold lastAvgLikelihood count' oldGMM lastGMM bound xs
+  | not (L.null smallVarianceIdx) =
+    do putStrLn "reset small variance Gaussian"
+       print smallVarianceIdx
+       print . L.map (\x -> (snd . snd $ x) / 10000) $ bound
+       gmm <- resetGMM (ResetIndex smallVarianceIdx) oldGMM bound
+       em threshold lastAvgLikelihood (count' + 1) gmm lastGMM bound xs
+  | not (L.null zeroNaNNKIdx) =
+    do putStrLn "reset models which have no points assigned to them."
+       print zeroNaNNKIdx
+       print nks
+       gmm <- resetGMM (ResetIndex zeroNaNNKIdx) oldGMM bound
+       em threshold lastAvgLikelihood 0 gmm lastGMM bound xs
+  | oldAvgLikelihood < lastAvgLikelihood =
+    do printCurrentTime
+       printf "%0.2f    %0.2f\n" oldAvgLikelihood lastAvgLikelihood
+       return lastGMM
+  | rate < threshold || count' == 50 =
+    do printCurrentTime
+       printf "%0.2f\n" oldAvgLikelihood 
+       return oldGMM
+  | otherwise =
+    do printCurrentTime
+       printf "%0.2f\n" oldAvgLikelihood
+       em threshold oldAvgLikelihood (count' + 1) newGMM oldGMM bound xs
+  where !oldAssignmentVec = getAssignmentVec oldGMM xs
+        !oldAvgLikelihood = getAvgLikelihood oldGMM xs
+        !nks = getNks oldAssignmentVec
+        !zs = L.map L.sum oldAssignmentVec
+        !zeroZIdx = L.elemIndex 0 zs
+        !zeroNaNNKIdx =
+          L.findIndices (\x' -> x' == 0 || isNaN x')
+                        nks
+        !newGMM = updateGMM oldGMM oldAssignmentVec xs
+        -- !newAvgLikelihood = getAvgLikelihood newGMM xs
+        !rate =
+          abs $ (lastAvgLikelihood - oldAvgLikelihood) / lastAvgLikelihood
+        !smallVarianceIdx = 
+          L.findIndices
+            (\(Model (_,gm)) -> L.and . L.zipWith (\(_,(_,up)) x -> x < (up / 10000)) bound . VU.toList . gaussianSigma2 $ gm) .
+          model $
+          oldGMM
 
 gmmSink
   :: ParallelParams
@@ -210,7 +213,7 @@ gmmSink parallelParams filePath numM threshold numTrain = do
   let !ys = L.concat xs
       !bound = getFeatureBound parallelParams ys
   gmm <- liftIO $ initializeGMM numM bound
-  newGMM <- liftIO $ em threshold 0 gmm bound ys
+  newGMM <- liftIO $ em threshold (fromIntegral (minBound::Int)) 0 gmm gmm bound ys
   liftIO $ writeGMM filePath [newGMM]
 
 hGMMSink
@@ -226,7 +229,7 @@ hGMMSink parallelParams handle numM  threshold numTrain = do
       !ys = L.concat xs'
       !bound = getFeatureBound parallelParams ys
   gmm <- liftIO $ initializeGMM numM bound
-  newGMM <- liftIO $ em threshold 0 gmm bound ys
+  newGMM <- liftIO $ em threshold (fromIntegral (minBound :: Int)) 0 gmm gmm bound ys
   liftIO $ hPutGMM handle newGMM
   return arrs
   
@@ -242,7 +245,7 @@ hGMMSink1 parallelParams handle numM threshold numTrain = do
   let !ys = L.concat xs'
       !bound = getFeatureBound parallelParams ys
   gmm <- liftIO $ initializeGMM numM bound
-  newGMM <- liftIO $ em threshold 0 gmm bound ys
+  newGMM <- liftIO $ em threshold (fromIntegral (minBound :: Int)) 0 gmm gmm bound ys
   liftIO $ hPutGMM handle newGMM
   liftIO . putStrLn $ "One layer is finished."
 
@@ -287,10 +290,7 @@ getFeatureBound parallelParams xs =
              (L.sum . L.map (^ (2 :: Int)) $ y') /
              (fromIntegral . L.length $ y')
            up = d - m ^ (2 :: Int)
-       in ((-1.5 * m,1.5 * m)
-          ,(1
-           ,if up < 1
-               then 1
-               else up)))
+       in ((L.minimum y' / 4,L.maximum y' / 4)
+          ,(up / 2, up * 2)))
     ys
   where !ys = L.transpose . L.map VU.toList $ xs

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs  #-}
@@ -52,7 +53,7 @@ readLabeledImagebinary filePath =
              let size' = fromIntegral (decode sizeBS :: Word32) :: Int
              bs <- BL.hGet h size'
              let (LabeledArray label arr) = decode bs :: LabeledArray DIM3 Word8
-             return . LabeledArray label . computeUnboxedS . R.map fromIntegral $
+             return . LabeledArray label . computeUnboxedS . rescaleWord8 $
                arr))
 
 
@@ -103,7 +104,7 @@ readLabeledImagebinaryConduit = do
         (do let size' = fromIntegral (decode sizeBS :: Word32) :: Int
             bs <- CB.take size'
             let (LabeledArray label arr) = decode bs :: LabeledArray DIM3 Word8
-            yield . LabeledArray label . computeUnboxedS . R.map fromIntegral $
+            yield . LabeledArray label . computeUnboxedS . rescaleWord8 $
               arr
             go)
             
@@ -180,3 +181,10 @@ meanSubtractConduit parallelParams = do
 --       let !m = sumAllS arr / fromIntegral (nf * nx * ny)
 --           (Z :. nf :. ny :. nx) = extent arr
 --       in yield $! LabeledArray label . computeUnboxedS $ R.map (\x -> x - m) arr)
+
+-- rescaleWord8 [0,255] to [-1,1]
+
+{-# INLINE rescaleWord8 #-}
+
+rescaleWord8 :: (R.Source s Word8) => R.Array s DIM3 Word8 -> R.Array R.D DIM3 Double
+rescaleWord8 = R.map (\x -> ((fromIntegral x / 255) - 0.5) * 2)

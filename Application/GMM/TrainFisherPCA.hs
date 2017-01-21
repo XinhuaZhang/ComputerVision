@@ -97,7 +97,7 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params  - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsList = [filterParamsSet1, filterParamsSet2 ,filterParamsSet2]
+      filterParamsList = L.take (numLayer params) [filterParamsSet1, filterParamsSet2 ,filterParamsSet2]
       numFeature = L.sum . L.map cols $ pcaMatrixes
       trainParams =
         TrainParams

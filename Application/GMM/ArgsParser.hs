@@ -24,6 +24,7 @@ data Flag
   | NumGMMExample Int
   | IsFixedSize
   | NumPrincipal [Int]
+  | NumLayer Int
   deriving (Show)
 
 data Params = Params
@@ -45,6 +46,7 @@ data Params = Params
   , numGMMExample    :: Int
   , isFixedSize      :: Bool
   , numPrincipal     :: [Int]
+  , numLayer         :: Int
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -135,6 +137,11 @@ options =
               in NumPrincipal $ map (readInt . L.reverse) $ go [] x)
           "[Int]")
        "Set the output dimension of PCA dimensional reduction."
+  ,   Option
+        ['l']
+        ["numLayer"]
+        (ReqArg (NumLayer . readInt) "INT")
+        "Set the number of layers."
   ]
 
 readInt :: String -> Int
@@ -160,139 +167,48 @@ compilerOpts argv =
 
 parseFlag :: [Flag] -> Params
 parseFlag flags = go flags defaultFlag
-  where
-    defaultFlag =
-      Params
-      { inputFile = ""
-      , labelFile = ""
-      , c = 1.0
-      , numThread = 1
-      , modelName = "model"
-      , findC = False
-      , batchSize = 1
-      , downsampleFactor = 1
-      , gmmFile = "gmm.dat"
-      , pcaFile = "pca.dat"
-      , threshold = -15
-      , numGaussian = 1
-      , freq = 0
-      , scale = [1]
-      , isComplex = False
-      , numGMMExample = 1
-      , isFixedSize = False
-      , numPrincipal =  [1]
-      }
-    go [] params = params
-    go (x:xs) params =
-      case x of
-        InputFile str ->
-          go
-            xs
-            (params
-             { inputFile = str
-             })
-        LabelFile str ->
-          go
-            xs
-            (params
-             { labelFile = str
-             })
-        Thread n ->
-          go
-            xs
-            (params
-             { numThread = n
-             })
-        C v ->
-          go
-            xs
-            (params
-             { c = v
-             })
-        ModelName str ->
-          go
-            xs
-            (params
-             { modelName = str
-             })
-        FindC ->
-          go
-            xs
-            (params
-             { findC = True
-             })
-        BatchSize x ->
-          go
-            xs
-            (params
-             { batchSize = x
-             })
-        DownsampleFactor v ->
-          go
-            xs
-            (params
-             { downsampleFactor = v
-             })
-        GMMFile str ->
-          go
-            xs
-            (params
-             { gmmFile = str
-             })
-        PCAFile str ->
-          go
-            xs
-            (params
-             { pcaFile = str
-             })
-        Threshold v ->
-          go
-            xs
-            (params
-             { threshold = v
-             })
-        NumGaussian v ->
-          go
-            xs
-            (params
-             { numGaussian = v
-             })
-        Freq v ->
-          go
-            xs
-            (params
-             { freq = v
-             })
-        Scale v ->
-          go
-            xs
-            (params
-             { scale = v
-             })
-        IsComplex ->
-          go
-            xs
-            (params
-             { isComplex = True
-             })
-        NumGMMExample v ->
-          go
-            xs
-            (params
-             { numGMMExample = v
-             })
-        IsFixedSize ->
-          go
-            xs
-            (params
-             { isFixedSize = True
-             })
-        NumPrincipal v ->
-          go
-            xs
-            (params
-             { numPrincipal = v
-             })
+  where defaultFlag =
+          Params {inputFile = ""
+                 ,labelFile = ""
+                 ,c = 1.0
+                 ,numThread = 1
+                 ,modelName = "model"
+                 ,findC = False
+                 ,batchSize = 1
+                 ,downsampleFactor = 1
+                 ,gmmFile = "gmm.dat"
+                 ,pcaFile = "pca.dat"
+                 ,threshold = -15
+                 ,numGaussian = 1
+                 ,freq = 0
+                 ,scale = [1]
+                 ,isComplex = False
+                 ,numGMMExample = 1
+                 ,isFixedSize = False
+                 ,numPrincipal = [1]
+                 ,numLayer = 1}
+        go [] params = params
+        go (x:xs) params =
+          case x of
+            InputFile str -> go xs (params {inputFile = str})
+            LabelFile str -> go xs (params {labelFile = str})
+            Thread n -> go xs (params {numThread = n})
+            C v -> go xs (params {c = v})
+            ModelName str -> go xs (params {modelName = str})
+            FindC -> go xs (params {findC = True})
+            BatchSize x -> go xs (params {batchSize = x})
+            DownsampleFactor v -> go xs (params {downsampleFactor = v})
+            GMMFile str -> go xs (params {gmmFile = str})
+            PCAFile str -> go xs (params {pcaFile = str})
+            Threshold v -> go xs (params {threshold = v})
+            NumGaussian v -> go xs (params {numGaussian = v})
+            Freq v -> go xs (params {freq = v})
+            Scale v -> go xs (params {scale = v})
+            IsComplex -> go xs (params {isComplex = True})
+            NumGMMExample v -> go xs (params {numGMMExample = v})
+            IsFixedSize -> go xs (params {isFixedSize = True})
+            NumPrincipal v -> go xs (params {numPrincipal = v})
+            NumLayer x -> go xs (params {numLayer = x})
 
 parseArgs :: [String] -> IO Params
 parseArgs args = do
