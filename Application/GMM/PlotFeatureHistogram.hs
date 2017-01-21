@@ -98,7 +98,8 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSetList = [filterParamsSet1,filterParamsSet2, filterParamsSet2]
+      filterParamsSetList =
+        [filterParamsSet1, filterParamsSet2]
       magnitudeConduit =
         if isFixedSize params
           then multiLayerMagnitudeFixedSizedConduit
