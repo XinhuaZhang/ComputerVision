@@ -3,19 +3,14 @@
 module Application.PairwiseEntropy.Histogram where
 
 import           Control.DeepSeq
-import qualified Control.Monad        as M
 import           CV.Utility.Parallel
 import           Data.Binary
-import qualified Data.ByteString.Lazy as BL
 import           Data.Int
 import           Data.List            as L
-import           Data.Maybe
 import qualified Data.Vector          as V
 import           Data.Vector.Unboxed  as VU
-import           Data.Word
 import           GHC.Generics
 import           Prelude              as P
-import           System.IO
 
 type HistBinType = Word
 
@@ -48,7 +43,7 @@ data Bin =
   deriving (Show, Read, Generic)
 
 instance NFData Bin where
-  rnf (Bin vec count) = (rnf vec) `seq` count `seq` ()
+  rnf (Bin vec count) = rnf vec `seq` count `seq` ()
   
 instance Binary Bin where
   put (Bin vec n) = do
@@ -65,8 +60,8 @@ data KdHist = KdHist
   } deriving (Show, Read)
 
 instance NFData KdHist where
-  rnf (KdHist params hist) = rnf params `seq` rnf hist
-  
+  rnf (KdHist params' hist) = rnf params' `seq` rnf hist
+
 instance Binary KdHist where
   put (KdHist p h) = do
     put p
@@ -78,15 +73,15 @@ instance Binary KdHist where
 
 -- Here assuming every value is greater than zero.
 build :: KdHistParams -> [Vector Double] -> KdHist
-build params [] = KdHist params []
-build params@(KdHistParams numDim binWidth negativeBinFlag len) xs =
-  KdHist params $ merge 1 zs
+build params' [] = KdHist params' []
+build params'@(KdHistParams numDim' binWidth' negativeBinFlag' len) xs =
+  KdHist params' $ merge 1 zs
   where
     m =
       fromIntegral $
-      case negativeBinFlag of
-        False -> numDim
-        True  -> (2 * numDim - 1)
+      if negativeBinFlag'
+        then 2 * numDim' - 1
+        else numDim'
     ys =
       P.map
         (VU.fromList .
@@ -103,31 +98,31 @@ build params@(KdHistParams numDim binWidth negativeBinFlag len) xs =
     zs = L.sort ys
     locate :: Double -> HistBinType
     locate x
-      | negativeBinFlag && (y <= (-n)) = 0
-      | negativeBinFlag && y >= n = 2 * n
-      | negativeBinFlag && (y < n && y > (-n)) = y + n
+      | negativeBinFlag' && (y <= (-n)) = 0
+      | negativeBinFlag' && y >= n = 2 * n
+      | negativeBinFlag' && (y < n && y > (-n)) = y + n
       | y > n = n
       | otherwise = y
       where
-        y = floor (x / binWidth)
-        n = fromIntegral $ numDim - 1
+        y = floor (x / binWidth')
+        n = fromIntegral $ numDim' - 1
     splitVec
       :: (Unbox a)
       => Vector a -> [Vector a]
-    splitVec xs
-      | VU.null xs = []
+    splitVec xs'
+      | VU.null xs' = []
       | otherwise = as : splitVec bs
       where
-        (as, bs) = VU.splitAt len xs
+        (as, bs) = VU.splitAt len xs'
     merge :: Int -> [Vector HistBinType] -> [Bin]
     merge _ [] = []
-    merge _ (x:[]) = [Bin x 1]
-    merge !n (x:y:[])
+    merge _ [x] = [Bin x 1]
+    merge !n [x, y]
       | x == y = [Bin x (n + 1)]
-      | otherwise = [(Bin x n), (Bin y 1)]
-    merge n (x:y:xs)
-      | x == y = merge (n + 1) (y : xs)
-      | otherwise = (Bin x n) : (merge 1 (y : xs))
+      | otherwise = [Bin x n, Bin y 1]
+    merge !n (x:y:xs')
+      | x == y = merge (n + 1) (y : xs')
+      | otherwise = Bin x n : merge 1 (y : xs')
 
 intersection :: KdHist -> KdHist -> Int
 intersection (KdHist _ xs') (KdHist _ ys') = result
@@ -136,21 +131,14 @@ intersection (KdHist _ xs') (KdHist _ ys') = result
     func :: [Bin] -> [Bin] -> Int
     func [] _ = 0
     func _ [] = 0
-    func ((Bin x a):xs) ((Bin y b):ys)
-      | x == y = (m + r)
-      | x < y = func xs ((Bin y b) : ys)
-      | x > y = func ((Bin x a) : xs) ys
-      where
-        m = (min a b)
-        r = func xs ys
+    func (Bin x a:xs) (Bin y b:ys)
+      | x == y = min a b + func xs ys
+      | x < y = func xs (Bin y b : ys)
+      | x > y = func (Bin x a : xs) ys
 
 computeSVMKernel :: ParallelParams -> [KdHist] -> [[Int]]
 computeSVMKernel parallelParams xs =
-  parMapChunk
-    parallelParams
-    rdeepseq
-    (\x -> P.map (\y -> intersection x y) xs)
-    xs
+  parMapChunk parallelParams rdeepseq (\x -> P.map (intersection x) xs) xs
 
 computeSVMKernelDouble :: ParallelParams -> [KdHist] -> [[Double]]
 computeSVMKernelDouble parallelParams xs =
@@ -166,15 +154,13 @@ computeSVMKernelDouble parallelParams xs =
   where
     sp zs
       | V.null zs = []
-      | otherwise = (V.toList as) : sp bs
+      | otherwise = V.toList as : sp bs
       where
         (as, bs) = V.splitAt (P.length xs) zs
 
 entropy :: KdHist -> Double
 entropy (KdHist _ bins) =
-  -1 *
-   (L.sum . L.map (\x -> x * log x) . L.map (\x -> (fromIntegral x) / s) $ xs)
+  -1 * (L.sum . L.map ((\x -> x * log x) . (\x -> fromIntegral x / s)) $ xs)
   where
     !xs = L.map (\(Bin _ n) -> n) bins
     !s = fromIntegral $ L.sum xs
-    
