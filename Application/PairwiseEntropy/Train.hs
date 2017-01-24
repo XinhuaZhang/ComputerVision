@@ -1,8 +1,7 @@
 module Main where
 
-import           Application.PairwiseEntropy.ArgsParser     as Parser
-import           Application.MultiDimensionalGMM.GMM
-import           Application.MultiDimensionalGMM.MixtureModel
+import           Application.PairwiseEntropy.ArgsParser       as Parser
+import           Application.PairwiseEntropy.PairwiseEntropy
 import           Classifier.LibLinear
 import           Control.Monad
 import           Control.Monad.IO.Class
@@ -11,20 +10,19 @@ import           Control.Parallel
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
-import           CV.Utility.Parallel            as Parallel
+import           CV.Utility.Parallel                          as Parallel
 import           CV.Utility.Time
-import           Data.Array.Repa                as R
+import           Data.Array.Repa                              as R
 import           Data.Conduit
-import           Data.Conduit.Binary            as CB
-import           Data.Conduit.List              as CL
-import           Data.List                      as L
-import           Data.Set                       as S
-import           Data.Vector.Unboxed            as VU
+import           Data.Conduit.Binary                          as CB
+import           Data.Conduit.List                            as CL
+import           Data.List                                    as L
+import           Data.Set                                     as S
+import           Data.Vector.Unboxed                          as VU
 import           Foreign.Ptr
-import           Numeric.LinearAlgebra.Data     as LA
-import           Prelude                        as P
+import           Numeric.LinearAlgebra.Data                   as LA
+import           Prelude                                      as P
 import           System.Environment
-import Application.PairwiseEntropy.PairwiseEntropy
 
 trainSink
   :: ParallelParams
@@ -50,7 +48,7 @@ trainSink parallelParams filePath trainParams findCFlag = go [] []
                trainParams
                (P.concat . L.reverse $ label)
                (P.concat . L.reverse $ pss)
-               
+
 
 main = do
   args <- getArgs
@@ -58,8 +56,6 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  gmm <- readGMM (gmmFile params) :: IO [GMM]
-  pcaMatrixes <- readMatrixes (pcaFile params)
   imageListLen <- getArrayNumFile (inputFile params)
   imageSize <-
     if isFixedSize params
@@ -99,30 +95,27 @@ main = do
         L.take
           (numLayer params)
           [filterParamsSet1, filterParamsSet2, filterParamsSet2]
-      numFeature = L.sum . L.map cols $ pcaMatrixes
+      numFeature = numLayer params * 4096
       trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
         , trainC = c params
         , trainNumExamples = imageListLen
-        , trainFeatureIndexMax =
-          if isComplex params
-            then (4 * numFeature) * (numModel $ P.head gmm)
-            else (2 * numFeature) * (numModel $ P.head gmm)
+        , trainFeatureIndexMax = numFeature
         , trainModel = modelName params
         }
       magnitudeConduit =
         if isFixedSize params
-          then multiLayerMagnitudeFixedSizedConduit
+          then multiLayerMagnitudeFixedSizedConduit1
                  parallelParams
                  (L.map makeFilterSet filterParamsList)
                  (downsampleFactor params)
-          else multiLayerMagnitudeVariedSizedConduit
+          else multiLayerMagnitudeVariedSizedConduit1
                  parallelParams
                  filterParamsList
                  (downsampleFactor params)
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
-    pairwiseEntropyConduit parallelParams 1000 0.01 =$=
+    pairwiseEntropyConduit parallelParams 100 0.1 =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)

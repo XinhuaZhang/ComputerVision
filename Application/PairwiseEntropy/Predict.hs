@@ -1,9 +1,9 @@
 module Main where
 
-import           Application.PairwiseEntropy.ArgsParser     as Parser
-import           Application.MultiDimensionalGMM.GMM
-import           Application.MultiDimensionalGMM.MixtureModel
+import           Application.PairwiseEntropy.ArgsParser      as Parser
+import           Application.PairwiseEntropy.PairwiseEntropy
 import           Classifier.LibLinear
+import           Control.Arrow
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
@@ -11,20 +11,19 @@ import           Control.Parallel
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
-import           CV.Utility.Parallel            as Parallel
+import           CV.Utility.Parallel                         as Parallel
 import           CV.Utility.Time
-import           Data.Array.Repa                as R
+import           Data.Array.Repa                             as R
 import           Data.Conduit
-import           Data.Conduit.Binary            as CB
-import           Data.Conduit.List              as CL
-import           Data.List                      as L
-import           Data.Set                       as S
-import           Data.Vector.Unboxed            as VU
+import           Data.Conduit.Binary                         as CB
+import           Data.Conduit.List                           as CL
+import           Data.List                                   as L
+import           Data.Set                                    as S
+import           Data.Vector.Unboxed                         as VU
 import           Foreign.Ptr
-import           Numeric.LinearAlgebra.Data     as LA
-import           Prelude                        as P
+import           Numeric.LinearAlgebra.Data                  as LA
+import           Prelude                                     as P
 import           System.Environment
-import Application.PairwiseEntropy.PairwiseEntropy
 
 
 main = do
@@ -33,8 +32,6 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  gmm <- readGMM (gmmFile params) :: IO [GMM]
-  pcaMatrixes <- readMatrixes (pcaFile params)
   imageSize <-
     if isFixedSize params
       then do
@@ -72,17 +69,17 @@ main = do
       filterParamsList = L.take (numLayer params) [filterParamsSet1, filterParamsSet2,filterParamsSet2]
       magnitudeConduit =
         if isFixedSize params
-          then multiLayerMagnitudeFixedSizedConduit
+          then multiLayerMagnitudeFixedSizedConduit1
                  parallelParams
                  (L.map makeFilterSet filterParamsList)
                  (downsampleFactor params)
-          else multiLayerMagnitudeVariedSizedConduit
+          else multiLayerMagnitudeVariedSizedConduit1
                  parallelParams
                  filterParamsList
                  (downsampleFactor params)
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
-    pairwiseEntropyConduit parallelParams 1000 0.01 =$=
+    pairwiseEntropyConduit parallelParams 100 0.1 =$=
     CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")

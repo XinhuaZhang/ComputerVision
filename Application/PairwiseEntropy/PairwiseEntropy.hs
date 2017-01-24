@@ -36,7 +36,7 @@ pairwiseEntropyConduit
   => ParallelParams
   -> Int
   -> Double
-  -> Conduit (Int, [R.Array s DIM3 Double]) (ResourceT IO) (Int, [[VU.Vector Double]])
+  -> Conduit (Int, [R.Array s DIM3 Double]) (ResourceT IO) (Int, VU.Vector Double)
 pairwiseEntropyConduit parallelParams nd bw = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -47,7 +47,7 @@ pairwiseEntropyConduit parallelParams nd bw = do
                 rdeepseq
                 (\(label, zs) ->
                     ( label
-                    , L.map (\z -> [VU.fromList $ pairwiseEntropy nd bw z]) zs))
+                    , VU.concat $ L.concatMap (\z -> [VU.fromList $ pairwiseEntropy nd bw z]) zs))
                 xs
         sourceList ys
         pairwiseEntropyConduit parallelParams nd bw)
