@@ -131,6 +131,52 @@ multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList factor = d
                 xs
         sourceList ys
         multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList factor)
+        
+
+
+multiLayerMagnitudeFixedSizedConduit1
+  :: ParallelParams
+  -> [PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))]
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [R.Array U DIM3 Double])
+multiLayerMagnitudeFixedSizedConduit1 parallelParams filters' factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label arr') ->
+                    let arrs = multiLayerMagnitudeFixedSize1 filters' factor arr'
+                    in deepSeqArrays arrs (label, arrs))
+                xs
+        sourceList ys
+        multiLayerMagnitudeFixedSizedConduit1 parallelParams filters' factor)
+
+multiLayerMagnitudeVariedSizedConduit1
+  :: ParallelParams
+  -> [PolarSeparableFilterParamsSet]
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [R.Array U DIM3 Double])
+multiLayerMagnitudeVariedSizedConduit1 parallelParams filterParamsList factor = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label arr') ->
+                    let arrs =
+                          multiLayerMagnitudeVariedSize1
+                            filterParamsList
+                            factor
+                            arr'
+                    in deepSeqArrays arrs (label, arrs))
+                xs
+        sourceList ys
+        multiLayerMagnitudeVariedSizedConduit1 parallelParams filterParamsList factor)
 
 
 {-# INLINE singleLayerMagnitudeFixedSize #-}
@@ -170,6 +216,28 @@ multiLayerMagnitudeFixedSize filters' factor inputArr =
         R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $ arr')
     (delay inputArr) $
   filters'
+  
+
+{-# INLINE multiLayerMagnitudeFixedSize1 #-}
+
+multiLayerMagnitudeFixedSize1
+  :: (R.Source s Double)
+  => [PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))]
+  -> Int
+  -> Array s DIM3 Double
+  -> [Array U DIM3 Double]
+multiLayerMagnitudeFixedSize1 filters' factor inputArr =
+  L.map
+    (\arr' ->
+        let !(Z :. (_nf' :: Int) :. (ny' :: Int) :. (nx' :: Int)) = extent downSampledArr
+            !downSampledArr = RU.downsample [factor, factor, 1] arr'
+        in computeUnboxedS downSampledArr) .
+  L.tail .
+  L.scanl'
+    (\arr' filter' ->
+        R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $ arr')
+    (delay inputArr) $
+  filters'
 
 {-# INLINE singleLayerMagnitudeVariedSize #-}
 
@@ -203,6 +271,29 @@ multiLayerMagnitudeVariedSize filterParamsList factor inputArr =
             (Z :. All :. j :. i)
            | j <- [0 .. ny' - 1]
            , i <- [0 .. nx' - 1] ]) .
+  L.tail .
+  L.scanl'
+    (\arr' filterParams ->
+        R.map C.magnitude . applyFilterSetVariedSize filterParams . R.map (:+ 0) $
+        arr')
+    (delay inputArr) $
+  filterParamsList
+  
+
+{-# INLINE multiLayerMagnitudeVariedSize1 #-}
+
+multiLayerMagnitudeVariedSize1
+  :: (R.Source s Double)
+  => [PolarSeparableFilterParamsSet]
+  -> Int
+  -> Array s DIM3 Double
+  -> [Array U DIM3 Double]
+multiLayerMagnitudeVariedSize1 filterParamsList factor inputArr =
+  L.map
+    (\arr' ->
+        let !(Z :. _ :. (ny' :: Int) :. (nx' :: Int)) = extent downSampledArr
+            !downSampledArr = RU.downsample [factor, factor, 1] arr'
+        in computeUnboxedS downSampledArr) .
   L.tail .
   L.scanl'
     (\arr' filterParams ->
