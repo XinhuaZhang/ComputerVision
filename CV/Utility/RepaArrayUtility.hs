@@ -236,5 +236,5 @@ makeFilterList ny nx f =
             then c
             else c - nx
     in f x y
-  | c <- [0 .. nx - 1]
-  , r <- [0 .. ny - 1] ]
+  | r <- [0 .. ny - 1]
+  , c <- [0 .. nx - 1] ]
