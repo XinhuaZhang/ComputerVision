@@ -80,6 +80,6 @@ main = do
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
-    pairwiseEntropyConduit parallelParams 100 0.1 =$=
+    pairwiseEntropyConduit parallelParams 1000 0.01 =$=
     CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")
