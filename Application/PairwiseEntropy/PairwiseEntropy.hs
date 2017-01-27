@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Application.PairwiseEntropy.PairwiseEntropy where
 
@@ -11,6 +12,8 @@ import           Data.Conduit.List                     as CL
 import           Data.List                             as L
 import           Data.Vector.Unboxed                   as VU
 
+{-# INLINE pairwiseEntropy #-}
+
 pairwiseEntropy
   :: (R.Source s Double)
   => Int -> Double -> R.Array s DIM3 Double -> [Double]
@@ -19,16 +22,16 @@ pairwiseEntropy nd bw arr =
     (\(i, j) ->
         let s1 = R.slice arr (Z :. i :. All :. All)
             s2 = R.slice arr (Z :. j :. All :. All)
-            pairList =
+            !pairList =
               L.map VU.fromList . L.transpose . L.map R.toList $
               [s1, s2]
-            params = KdHistParams nd bw False 1
-        in entropy $ build params pairList) $
+            params' = KdHistParams nd bw False 1
+        in entropy $! build params' pairList) 
   [ (i, j)
   | i <- [0 .. nf' - 1]
   , j <- [0 .. nf' - 1] ]
   where
-    (Z :. nf' :. ny' :. nx') = extent arr
+    (Z :. nf' :. _ny' :. _nx') = extent arr
 
 
 pairwiseEntropyConduit

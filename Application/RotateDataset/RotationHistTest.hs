@@ -51,12 +51,15 @@ main = do
                     build histParams . L.map VU.fromList . L.transpose $
                     [R.toList . R.slice arr $ (Z :. i - 1 :. All :. All)])
                 filteredImg
-        in toFile def (show i L.++ ".png") $
-           do layout_title .= "Histogram Intersection"
-              plot
-                (line
-                   ""
-                   [ L.zip (L.map (* (fromIntegral deg)) [0 .. numImage - 1]) $
-                     L.map (H.intersection (L.head hs)) hs
-                   ]))
+            intersectionaVal = L.map (H.intersection (L.head hs)) hs
+        in do print intersectionaVal
+              toFile def (show i L.++ ".png") $
+                do layout_title .= "Histogram Intersection"
+                   plot
+                     (line
+                        ""
+                        [ L.zip
+                            (L.map (* (fromIntegral deg)) [0 .. numImage - 1])
+                            intersectionaVal
+                        ]))
     [1 .. nf']

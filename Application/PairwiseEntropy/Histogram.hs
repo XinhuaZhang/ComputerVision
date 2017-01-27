@@ -1,29 +1,29 @@
-{-# LANGUAGE DeriveGeneric   #-}
-{-# LANGUAGE BangPatterns    #-}
+{-# LANGUAGE BangPatterns  #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Application.PairwiseEntropy.Histogram where
 
 import           Control.DeepSeq
 import           CV.Utility.Parallel
 import           Data.Binary
 import           Data.Int
-import           Data.List            as L
-import qualified Data.Vector          as V
-import           Data.Vector.Unboxed  as VU
+import           Data.List           as L
+import qualified Data.Vector         as V
+import           Data.Vector.Unboxed as VU
 import           GHC.Generics
-import           Prelude              as P
+import           Prelude             as P
 
 type HistBinType = Word
 
 data KdHistParams = KdHistParams
-  { numDim          :: !Int
+  { numBins         :: !Int
   , binWidth        :: !Double
-  , negativeBinFlag :: !Bool -- true: 2*numDim - 1 bins; false: numDim bins
+  , negativeBinFlag :: !Bool -- true: 2*numBins - 1 bins; false: numBins bins
   , vecLen          :: !Int -- the length of a (Verctor Int) that will be convert to an Int.
   } deriving (Show, Read, Generic)
 
 instance NFData KdHistParams where
   rnf (KdHistParams nd bw nbf vl) = nd `seq` bw `seq` nbf `seq` vl `seq` ()
-  
+
 instance Binary KdHistParams where
   put (KdHistParams nd bw nbf vl) = do
     put nd
@@ -44,7 +44,7 @@ data Bin =
 
 instance NFData Bin where
   rnf (Bin vec count) = rnf vec `seq` count `seq` ()
-  
+
 instance Binary Bin where
   put (Bin vec n) = do
     put . VU.toList $ vec
@@ -74,14 +74,14 @@ instance Binary KdHist where
 -- Here assuming every value is greater than zero.
 build :: KdHistParams -> [Vector Double] -> KdHist
 build params' [] = KdHist params' []
-build params'@(KdHistParams numDim' binWidth' negativeBinFlag' len) xs =
+build params'@(KdHistParams numBins' binWidth' negativeBinFlag' len) xs =
   KdHist params' $ merge 1 zs
   where
     m =
       fromIntegral $
       if negativeBinFlag'
-        then 2 * numDim' - 1
-        else numDim'
+        then 2 * numBins' - 1
+        else numBins'
     ys =
       P.map
         (VU.fromList .
@@ -105,7 +105,7 @@ build params'@(KdHistParams numDim' binWidth' negativeBinFlag' len) xs =
       | otherwise = y
       where
         y = floor (x / binWidth')
-        n = fromIntegral $ numDim' - 1
+        n = fromIntegral $ numBins' - 1
     splitVec
       :: (Unbox a)
       => Vector a -> [Vector a]
