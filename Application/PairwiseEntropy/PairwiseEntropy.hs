@@ -3,17 +3,18 @@
 
 module Application.PairwiseEntropy.PairwiseEntropy where
 
-import Application.PairwiseEntropy.Histogram
-import Control.Monad as M
-import Control.Monad.Trans.Resource
-import CV.Utility.Parallel
-import Data.Array.Repa as R
-import Data.Conduit
-import Data.Conduit.List as CL
-import Data.List as L
-import Data.Vector.Unboxed as VU
+import           Application.PairwiseEntropy.Histogram
+import           Control.Monad                         as M
+import           Control.Monad.Trans.Resource
+import           CV.Utility.Parallel
+import           Data.Array.Repa                       as R
+import           Data.Conduit
+import           Data.Conduit.List                     as CL
+import           Data.List                             as L
+import           Data.Vector.Unboxed                   as VU
 
--- {-# INLINE pairwiseEntropy #-}
+{-# INLINE pairwiseEntropy #-}
+
 pairwiseEntropy
   :: (R.Source s Double)
   => Int -> Double -> R.Array s DIM3 Double -> [Double]
@@ -31,6 +32,7 @@ pairwiseEntropy nd bw arr =
     , j <- [0 .. nf' - 1] ]
   where
     (Z :. nf' :. _ny' :. _nx') = extent arr
+
 
 pairwiseEntropyConduit
   :: (R.Source s Double)

@@ -24,6 +24,7 @@ import           Numeric.Statistics.PCA
 import           System.IO
 import           CV.Filter.PolarSeparableFilter
 import           Data.Complex                   as C
+import CV.Array.LabeledArray
 
 hPCASink
   :: ParallelParams
@@ -155,28 +156,24 @@ readMatrix filePath =
 
 
 pinwheelPCANetVariedSizeConduit
-  :: (R.Source s Double)
-  => ParallelParams
+  :: ParallelParams
   -> [PolarSeparableFilterParamsSet]
   -> [Int]
   -> [Matrix Double]
-  -> Conduit (Int, R.Array s DIM3 Double) (ResourceT IO) (Int, [[VU.Vector Double]])
-pinwheelPCANetVariedSizeConduit parallelParams filterParamsList factors pcaMatrix = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rseq
-                (second $ pinwheelPCANetVariedSize filterParamsList factors pcaMatrix)
-                xs
-        sourceList ys
-        pinwheelPCANetVariedSizeConduit
-          parallelParams
-          filterParamsList
-          factors
-          pcaMatrix)
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [[VU.Vector Double]])
+pinwheelPCANetVariedSizeConduit parallelParams filterParamsList factors pcaMatrix =
+  do xs <- CL.take (batchSize parallelParams)
+     unless (L.null xs)
+            (do let ys =
+                      parMapChunk
+                        parallelParams
+                        rseq
+                        (\(LabeledArray label arr) ->
+                           (label
+                           ,pinwheelPCANetVariedSize filterParamsList factors pcaMatrix arr))
+                        xs
+                sourceList ys
+                pinwheelPCANetVariedSizeConduit parallelParams filterParamsList factors pcaMatrix)
 
 {-# INLINE pinwheelPCANetVariedSize #-}
 
