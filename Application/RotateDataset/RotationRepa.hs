@@ -16,6 +16,7 @@ import           Data.Conduit.List           as CL
 import           Data.List                   as L
 import           Data.Vector.Unboxed         as VU
 import           Prelude                     as P
+import           Control.Monad.Trans.Resource
 
 -- First pading image to be a square image then rotating it
 recaleAndRotate2DImageS
@@ -52,7 +53,7 @@ recaleAndRotate2DImageS n degs arr =
     !(Z :. ny :. nx) = extent arr
     !m =
       ceiling
-        (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
+        (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double) + 16
     !paddedImg = pad [m, m] arr
     !ds = computeDerivativeS (computeUnboxedS paddedImg)
     !center = fromIntegral (n - 1) / 2
@@ -196,7 +197,7 @@ rescaleRotateLabeledImageConduit
   :: ParallelParams
   -> Int
   -> Double
-  -> Conduit (LabeledArray DIM3 Double) IO (LabeledArray DIM3 Double)
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
 rescaleRotateLabeledImageConduit parallelParams n deg = do
   xs <- CL.take (batchSize parallelParams)
   unless

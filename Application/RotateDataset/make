@@ -4,3 +4,4 @@ FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-thres
 
 cabal exec -- ghc $FLAG $LIBS -i../../ MainBinary.hs -o mainBinary
 cabal exec -- ghc $FLAG $LIBS -i../../ RotationTest.hs -o rotationTest
+cabal exec -- ghc $FLAG $LIBS -i../../ RotationHistTest.hs -o rotationHistTest
