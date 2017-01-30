@@ -60,8 +60,8 @@ pairwiseEntropyConduit parallelParams nd bw = do
 
 mutualInformation :: KdHist Int -> Double
 mutualInformation hist =
-  entropy hist' -
-  (L.sum . L.map (entropy . computeMarginalHistogram hist') $ indies)
+  (L.sum . L.map (entropy . computeMarginalHistogram hist') $ indies) -
+  entropy hist'
   where
     hist' = fmap fromIntegral hist
     numDims = getNumDims hist
