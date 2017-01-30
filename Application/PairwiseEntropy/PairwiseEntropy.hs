@@ -3,27 +3,29 @@
 
 module Application.PairwiseEntropy.PairwiseEntropy where
 
-import Application.PairwiseEntropy.Histogram
-import Control.Monad as M
-import Control.Monad.Trans.Resource
-import CV.Utility.Parallel
-import Data.Array.Repa as R
-import Data.Conduit
-import Data.Conduit.List as CL
-import Data.List as L
-import Data.Vector.Unboxed as VU
+import           Application.PairwiseEntropy.Histogram
+import           Control.Monad                         as M
+import           Control.Monad.Trans.Resource
+import           CV.Utility.Parallel
+import           Data.Array.Repa                       as R
+import           Data.Conduit
+import           Data.Conduit.List                     as CL
+import           Data.List                             as L
+import           Data.Vector                           as V
+import           Data.Vector.Unboxed                   as VU
 
--- {-# INLINE pairwiseEntropy #-}
+{-# INLINE pairwiseEntropy #-}
+
 pairwiseEntropy
   :: (R.Source s Double)
   => Int -> Double -> R.Array s DIM3 Double -> [Double]
 pairwiseEntropy nd bw arr =
   L.map
     (\(i, j) ->
-        let s1 = R.slice arr (Z :. i :. All :. All)
-            s2 = R.slice arr (Z :. j :. All :. All)
+        let s1 = featureMaps V.! i
+            s2 = featureMaps V.! j
             !pairList =
-              L.map VU.fromList . L.transpose . L.map R.toList $ [s1, s2]
+              L.map VU.fromList . L.transpose . L.map VU.toList $ [s1, s2]
             params' = KdHistParams nd bw False 1
         in mutualInformation $! build params' pairList)
     [ (i, j)
@@ -31,6 +33,16 @@ pairwiseEntropy nd bw arr =
     , j <- [0 .. nf' - 1] ]
   where
     (Z :. nf' :. _ny' :. _nx') = extent arr
+    featureMaps =
+      V.map
+        (\k ->
+            (\arr' ->
+                let min' = VU.minimum arr'
+                    max' = VU.maximum arr'
+                in VU.map (\x -> (x - min') / (max' - min')) arr') .
+            toUnboxed . computeS $
+            R.slice arr (Z :. k :. All :. All)) $
+      V.generate nf' id
 
 pairwiseEntropyConduit
   :: (R.Source s Double)
