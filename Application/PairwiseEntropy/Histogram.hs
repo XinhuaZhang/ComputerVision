@@ -1,29 +1,41 @@
-{-# LANGUAGE DeriveGeneric   #-}
-{-# LANGUAGE BangPatterns    #-}
-module Application.PairwiseEntropy.Histogram where
+{-# LANGUAGE BangPatterns  #-}
+{-# LANGUAGE DeriveGeneric #-}
 
+module Application.PairwiseEntropy.Histogram
+  ( HistBinType
+  , KdHistParams(..)
+  , Bin(..)
+  , KdHist(..)
+  , build
+  , computeMarginalHistogram
+  , intersection
+  , computeSVMKernel
+  , entropy
+  , getNumDims
+  ) where
+
+import           Control.Arrow
 import           Control.DeepSeq
 import           CV.Utility.Parallel
 import           Data.Binary
 import           Data.Int
-import           Data.List            as L
-import qualified Data.Vector          as V
-import           Data.Vector.Unboxed  as VU
+import           Data.List           as L
+import           Data.Vector.Unboxed as VU
 import           GHC.Generics
-import           Prelude              as P
+import           Prelude             as P
 
 type HistBinType = Word
 
 data KdHistParams = KdHistParams
-  { numDim          :: !Int
+  { numBins         :: !Int
   , binWidth        :: !Double
-  , negativeBinFlag :: !Bool -- true: 2*numDim - 1 bins; false: numDim bins
+  , negativeBinFlag :: !Bool -- true: 2*numBins - 1 bins; false: numBins bins
   , vecLen          :: !Int -- the length of a (Verctor Int) that will be convert to an Int.
   } deriving (Show, Read, Generic)
 
 instance NFData KdHistParams where
   rnf (KdHistParams nd bw nbf vl) = nd `seq` bw `seq` nbf `seq` vl `seq` ()
-  
+
 instance Binary KdHistParams where
   put (KdHistParams nd bw nbf vl) = do
     put nd
@@ -37,15 +49,17 @@ instance Binary KdHistParams where
     vl <- get
     return $! KdHistParams nd bw nbf vl
 
-data Bin =
+data Bin a =
   Bin (Vector HistBinType)
-      !Int
+      !a
   deriving (Show, Read, Generic)
 
-instance NFData Bin where
-  rnf (Bin vec count) = rnf vec `seq` count `seq` ()
-  
-instance Binary Bin where
+instance (NFData a) =>
+         NFData (Bin a) where
+  rnf (Bin vec x) = rnf vec `seq` x `seq` ()
+
+instance (Binary a) =>
+         Binary (Bin a) where
   put (Bin vec n) = do
     put . VU.toList $ vec
     put n
@@ -54,15 +68,20 @@ instance Binary Bin where
     n <- get
     return $! Bin (VU.fromList xs) n
 
-data KdHist = KdHist
+instance Functor Bin where
+  fmap f (Bin vec x) = Bin vec (f x)
+
+data KdHist a = KdHist
   { params    :: KdHistParams
-  , histogram :: [Bin]
+  , histogram :: [Bin a]
   } deriving (Show, Read)
 
-instance NFData KdHist where
+instance (NFData a) =>
+         NFData (KdHist a) where
   rnf (KdHist params' hist) = rnf params' `seq` rnf hist
 
-instance Binary KdHist where
+instance (Binary a) =>
+         Binary (KdHist a) where
   put (KdHist p h) = do
     put p
     put h
@@ -71,17 +90,20 @@ instance Binary KdHist where
     h <- get
     return $! KdHist p h
 
+instance Functor KdHist where
+  fmap f (KdHist p h) = KdHist p (L.map (fmap f) h)
+
 -- Here assuming every value is greater than zero.
-build :: KdHistParams -> [Vector Double] -> KdHist
+build :: KdHistParams -> [Vector Double] -> KdHist Int
 build params' [] = KdHist params' []
-build params'@(KdHistParams numDim' binWidth' negativeBinFlag' len) xs =
-  KdHist params' $ merge 1 zs
+build params'@(KdHistParams numBins' binWidth' negativeBinFlag' len) xs =
+  KdHist params' . merge . L.zip ys . L.repeat $ 1
   where
     m =
       fromIntegral $
       if negativeBinFlag'
-        then 2 * numDim' - 1
-        else numDim'
+        then 2 * numBins' - 1
+        else numBins'
     ys =
       P.map
         (VU.fromList .
@@ -95,7 +117,6 @@ build params'@(KdHistParams numDim' binWidth' negativeBinFlag' len) xs =
                  vec) .
          splitVec . VU.map locate)
         xs
-    zs = L.sort ys
     locate :: Double -> HistBinType
     locate x
       | negativeBinFlag' && (y <= (-n)) = 0
@@ -105,7 +126,7 @@ build params'@(KdHistParams numDim' binWidth' negativeBinFlag' len) xs =
       | otherwise = y
       where
         y = floor (x / binWidth')
-        n = fromIntegral $ numDim' - 1
+        n = fromIntegral $ numBins' - 1
     splitVec
       :: (Unbox a)
       => Vector a -> [Vector a]
@@ -114,21 +135,51 @@ build params'@(KdHistParams numDim' binWidth' negativeBinFlag' len) xs =
       | otherwise = as : splitVec bs
       where
         (as, bs) = VU.splitAt len xs'
-    merge :: Int -> [Vector HistBinType] -> [Bin]
-    merge _ [] = []
-    merge _ [x] = [Bin x 1]
-    merge !n [x, y]
-      | x == y = [Bin x (n + 1)]
-      | otherwise = [Bin x n, Bin y 1]
-    merge !n (x:y:xs')
-      | x == y = merge (n + 1) (y : xs')
-      | otherwise = Bin x n : merge 1 (y : xs')
 
-intersection :: KdHist -> KdHist -> Int
+computeMarginalHistogram
+  :: (Num a)
+  => KdHist a -> [Int] -> KdHist a
+computeMarginalHistogram hist@(KdHist p bins) index =
+  KdHist p .
+  merge .
+  L.map
+    (\(Bin vec x) ->
+        ( VU.fromList . L.map (\i -> vec VU.! i) . ascentDiff fullIndies $ index
+        , x)) $
+  bins
+  where
+    fullIndies = [0 .. getNumDims hist - 1]
+
+{-# INLINE ascentDiff #-}
+
+ascentDiff
+  :: (Ord a)
+  => [a] -> [a] -> [a]
+ascentDiff xs [] = xs
+ascentDiff [] _ = []
+ascentDiff (x:xs) (y:ys)
+  | x == y = ascentDiff xs ys
+  | x < y = x : ascentDiff xs (y : ys)
+  | otherwise = ascentDiff (x : xs) ys
+
+{-# INLINE merge #-}
+
+merge
+  :: (Num a)
+  => [(Vector HistBinType, a)] -> [Bin a]
+merge =
+  L.map (uncurry Bin . (L.head *** L.sum) . L.unzip) .
+  L.groupBy (\x y -> fst x == fst y) . L.sortOn fst
+
+intersection
+  :: (Ord a, Num a)
+  => KdHist a -> KdHist a -> a
 intersection (KdHist _ xs') (KdHist _ ys') = result
   where
     result = func xs' ys'
-    func :: [Bin] -> [Bin] -> Int
+    func
+      :: (Ord a, Num a)
+      => [Bin a] -> [Bin a] -> a
     func [] _ = 0
     func _ [] = 0
     func (Bin x a:xs) (Bin y b:ys)
@@ -136,31 +187,22 @@ intersection (KdHist _ xs') (KdHist _ ys') = result
       | x < y = func xs (Bin y b : ys)
       | x > y = func (Bin x a : xs) ys
 
-computeSVMKernel :: ParallelParams -> [KdHist] -> [[Int]]
+computeSVMKernel
+  :: (Ord a, Num a, NFData a)
+  => ParallelParams -> [KdHist a] -> [[a]]
 computeSVMKernel parallelParams xs =
   parMapChunk parallelParams rdeepseq (\x -> P.map (intersection x) xs) xs
 
-computeSVMKernelDouble :: ParallelParams -> [KdHist] -> [[Double]]
-computeSVMKernelDouble parallelParams xs =
-  sp $
-  parMapChunkVector
-    parallelParams
-    rdeepseq
-    (\(x, y) -> fromIntegral $ intersection x y) $!
-  V.fromList
-    [ (a, b)
-    | a <- xs
-    , b <- xs ]
-  where
-    sp zs
-      | V.null zs = []
-      | otherwise = V.toList as : sp bs
-      where
-        (as, bs) = V.splitAt (P.length xs) zs
-
-entropy :: KdHist -> Double
-entropy (KdHist _ bins) =
-  -1 * (L.sum . L.map ((\x -> x * log x) . (\x -> fromIntegral x / s)) $ xs)
+entropy
+  :: (Num a, Floating a)
+  => KdHist a -> a
+entropy (KdHist _ bins) = -1 * (L.sum . L.map ((\x -> x * log x) . (/ s)) $ xs)
   where
     !xs = L.map (\(Bin _ n) -> n) bins
-    !s = fromIntegral $ L.sum xs
+    !s = L.sum xs
+
+{-# INLINE getNumDims #-}
+
+getNumDims :: KdHist a -> Int
+getNumDims (KdHist _ []) = error "getNumDims: This histogram is zero."
+getNumDims (KdHist _ (Bin vec _:_)) = VU.length vec

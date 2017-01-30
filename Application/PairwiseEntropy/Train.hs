@@ -95,7 +95,7 @@ main = do
         L.take
           (numLayer params)
           [filterParamsSet1, filterParamsSet2, filterParamsSet2]
-      numFeature = numLayer params * 4096
+      numFeature = numLayer params * 256
       trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
@@ -117,5 +117,5 @@ main = do
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
-    pairwiseEntropyConduit parallelParams 100 0.1 =$=
+    pairwiseEntropyConduit parallelParams 1000 0.01 =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)
