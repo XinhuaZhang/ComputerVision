@@ -53,8 +53,8 @@ singleLayerMagnitudeFixedSizedConduit
   :: (R.Source s Double)
   => ParallelParams
   -> PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))
-  -> Int -> Conduit (Array s DIM3 Double) (ResourceT IO) (Array U DIM3 Double)
-singleLayerMagnitudeFixedSizedConduit parallelParams filter' factor = do
+  -> Conduit (Array s DIM3 Double) (ResourceT IO) (Array U DIM3 Double)
+singleLayerMagnitudeFixedSizedConduit parallelParams filter' = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -65,19 +65,19 @@ singleLayerMagnitudeFixedSizedConduit parallelParams filter' factor = do
                 (\x' ->
                     let !y' =
                           computeUnboxedS .
-                          singleLayerMagnitudeFixedSize filter' factor $
+                          singleLayerMagnitudeFixedSize filter' $
                           x'
                     in deepSeqArray y' y')
                 xs
         sourceList ys
-        singleLayerMagnitudeFixedSizedConduit parallelParams filter' factor)
+        singleLayerMagnitudeFixedSizedConduit parallelParams filter')
 
 singleLayerMagnitudeVariedSizedConduit
   :: (R.Source s Double)
   => ParallelParams
   -> PolarSeparableFilterParamsSet
-  -> Int -> Conduit (Array s DIM3 Double) (ResourceT IO) (Array U DIM3 Double)
-singleLayerMagnitudeVariedSizedConduit parallelParams filterParams factor = do
+  ->  Conduit (Array s DIM3 Double) (ResourceT IO) (Array U DIM3 Double)
+singleLayerMagnitudeVariedSizedConduit parallelParams filterParams = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -88,12 +88,12 @@ singleLayerMagnitudeVariedSizedConduit parallelParams filterParams factor = do
                 (\x' ->
                     let !y' =
                           computeUnboxedS .
-                          singleLayerMagnitudeVariedSize filterParams factor $
+                          singleLayerMagnitudeVariedSize filterParams  $
                           x'
                     in deepSeqArray y' y')
                 xs
         sourceList ys
-        singleLayerMagnitudeVariedSizedConduit parallelParams filterParams factor)
+        singleLayerMagnitudeVariedSizedConduit parallelParams filterParams )
 
 multiLayerMagnitudeFixedSizedConduit
   :: ParallelParams
@@ -184,14 +184,11 @@ multiLayerMagnitudeVariedSizedConduit1 parallelParams filterParamsList factor = 
 singleLayerMagnitudeFixedSize
   :: (R.Source s Double)
   => PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))
-  -> Int
   -> Array s DIM3 Double
   -> Array R.D DIM3 Double
-singleLayerMagnitudeFixedSize filter' factor inputArr = downSampledArr
-  where
-    !filteredArr =
-      R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $ inputArr
-    !downSampledArr = RU.downsample [factor, factor, 1] filteredArr
+singleLayerMagnitudeFixedSize filter' =
+  R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) 
+
 
 {-# INLINE multiLayerMagnitudeFixedSize #-}
 
@@ -244,15 +241,10 @@ multiLayerMagnitudeFixedSize1 filters' factor inputArr =
 singleLayerMagnitudeVariedSize
   :: (R.Source s Double)
   => PolarSeparableFilterParamsSet
-  -> Int
   -> Array s DIM3 Double
   -> Array R.D DIM3 Double
-singleLayerMagnitudeVariedSize filterParams factor inputArr = downSampledArr
-  where
-    !filteredArr =
-      R.map C.magnitude . applyFilterSetVariedSize filterParams . R.map (:+ 0) $
-      inputArr
-    !downSampledArr = RU.downsample [factor, factor, 1] filteredArr
+singleLayerMagnitudeVariedSize filterParams =
+  R.map C.magnitude . applyFilterSetVariedSize filterParams . R.map (:+ 0) 
 
 {-# INLINE multiLayerMagnitudeVariedSize #-}
 
@@ -312,18 +304,6 @@ extractPointwiseFeatureConduit parallelParams = do
     (do let ys' = parMapChunk parallelParams rdeepseq extractPointwiseFeature xs'
         sourceList ys'
         extractPointwiseFeatureConduit parallelParams)
-
-{-# INLINE extractPointwiseFeature #-}
-
-extractPointwiseFeature
-  :: (R.Source s Double)
-  => Array s DIM3 Double -> [Vector Double]
-extractPointwiseFeature arr' =
-  [ toUnboxed . computeUnboxedS . R.slice arr' $ (Z :. All :. j :. i)
-  | j <- [0 .. ny' - 1]
-  , i <- [0 .. nx' - 1] ]
-  where
-    !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent arr'
 
 {-# INLINE l2normVec #-}
 l2normVec :: VU.Vector Double -> VU.Vector Double

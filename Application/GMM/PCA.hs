@@ -8,6 +8,7 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Feature.PolarSeparable
 import           CV.Utility.Parallel
+import           CV.Utility.RepaArrayUtility
 import           Data.Array
 import           Data.Array.Repa              as R
 import           Data.Binary

@@ -11,6 +11,7 @@ import           Control.Monad.Trans.Resource
 import           CV.Feature.PolarSeparable
 import           CV.Utility.Parallel
 import           CV.Utility.Time
+import           CV.Utility.RepaArrayUtility
 import           Data.Array.Repa                              as R
 import           Data.Binary
 import qualified Data.ByteString.Lazy                         as BL

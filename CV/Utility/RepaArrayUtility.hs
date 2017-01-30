@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE QuasiQuotes #-}
 module CV.Utility.RepaArrayUtility where
@@ -9,7 +11,7 @@ import           Data.List                    as L
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
-import           Data.Array.CArray           as CA
+import           Data.Array.CArray            as CA
 import           Foreign.Storable
 
 -- factor = 2^n, n = 0,1,..
@@ -238,3 +240,26 @@ makeFilterList ny nx f =
     in f x y
   | r <- [0 .. ny - 1]
   , c <- [0 .. nx - 1] ]
+
+
+{-# INLINE extractPointwiseFeature #-}
+
+extractPointwiseFeature
+  :: (R.Source s Double)
+  => R.Array s DIM3 Double -> [VU.Vector Double]
+extractPointwiseFeature arr' =
+  [ toUnboxed . computeUnboxedS . R.slice arr' $ (Z :. All :. j :. i)
+  | j <- [0 .. ny' - 1]
+  , i <- [0 .. nx' - 1] ]
+  where
+    !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent arr'
+    
+{-# INLINE extractFeatureMap #-}
+
+extractFeatureMap
+  :: (R.Source s Double)
+  => R.Array s DIM3 Double -> [[Double]]
+extractFeatureMap arr' =
+  L.map (\k -> R.toList . R.slice arr' $ (Z :. k :. All :. All)) [0 .. nf' - 1]
+  where
+    !(Z :. (nf' :: Int) :. _ :. _) = extent arr'

@@ -46,8 +46,6 @@ main
 *model
 *.pca
 *.bak
-train*
-predict*
 plot*
 /Application/GMM/filterTest
 /Application/GMM/test
