@@ -99,9 +99,8 @@ main = do
         , getNameSet = Pinwheels
         }
       filterParamsSetList =
-        [filterParamsSet1, filterParamsSet2]
-      magnitudeConduit =
-        if isFixedSize params
+        [filterParamsSet1, filterParamsSet2,filterParamsSet2]
+      magnitudeConduit =        if isFixedSize params
           then multiLayerMagnitudeFixedSizedConduit
                  parallelParams
                  (L.map makeFilterSet filterParamsSetList)
