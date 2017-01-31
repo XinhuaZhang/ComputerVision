@@ -59,11 +59,11 @@ main =
                                               [0 .. (freq' - 1)]
                                          ,getAngularFreqSet =
                                             S.fromDistinctAscList
-                                              [0 .. (freq' - 1)]
+                                              [1 .. (freq' - 0)]
                                          ,getNameSet = Pinwheels}
          filterParamsSetList =
            L.zipWith filterParamsSetFunc
-                     [1,2,2,2]
+                     [1,2,2,2,1]
                      (freq params)
          numM = numGaussian params
          magnitudeConduit filterParams =
