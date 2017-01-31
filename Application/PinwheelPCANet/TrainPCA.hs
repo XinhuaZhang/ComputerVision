@@ -48,7 +48,7 @@ main = do
         , getDownsampleFactorSet = fa
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq' - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq'  - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [1 .. freq']
         , getNameSet = Pinwheels
         }
       filterParamsSetList = L.zipWith filterParamsSetFunc [1,2,2,2,1] (freq params)

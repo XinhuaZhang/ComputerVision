@@ -76,26 +76,17 @@ pcaConduit
   :: (R.Source s Double)
   => ParallelParams
   -> Matrix Double
-  -> Int
   -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
-pcaConduit parallelParams pcaMatrix downsampleFactor' = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rseq
-                (\x' ->
-                    let y' =
-                          computeUnboxedS .
-                          downsample [downsampleFactor', downsampleFactor', 1] .
-                          pcaTransformArray pcaMatrix $
-                          x'
-                    in deepSeqArray y' y')
-                xs
-        sourceList ys
-        pcaConduit parallelParams pcaMatrix downsampleFactor')
+pcaConduit parallelParams pcaMatrix =
+  do xs <- CL.take (batchSize parallelParams)
+     unless (L.null xs)
+            (do let ys =
+                      parMapChunk parallelParams
+                                  rseq
+                                  (pcaTransformArray pcaMatrix)
+                                  xs
+                sourceList ys
+                pcaConduit parallelParams pcaMatrix)
 
 pcaLabelConduit
   :: (R.Source s Double)

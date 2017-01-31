@@ -117,5 +117,5 @@ main = do
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
-    pairwiseEntropyConduit parallelParams 100 0.1 =$=
+    pairwiseEntropyConduit parallelParams 100 0.01 =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)

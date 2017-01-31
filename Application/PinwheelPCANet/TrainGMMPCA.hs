@@ -8,6 +8,7 @@ import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
+import           CV.Utility.RepaArrayUtility
 import           CV.Utility.Parallel            as Parallel
 import           Data.Array.Repa                as R
 import           Data.Binary
@@ -62,7 +63,7 @@ main =
                                          ,getNameSet = Pinwheels}
          filterParamsSetList =
            L.zipWith filterParamsSetFunc
-                     [1,2,2,2,1]
+                     [1,2,2,2]
                      (freq params)
          numM = numGaussian params
          magnitudeConduit filterParams =
@@ -78,10 +79,12 @@ main =
                     do filteredArrs <-
                          runResourceT $
                          sourceList arrs $$ magnitudeConduit filterParamsSet =$=
-                         pcaConduit parallelParams pcaMat downsampleFactor' =$=
+                         pcaConduit parallelParams pcaMat =$=
                          CL.consume
                        runResourceT $
                          CL.sourceList filteredArrs $$
+                         CL.map (downsample
+                                   [downsampleFactor',downsampleFactor',1]) =$=
                          extractPointwiseFeatureConduit parallelParams =$=
                          hGMMSink1 parallelParams
                                    h
