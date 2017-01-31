@@ -18,7 +18,7 @@ data Flag
   | PCAFile String
   | Threshold Double
   | NumGaussian Int
-  | Freq Int
+  | Freq [Int]
   | Scale [Double]
   | IsComplex
   | NumGMMExample Int
@@ -40,7 +40,7 @@ data Params = Params
   , pcaFile          :: String
   , threshold        :: Double
   , numGaussian      :: Int
-  , freq             :: Int
+  , freq             :: [Int]
   , scale            :: [Double]
   , isComplex        :: Bool
   , numGMMExample    :: Int
@@ -51,106 +51,110 @@ data Params = Params
 
 options :: [OptDescr Flag]
 options =
-  [ Option ['i'] ["inputfile"] (ReqArg InputFile "FILE") "Image path list file."
-  , Option ['l'] ["label"] (ReqArg LabelFile "FILE") "Input label file"
-  , Option
-      ['c']
-      ["constrainC"]
-      (ReqArg (C . readDouble) "Double")
-      "Set the liblinear parameter c (Default 1)"
-  , Option
-      ['t']
-      ["thread"]
-      (ReqArg (Thread . readInt) "INT")
-      "Set the number of threads as x (\"+RTS -Nx\" should be added at the end of the command)"
-  , Option
-      ['C']
-      ["findC"]
-      (NoArg FindC)
-      "Find parameter C. You may want to specify the initial c value using -c. The default initial c value is 1. Set it to be -1 to let the problem to find a initial value for c"
-  , Option
-      ['b']
-      ["batchSize"]
-      (ReqArg (BatchSize . readInt) "INT")
-      "Set the batchSize."
-  , Option ['m'] ["modelName"] (ReqArg ModelName "NAME") "SVM model name."
-  , Option
-      ['f']
-      ["downsampleFactor"]
-      (ReqArg
-         (\x ->
-             let go xs [] = [xs]
-                 go xs (y:ys) =
-                   if y == ','
-                     then xs : go [] ys
-                     else go (y : xs) ys
-             in DownsampleFactor $ map (readInt . L.reverse) $ go [] x)
-         "[INT]")
-      "Set the DownsampleFactor (Default 1)"
-  , Option ['z'] ["GMMFile"] (ReqArg GMMFile "FILE") "GMM data file."
-  , Option ['z'] ["PCAFile"] (ReqArg PCAFile "FILE") "PCA data file."
-  , Option
-      ['h']
-      ["threshold"]
-      (ReqArg (Threshold . readDouble) "DOUBLE")
-      "Set the stoppint criteria. It is the percentage that the probability increases. If it is lower than the threshold, then the program stops."
-  , Option
-      ['n']
-      ["numGaussian"]
-      (ReqArg (NumGaussian . readInt) "INT")
-      "Set the number of Gaussian in GMM."
-  , Option
-      ['a']
-      ["freq"]
-      (ReqArg (Freq . readInt) "INT")
-      "Set the radial and angular frequencies. Their ranges are assumed to be the same."
-  , Option
-      ['e']
-      ["scale"]
-      (ReqArg
-         (\x ->
-             let go xs [] = [xs]
-                 go xs (y:ys) =
-                   if y == ','
-                     then xs : go [] ys
-                     else go (y : xs) ys
-             in Scale $ map (readDouble . L.reverse) $ go [] x)
-         "[Double]")
-      "Set the scale list"
-  , Option
-      ['z']
-      ["complex"]
-      (NoArg IsComplex)
-      "Flag which decides using complex value or magnitude."
-  , Option
-      ['z']
-      ["numGMMExample"]
-      (ReqArg (NumGMMExample . readInt) "INT")
-      "Set the number of examples which are used for GMM training."
-  , Option
-      ['z']
-      ["fixedSize"]
-      (NoArg IsFixedSize)
-      "Are the images have the same sizes?"
-  , Option
-      ['z']
-      ["numPrincipal"]
-      (ReqArg
-         (\x ->
-             let go xs [] = [xs]
-                 go xs (y:ys) =
-                   if y == ','
-                     then xs : go [] ys
-                     else go (y : xs) ys
-             in NumPrincipal $ map (readInt . L.reverse) $ go [] x)
-         "[Int]")
-      "Set the output dimension of PCA dimensional reduction."
-  , Option
-      ['l']
-      ["numLayer"]
-      (ReqArg (NumLayer . readInt) "INT")
-      "Set the number of layers."
-  ]
+  [Option ['i']
+          ["inputfile"]
+          (ReqArg InputFile "FILE")
+          "Image path list file."
+  ,Option ['l']
+          ["label"]
+          (ReqArg LabelFile "FILE")
+          "Input label file"
+  ,Option ['c']
+          ["constrainC"]
+          (ReqArg (C . readDouble) "Double")
+          "Set the liblinear parameter c (Default 1)"
+  ,Option ['t']
+          ["thread"]
+          (ReqArg (Thread . readInt) "INT")
+          "Set the number of threads as x (\"+RTS -Nx\" should be added at the end of the command)"
+  ,Option ['C']
+          ["findC"]
+          (NoArg FindC)
+          "Find parameter C. You may want to specify the initial c value using -c. The default initial c value is 1. Set it to be -1 to let the problem to find a initial value for c"
+  ,Option ['b']
+          ["batchSize"]
+          (ReqArg (BatchSize . readInt) "INT")
+          "Set the batchSize."
+  ,Option ['m']
+          ["modelName"]
+          (ReqArg ModelName "NAME")
+          "SVM model name."
+  ,Option ['f']
+          ["downsampleFactor"]
+          (ReqArg (\x ->
+                     let go xs [] = [xs]
+                         go xs (y:ys) =
+                           if y == ','
+                              then xs : go [] ys
+                              else go (y : xs) ys
+                     in DownsampleFactor $ map (readInt . L.reverse) $ go [] x)
+                  "[INT]")
+          "Set the DownsampleFactor (Default 1)"
+  ,Option ['z']
+          ["GMMFile"]
+          (ReqArg GMMFile "FILE")
+          "GMM data file."
+  ,Option ['z']
+          ["PCAFile"]
+          (ReqArg PCAFile "FILE")
+          "PCA data file."
+  ,Option ['h']
+          ["threshold"]
+          (ReqArg (Threshold . readDouble) "DOUBLE")
+          "Set the stoppint criteria. It is the percentage that the probability increases. If it is lower than the threshold, then the program stops."
+  ,Option ['n']
+          ["numGaussian"]
+          (ReqArg (NumGaussian . readInt) "INT")
+          "Set the number of Gaussian in GMM."
+  ,Option ['a']
+          ["freq"]
+          (ReqArg (\x ->
+                     let go xs [] = [xs]
+                         go xs (y:ys) =
+                           if y == ','
+                              then xs : go [] ys
+                              else go (y : xs) ys
+                     in Freq $ map (readInt . L.reverse) $ go [] x)
+                  "INT")
+          "Set the radial and angular frequencies. Their ranges are assumed to be the same."
+  ,Option ['e']
+          ["scale"]
+          (ReqArg (\x ->
+                     let go xs [] = [xs]
+                         go xs (y:ys) =
+                           if y == ','
+                              then xs : go [] ys
+                              else go (y : xs) ys
+                     in Scale $ map (readDouble . L.reverse) $ go [] x)
+                  "[Double]")
+          "Set the scale list"
+  ,Option ['z']
+          ["complex"]
+          (NoArg IsComplex)
+          "Flag which decides using complex value or magnitude."
+  ,Option ['z']
+          ["numGMMExample"]
+          (ReqArg (NumGMMExample . readInt) "INT")
+          "Set the number of examples which are used for GMM training."
+  ,Option ['z']
+          ["fixedSize"]
+          (NoArg IsFixedSize)
+          "Are the images have the same sizes?"
+  ,Option ['z']
+          ["numPrincipal"]
+          (ReqArg (\x ->
+                     let go xs [] = [xs]
+                         go xs (y:ys) =
+                           if y == ','
+                              then xs : go [] ys
+                              else go (y : xs) ys
+                     in NumPrincipal $ map (readInt . L.reverse) $ go [] x)
+                  "[Int]")
+          "Set the output dimension of PCA dimensional reduction."
+  ,Option ['l']
+          ["numLayer"]
+          (ReqArg (NumLayer . readInt) "INT")
+          "Set the number of layers."]
 
 readInt :: String -> Int
 readInt str =
@@ -188,7 +192,7 @@ parseFlag flags = go flags defaultFlag
                  ,pcaFile = "pca.dat"
                  ,threshold = -15
                  ,numGaussian = 1
-                 ,freq = 0
+                 ,freq = [0]
                  ,scale = [1]
                  ,isComplex = False
                  ,numGMMExample = 1

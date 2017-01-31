@@ -79,28 +79,16 @@ main = do
         { Parallel.numThread = Parser.numThread params
         , Parallel.batchSize = Parser.batchSize params
         }
-      filterParamsSet1 =
+      filterParamsSetFunc fa freq' =
         PolarSeparableFilterParamsSet
         { getSizeSet = imageSize
-        , getDownsampleFactorSet = 1
+        , getDownsampleFactorSet = fa
         , getScaleSet = S.fromDistinctAscList (scale params)
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq' - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq'  - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSet2 =
-        PolarSeparableFilterParamsSet
-        { getSizeSet = imageSize
-        , getDownsampleFactorSet = 2
-        , getScaleSet = S.fromDistinctAscList (scale params)
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
-        , getNameSet = Pinwheels
-        }
-      filterParamsList =
-        L.take
-          (numLayer params)
-          [filterParamsSet1, filterParamsSet2, filterParamsSet2]
+      filterParamsList = L.zipWith filterParamsSetFunc [1,2,2,2,1] (freq params)
       numFeature = L.sum . L.map cols $ pcaMatrixes
       trainParams =
         TrainParams
