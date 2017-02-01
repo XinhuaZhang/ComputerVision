@@ -112,14 +112,24 @@ main = do
         }
       magnitudeConduit =
         if isFixedSize params
-          then multiLayerMagnitudeFixedSizedConduit
-                 parallelParams
-                 (L.map makeFilterSet filterParamsList)
-                 (downsampleFactor params)
-          else multiLayerMagnitudeVariedSizedConduit
-                 parallelParams
-                 filterParamsList
-                 (downsampleFactor params)
+          then if isComplex params
+                  then multiLayerComplexFixedSizedConduit
+                         parallelParams
+                         (L.map makeFilterSet filterParamsList)
+                         (downsampleFactor params)
+                  else multiLayerMagnitudeFixedSizedConduit
+                         parallelParams
+                         (L.map makeFilterSet filterParamsList)
+                         (downsampleFactor params)
+          else if isComplex params
+                  then multiLayerComplexVariedSizedConduit
+                         parallelParams
+                         filterParamsList
+                         (downsampleFactor params)
+                  else multiLayerMagnitudeVariedSizedConduit
+                         parallelParams
+                         filterParamsList
+                         (downsampleFactor params)
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=

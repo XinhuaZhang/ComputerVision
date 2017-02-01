@@ -24,6 +24,7 @@ import           Prelude                        as P
 import           System.Directory
 import           System.Environment
 import           System.IO                      as IO
+import           CV.Utility.RepaArrayUtility
 
 main = do
   args <- getArgs
@@ -64,22 +65,27 @@ main = do
         { getSizeSet = imageSize
         , getDownsampleFactorSet = 2
         , getScaleSet = S.fromDistinctAscList (scale params)
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params  - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params  - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsSetList = L.take (numLayer params) [filterParamsSet1, filterParamsSet2 ,filterParamsSet2]
+      filterParamsSetList =
+        L.take
+          (numLayer params)
+          [filterParamsSet1, filterParamsSet2, filterParamsSet2]
       numM = numGaussian params
       magnitudeConduit filterParams =
         if isFixedSize params
-          then singleLayerMagnitudeFixedSizedConduit
-                 parallelParams
-                 (makeFilterSet filterParams)
-                 (downsampleFactor params)
-          else singleLayerMagnitudeVariedSizedConduit
-                 parallelParams
-                 filterParams
-                 (downsampleFactor params)
+          then if isComplex params
+                 then singleLayerComplexFixedSizedConduit
+                        parallelParams
+                        (makeFilterSet filterParams)
+                 else singleLayerMagnitudeFixedSizedConduit
+                        parallelParams
+                        (makeFilterSet filterParams)
+          else if isComplex params
+                 then singleLayerComplexVariedSizedConduit parallelParams filterParams
+                 else singleLayerMagnitudeVariedSizedConduit parallelParams filterParams
       imgArrs = L.map (\(LabeledArray _ arr) -> arr) images
   withBinaryFile (gmmFile params) WriteMode $
     \h ->
@@ -89,7 +95,11 @@ main = do
               runResourceT $
               sourceList arrs $$ magnitudeConduit filterParamsSet =$= CL.consume
             runResourceT $
-              CL.sourceList filteredArrs $$ extractPointwiseFeatureConduit parallelParams =$=
+              CL.sourceList filteredArrs $$
+              CL.map
+                (downsample
+                   [downsampleFactor params, downsampleFactor params, 1]) =$=
+              extractPointwiseFeatureConduit parallelParams =$=
               pcaConduit parallelParams pcaMat =$=
               hGMMSink1
                 parallelParams

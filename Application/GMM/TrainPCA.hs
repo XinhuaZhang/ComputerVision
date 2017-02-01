@@ -66,14 +66,20 @@ main = do
       numM = numGaussian params
       magnitudeConduit filterParams =
         if isFixedSize params
-          then singleLayerMagnitudeFixedSizedConduit
-                 parallelParams
-                 (makeFilterSet filterParams)
-                 (downsampleFactor params)
-          else singleLayerMagnitudeVariedSizedConduit
-                 parallelParams
-                 filterParams
-                 (downsampleFactor params)
+          then if isComplex params
+                  then singleLayerComplexFixedSizedConduit
+                         parallelParams
+                         (makeFilterSet filterParams)
+                  else singleLayerMagnitudeFixedSizedConduit
+                         parallelParams
+                         (makeFilterSet filterParams)
+          else if isComplex params
+                  then singleLayerComplexVariedSizedConduit
+                         parallelParams
+                         filterParams
+                  else singleLayerMagnitudeVariedSizedConduit
+                         parallelParams
+                         filterParams
       imgArrs = L.map (\(LabeledArray _ arr) -> arr) images
   print params
   withBinaryFile (pcaFile params) WriteMode $
@@ -82,6 +88,6 @@ main = do
          (\arrs (filterParamsSet,np) -> do
             runResourceT $
               sourceList arrs $$ magnitudeConduit filterParamsSet =$=
-              hPCASink h (numGMMExample params) np)
+              hPCASink h (numGMMExample params) np (downsampleFactor params))
          imgArrs $ L.zip 
          filterParamsSetList (numPrincipal params)

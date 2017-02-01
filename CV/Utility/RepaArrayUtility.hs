@@ -1,18 +1,19 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module CV.Utility.RepaArrayUtility where
 
+import           Data.Array.CArray            as CA
 import           Data.Array.Repa              as R
 import           Data.Array.Repa.Stencil      as R
 import           Data.Array.Repa.Stencil.Dim2 as R
+import           Data.Complex
 import           Data.List                    as L
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
-import           Prelude                      as P
-import           Data.Array.CArray            as CA
 import           Foreign.Storable
+import           Prelude                      as P
 
 -- factor = 2^n, n = 0,1,..
 -- the first factor in the list corresponds to the inner-most (right-most) dimension.
@@ -41,7 +42,7 @@ downsampleUnsafe factorList arr =
               arr
   where dList = listOfShape $ extent arr
         newSh = shapeOfList $ L.zipWith div dList factorList
-                                        
+
 {-# INLINE crop #-}
 
 crop
@@ -245,20 +246,35 @@ makeFilterList ny nx f =
 {-# INLINE extractPointwiseFeature #-}
 
 extractPointwiseFeature
-  :: (R.Source s Double)
-  => R.Array s DIM3 Double -> [VU.Vector Double]
+  :: (R.Source s e, Unbox e)
+  => R.Array s DIM3 e -> [VU.Vector e]
 extractPointwiseFeature arr' =
   [ toUnboxed . computeUnboxedS . R.slice arr' $ (Z :. All :. j :. i)
   | j <- [0 .. ny' - 1]
   , i <- [0 .. nx' - 1] ]
   where
     !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent arr'
-    
+
+{-# INLINE extractPointwiseComplexFeature #-}
+
+extractPointwiseComplexFeature
+  :: (R.Source s (Complex Double))
+  => R.Array s DIM3 (Complex Double) -> [VU.Vector Double]
+extractPointwiseComplexFeature arr' =
+  [ VU.fromListN (2 * nf') .
+   L.concatMap (\(a :+ b) -> [a, b]) .
+   VU.toList . toUnboxed . computeUnboxedS . R.slice arr' $
+   (Z :. All :. j :. i)
+  | j <- [0 .. ny' - 1]
+  , i <- [0 .. nx' - 1] ]
+  where
+    !(Z :. nf' :. (ny' :: Int) :. (nx' :: Int)) = extent arr'
+
 {-# INLINE extractFeatureMap #-}
 
 extractFeatureMap
-  :: (R.Source s Double)
-  => R.Array s DIM3 Double -> [[Double]]
+  :: (R.Source s e)
+  => R.Array s DIM3 e -> [[e]]
 extractFeatureMap arr' =
   L.map (\k -> R.toList . R.slice arr' $ (Z :. k :. All :. All)) [0 .. nf' - 1]
   where

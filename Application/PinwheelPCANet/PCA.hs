@@ -8,7 +8,6 @@ import           Control.Arrow
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
-import           CV.Feature.PolarSeparable
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           Data.Array
@@ -192,3 +191,31 @@ pinwheelPCANetVariedSize filterParamsList factors pcaMatrix inputArr =
         arr')
     (computeS . delay $ inputArr) $
   L.zip filterParamsList pcaMatrix
+  
+
+-- {-# INLINE pinwheelPCANetComplexVariedSize #-}
+
+-- pinwheelPCANetComplexVariedSize
+--   :: (R.Source s Double)
+--   => [PolarSeparableFilterParamsSet]
+--   -> [Int]
+--   -> [Matrix Double]
+--   -> R.Array s DIM3 Double
+--   -> [[VU.Vector Double]]
+-- pinwheelPCANetComplexVariedSize filterParamsList factors pcaMatrix inputArr =
+--   L.zipWith
+--     (\factor arr' ->
+--         let downsampledArr =
+--               if factor == 1
+--                 then arr'
+--                 else computeUnboxedS $ downsample [factor, factor, 1] arr'
+--         in extractPointwiseFeature downsampledArr)
+--     factors .
+--   L.tail .
+--   L.scanl'
+--     (\arr' (filterParams, pcaMat) ->
+--         pcaTransformArray pcaMat .
+--         R.map C.magnitude . applyFilterSetVariedSize filterParams $
+--         arr')
+--     (R.map (:+ 0) inputArr) $
+--   L.zip filterParamsList pcaMatrix

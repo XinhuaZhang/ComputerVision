@@ -38,14 +38,18 @@ pcaSink numExample numPrincipal = do
 hPCASink
   :: Handle
   -> Int
-  -> Int
+  -> Int -> Int
   -> Sink (R.Array U DIM3 Double) (ResourceT IO) [R.Array U DIM3 Double]
-hPCASink h numExample numPrincipal = do
+hPCASink h numExample numPrincipal downsampleFactor' = do
   arrs <- CL.take numExample
   if L.null arrs
     then error "pcaSink: input data is empty."
     else do
-      let !xs = L.map extractPointwiseFeature arrs
+      let !xs =
+            L.map
+              (extractPointwiseFeature .
+               downsample [downsampleFactor', downsampleFactor', 1])
+              arrs
           !ys = L.concat xs
           !arr' =
             listArray (1, VU.length $ L.head ys) .
