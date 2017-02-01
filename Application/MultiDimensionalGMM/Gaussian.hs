@@ -11,8 +11,8 @@ import           GHC.Generics
 import           System.Random
 
 data Gaussian = Gaussian
-  { gaussianMu     :: VU.Vector Double
-  , gaussianSigma2 :: VU.Vector Double
+  { gaussianMu     :: !(VU.Vector Double)
+  , gaussianSigma2 :: !(VU.Vector Double)
   } deriving (Generic)
 
 instance Show Gaussian where
@@ -34,13 +34,13 @@ instance NFData Gaussian where
 
 gaussian :: Gaussian -> VU.Vector Double -> Double
 gaussian (Gaussian mu' sigma2') xs =
-  exp (-0.5 *
-        VU.sum (VU.zipWith3 (\x m s2 -> (x - m) ^ (2 :: Int) / s2)
-                            xs
-                            mu'
-                            sigma2')) /
-  sqrt (2 * pi * VU.product sigma2')
-
+  (VU.product .
+   VU.zipWith3
+     (\m s x -> (exp (-0.5 * (x - m) ^ (2 :: Int) / s)) / sqrt s)
+     mu'
+     sigma2' $
+   xs) /
+  (sqrt $! (2 * pi) ^ (VU.length mu'))
 
 {-# INLINE randomGaussian #-}
 
