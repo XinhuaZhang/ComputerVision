@@ -36,10 +36,12 @@ downsampleUnsafe
   :: (Source s e
      ,Shape sh)
   => [Int] -> R.Array s sh e -> R.Array D sh e
-downsampleUnsafe factorList arr =
-  R.backpermute newSh
-              (shapeOfList . L.zipWith (*) factorList . listOfShape)
-              arr
+downsampleUnsafe factorList arr
+  | L.all (== 1) factorList = delay arr
+  | otherwise =
+    R.backpermute newSh
+                  (shapeOfList . L.zipWith (*) factorList . listOfShape)
+                  arr
   where dList = listOfShape $ extent arr
         newSh = shapeOfList $ L.zipWith div dList factorList
 

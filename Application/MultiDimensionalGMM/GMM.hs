@@ -79,7 +79,7 @@ resetGMM (ResetIndex idx) (MixtureModel n models) bound = do
 
 getAssignment :: GMM -> VU.Vector Double -> [Double]
 getAssignment (MixtureModel _n models) x'
-  | s == 0 = ys
+  | s == 0 = L.replicate (L.length ys) 0
   | otherwise = L.map (/ s) ys
   where
     !ys =
@@ -171,6 +171,11 @@ em threshold lastAvgLikelihood count' oldGMM lastGMM bound xs
        print zeroNaNNKIdx
        print nks
        gmm <- resetGMM (ResetIndex zeroNaNNKIdx) oldGMM bound
+       em threshold lastAvgLikelihood 0 gmm lastGMM bound xs
+  | not (L.null zeroZIdx) =
+    do putStrLn "reset all"
+       print zeroZIdx
+       gmm <- resetGMM ResetAll oldGMM bound
        em threshold lastAvgLikelihood 0 gmm lastGMM bound xs
   | oldAvgLikelihood < lastAvgLikelihood =
     do printCurrentTime
@@ -292,6 +297,6 @@ getFeatureBound parallelParams xs =
              (fromIntegral . L.length $ y')
            up = d - m ^ (2 :: Int)
        in ((L.minimum y' / 4,L.maximum y' / 4)
-          ,(up / 2, up * 2)))
+          ,(up / 2, up * 10)))
     ys
   where !ys = L.transpose . L.map VU.toList $ xs
