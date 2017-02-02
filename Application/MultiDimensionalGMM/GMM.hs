@@ -21,7 +21,6 @@ import           Data.Maybe
 import           Data.Vector                                  as V
 import           Data.Vector.Unboxed                          as VU
 import           Prelude                                      as P
-import           System.Directory
 import           System.IO                                    as IO
 import           Text.Printf
 
@@ -84,7 +83,7 @@ resetGMM (ResetIndex idx) (MixtureModel n models) bound = do
 
 getAssignment :: GMM -> VU.Vector Double -> [Double]
 getAssignment (MixtureModel _n models) x'
-  | s == 0 = ys
+  | s == 0 = L.replicate (L.length ys) 0
   | otherwise = L.map (/ s) ys
   where
     !ys =
@@ -179,7 +178,7 @@ em threshold count' oldGMM bound xs
   --   print $ getAssignment oldGMM x'
   --   gmm <- resetGMM ResetAll oldGMM bound
   --   em threshold 0 gmm bound xs
-  | rate < threshold || count' == 50 = do
+  | rate < threshold || count' >= 50 = do
     printCurrentTime
     printf "%0.2f\n" oldAvgLikelihood
     return oldGMM
@@ -191,8 +190,8 @@ em threshold count' oldGMM bound xs
     !oldAssignmentVec = getAssignmentVec oldGMM xs
     !oldAvgLikelihood = getAvgLikelihood oldGMM xs
     !nks = getNks oldAssignmentVec
-    !zs = L.map L.sum oldAssignmentVec
-    !zeroZIdx = L.elemIndex 0 zs
+    -- zs = L.map L.sum oldAssignmentVec
+    -- zeroZIdx = L.elemIndex 0 zs
     !zeroNaNNKIdx = L.findIndices (\x' -> x' == 0 || isNaN x') nks
     !newGMM = updateGMM oldGMM oldAssignmentVec xs
     !newAvgLikelihood = getAvgLikelihood newGMM xs
@@ -207,7 +206,6 @@ gmmSink
   -> Sink [VU.Vector Double] (ResourceT IO) ()
 gmmSink filePath numM bound threshold numTrain =
   do xs <- CL.take numTrain
-     fileFlag <- liftIO $ doesFileExist filePath
      let !nd = VU.length . L.head . L.head $ xs
          !ys = L.concat xs
      gmm <- liftIO $ initializeGMM numM nd bound
