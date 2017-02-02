@@ -1,29 +1,31 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Application.PinwheelPCANet.PCA where
 
 import           Control.Arrow
-import           Control.Monad                as M
+import           Control.Monad                  as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
+import           CV.Array.LabeledArray
+import           CV.Filter.GaussianFilter       as G
+import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           Data.Array
-import           Data.Array.Repa              as R
+import           Data.Array.Repa                as R
 import           Data.Binary
-import           Data.ByteString.Lazy         as BL
+import           Data.ByteString.Lazy           as BL
+import           Data.Complex                   as C
 import           Data.Conduit
-import           Data.Conduit.List            as CL
-import           Data.List                    as L
-import           Data.Vector.Unboxed          as VU
-import           Numeric.LinearAlgebra.Data   as LA
+import           Data.Conduit.List              as CL
+import           Data.List                      as L
+import qualified Data.Set                       as S
+import           Data.Vector.Unboxed            as VU
+import           Numeric.LinearAlgebra.Data     as LA
 import           Numeric.Statistics.PCA
 import           System.IO
-import           CV.Filter.PolarSeparableFilter
-import           Data.Complex                   as C
-import CV.Array.LabeledArray
 
 hPCASink
   :: ParallelParams
@@ -175,13 +177,21 @@ pinwheelPCANetVariedSize
   -> R.Array s DIM3 Double
   -> [[VU.Vector Double]]
 pinwheelPCANetVariedSize filterParamsList factors pcaMatrix inputArr =
-  L.zipWith
-    (\factor arr' ->
-        let downsampledArr =
+  L.zipWith3
+    (\params factor arr' ->
+        let gArr =
+              G.applyFilterVariedSize
+                (GaussianFilterParams
+                   (L.head . S.toList . getScaleSet $ params)
+                   undefined)
+                arr'
+            downsampledArr =
+              computeUnboxedS $
               if factor == 1
-                then arr'
-                else computeUnboxedS $ downsample [factor, factor, 1] arr'
+                then gArr
+                else downsample [factor, factor, 1] gArr
         in extractPointwiseFeature downsampledArr)
+    filterParamsList
     factors .
   L.tail .
   L.scanl'
@@ -191,7 +201,7 @@ pinwheelPCANetVariedSize filterParamsList factors pcaMatrix inputArr =
         arr')
     (computeS . delay $ inputArr) $
   L.zip filterParamsList pcaMatrix
-  
+
 
 -- {-# INLINE pinwheelPCANetComplexVariedSize #-}
 

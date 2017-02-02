@@ -3,11 +3,16 @@
 
 module CV.Filter.GaussianFilter where
 
+import           Control.Monad
+import           Control.Monad.Trans.Resource
+import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
-import           Data.Array.CArray           as CA
-import           Data.Array.Repa             as R
-import           Data.Complex                as C
-import           Data.List                   as L
+import           Data.Array.CArray            as CA
+import           Data.Array.Repa              as R
+import           Data.Complex                 as C
+import           Data.Conduit
+import           Data.Conduit.List            as CL
+import           Data.List                    as L
 import           Math.FFT
 
 data GaussianFilterParams = GaussianFilterParams
@@ -69,7 +74,7 @@ makeFilter params@(GaussianFilterParams sigma (nRows, nCols)) =
     !dftFilterArr = computeS . twoDCArray2RArray $ dftN [0, 1] filterCArr
 
 applyFilterVariedSize
-  :: (Source s Double)
+  :: (R.Source s Double)
   => GaussianFilterParams -> R.Array s DIM3 Double -> R.Array D DIM3 Double
 applyFilterVariedSize (GaussianFilterParams sigma _) arr =
   R.map magnitude .
@@ -83,7 +88,7 @@ applyFilterVariedSize (GaussianFilterParams sigma _) arr =
       getGaussianFilter $ makeFilter (GaussianFilterParams sigma (nRows, nCols))
 
 applyFilterFixedSize
-  :: (Source s Double)
+  :: (R.Source s Double)
   => GaussianFilter (R.Array U DIM2 (Complex Double))
   -> R.Array s DIM3 Double
   -> R.Array D DIM3 Double
@@ -94,10 +99,32 @@ applyFilterFixedSize (GaussianFilter _params dftFilterArr) arr =
   threeDRArray2CArray . traverse2 (dftImageArr arr) dftFilterArr const $
   \fImg fFilter idx@(Z :. _k :. j :. i) -> fImg idx * fFilter (Z :. j :. i)
 
+
+gaussianVariedSizeConduit
+  :: (R.Source s Double)
+  => ParallelParams
+  -> GaussianFilterParams
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
+gaussianVariedSizeConduit parallelParams filterParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\y ->
+                    let arr =
+                          computeUnboxedS $ applyFilterVariedSize filterParams y
+                    in deepSeqArray arr arr)
+                xs
+        sourceList ys
+        gaussianVariedSizeConduit parallelParams filterParams)
+
 {-# INLINE dftImageArr #-}
 
 dftImageArr
-  :: (Source s Double)
+  :: (R.Source s Double)
   => R.Array s DIM3 Double -> R.Array D DIM3 (Complex Double)
 dftImageArr arr = threeDCArray2RArray dftCArr
   where
