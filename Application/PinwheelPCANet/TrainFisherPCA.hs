@@ -101,10 +101,15 @@ main = do
             else (2 * numFeature) * (numModel $ P.head gmm)
         , trainModel = modelName params
         }
+      gaussianFilterParamsList =
+        L.map
+          (\gScale -> GaussianFilterParams gScale imageSize)
+          (gaussianScale params)
       magnitudeConduit =
         pinwheelPCANetVariedSizeConduit
           parallelParams
           filterParamsList
+          gaussianFilterParamsList
           (downsampleFactor params)
           pcaMatrixes
   -- if isFixedSize params

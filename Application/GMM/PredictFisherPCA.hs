@@ -1,26 +1,27 @@
 module Main where
 
-import           Application.GMM.ArgsParser     as Parser
+import           Application.GMM.ArgsParser                   as Parser
+import           Application.GMM.PCA
 import           Application.MultiDimensionalGMM.FisherKernel
 import           Application.MultiDimensionalGMM.GMM
 import           Application.MultiDimensionalGMM.MixtureModel
-import           Application.GMM.PCA
 import           Classifier.LibLinear
 import           Control.Arrow
 import           Control.Monad
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparable
+import           CV.Filter.GaussianFilter
 import           CV.Filter.PolarSeparableFilter
-import           CV.Utility.Parallel            as Parallel
-import           Data.Array.Repa                as R
+import           CV.Utility.Parallel                          as Parallel
+import           Data.Array.Repa                              as R
 import           Data.Conduit
-import           Data.Conduit.Binary            as CB
-import           Data.Conduit.List              as CL
-import           Data.List                      as L
-import           Data.Set                       as S
-import           Data.Vector.Unboxed            as VU
-import           Prelude                        as P
+import           Data.Conduit.Binary                          as CB
+import           Data.Conduit.List                            as CL
+import           Data.List                                    as L
+import           Data.Set                                     as S
+import           Data.Vector.Unboxed                          as VU
+import           Prelude                                      as P
 import           System.Environment
 
 main = do
@@ -66,6 +67,10 @@ main = do
         , getNameSet = Pinwheels
         }
       filterParamsList = L.take (numLayer params) [filterParamsSet1, filterParamsSet2,filterParamsSet2]
+      gaussianFilterParamsList =
+        L.map
+          (\gScale -> GaussianFilterParams gScale imageSize)
+          (gaussianScale params)
       magnitudeConduit =
         if isFixedSize params
           then if isComplex params
@@ -76,6 +81,7 @@ main = do
                   else multiLayerMagnitudeFixedSizedConduit
                          parallelParams
                          (L.map makeFilterSet filterParamsList)
+                         gaussianFilterParamsList
                          (downsampleFactor params)
           else if isComplex params
                   then multiLayerComplexVariedSizedConduit
@@ -85,6 +91,7 @@ main = do
                   else multiLayerMagnitudeVariedSizedConduit
                          parallelParams
                          filterParamsList
+                         gaussianFilterParamsList
                          (downsampleFactor params)
   print params
   runResourceT $

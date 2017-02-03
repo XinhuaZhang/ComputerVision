@@ -55,15 +55,12 @@ main = do
         , getNameSet = Pinwheels
         }
       filterParamsList = L.zipWith filterParamsSetFunc [1,2,2,2,1] (freq params)
-      gaussianFilterParamsList =
-        L.map
-          (\gScale -> GaussianFilterParams gScale imageSize)
-          (gaussianScale params)
+      gaussianFilterParams = GaussianFilterParams (L.head $ scale params) imageSize
       magnitudeConduit =
-        pinwheelPCANetVariedSizeConduit
+        pinwheelPCANetTopVariedSizeConduit
           parallelParams
           filterParamsList
-          gaussianFilterParamsList
+          gaussianFilterParams
           (downsampleFactor params)
           pcaMatrixes
       -- magnitudeConduit =

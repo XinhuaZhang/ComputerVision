@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 import           Application.MultiDimensionalGMM.GMM
-import           Application.PinwheelPCANet.ArgsParser as Parser
+import           Application.PinwheelPCANetTop.ArgsParser as Parser
 import           Application.PinwheelPCANet.PCA
 import           Control.Monad                         as M
 import           Control.Monad.Trans.Resource
@@ -58,10 +58,7 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [1 .. (freq' - 0)]
         , getNameSet = Pinwheels
         }
-      gaussianFilterParamsList =
-        L.map
-          (\gScale -> GaussianFilterParams gScale imageSize)
-          (gaussianScale params)
+      gaussianFilterParams = GaussianFilterParams (L.head $ scale params) imageSize
       filterParamsSetList =
         L.zipWith filterParamsSetFunc [1, 2, 2, 2, 1] (freq params)
       numM = numGaussian params
@@ -71,27 +68,19 @@ main = do
                  parallelParams
                  (makeFilterSet filterParams)
           else singleLayerMagnitudeVariedSizedConduit parallelParams filterParams
-      imgArrs = L.map (\(LabeledArray _ arr) -> arr) images
   withBinaryFile (gmmFile params) WriteMode $
     \h ->
-       M.foldM
-         (\arrs (filterParamsSet, pcaMat, downsampleFactor',gaussianFilterParams) -> do
-            filteredArrs <-
-              runResourceT $
-              sourceList arrs $$ magnitudeConduit filterParamsSet =$=
-              pcaConduit parallelParams pcaMat =$=
-              CL.consume
-            runResourceT $
-              CL.sourceList filteredArrs $$
-              gaussianVariedSizeConduit parallelParams gaussianFilterParams =$=
-              CL.map (downsample [downsampleFactor', downsampleFactor', 1]) =$=
-              extractPointwiseFeatureConduit parallelParams =$=
-              hGMMSink1
-                parallelParams
-                h
-                (numGaussian params)
-                (threshold params)
-                (numGMMExample params)
-            return filteredArrs)
-         imgArrs $
-       L.zip4 filterParamsSetList pcaMatrixes (downsampleFactor params) gaussianFilterParamsList
+       runResourceT $
+       sourceList images $$
+       pinwheelPCANetTopVariedSizeConduit
+         parallelParams
+         filterParamsSetList
+         (L.last $ downsampleFactor params)
+         pcaMatrixes =$=
+       CL.map snd =$=
+       hGMMSink1
+         parallelParams
+         h
+         (numGaussian params)
+         (threshold params)
+         (numGMMExample params)

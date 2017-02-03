@@ -140,8 +140,10 @@ singleLayerComplexVariedSizedConduit parallelParams filterParams = do
 multiLayerMagnitudeFixedSizedConduit
   :: ParallelParams
   -> [PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))]
-  -> Int -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [[VU.Vector Double]])
-multiLayerMagnitudeFixedSizedConduit parallelParams filters' factor = do
+  -> [GaussianFilterParams]
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [[VU.Vector Double]])
+multiLayerMagnitudeFixedSizedConduit parallelParams filters' gfilterParamsList factor = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -150,17 +152,27 @@ multiLayerMagnitudeFixedSizedConduit parallelParams filters' factor = do
                 parallelParams
                 rdeepseq
                 (\(LabeledArray label arr') ->
-                    (label, multiLayerMagnitudeFixedSize filters' factor arr'))
+                    ( label
+                    , multiLayerMagnitudeFixedSize
+                        filters'
+                        gfilterParamsList
+                        factor
+                        arr'))
                 xs
         sourceList ys
-        multiLayerMagnitudeFixedSizedConduit parallelParams filters' factor)
+        multiLayerMagnitudeFixedSizedConduit
+          parallelParams
+          filters'
+          gfilterParamsList
+          factor)
 
 multiLayerMagnitudeVariedSizedConduit
   :: ParallelParams
   -> [PolarSeparableFilterParamsSet]
+  -> [GaussianFilterParams]
   -> Int
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [[VU.Vector Double]])
-multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList factor = do
+multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList gfilterParamsList factor = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -169,11 +181,20 @@ multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList factor = d
                 parallelParams
                 rdeepseq
                 (\(LabeledArray label arr') ->
-                    (label, multiLayerMagnitudeVariedSize filterParamsList factor arr'))
+                    ( label
+                    , multiLayerMagnitudeVariedSize
+                        filterParamsList
+                        gfilterParamsList
+                        factor
+                        arr'))
                 xs
         sourceList ys
-        multiLayerMagnitudeVariedSizedConduit parallelParams filterParamsList factor)
-        
+        multiLayerMagnitudeVariedSizedConduit
+          parallelParams
+          filterParamsList
+          gfilterParamsList
+          factor)
+
 
 
 multiLayerMagnitudeFixedSizedConduit1
@@ -285,31 +306,27 @@ singleLayerComplexFixedSize filter' =
 multiLayerMagnitudeFixedSize
   :: (R.Source s Double)
   => [PolarSeparableFilter PolarSeparableFilterParamsSet (Array U DIM3 (C.Complex Double))]
+  -> [GaussianFilterParams]
   -> Int
   -> Array s DIM3 Double
   -> [[Vector Double]]
-multiLayerMagnitudeFixedSize filters' factor inputArr =
-  L.zipWith (\(PolarSeparableFilter params _) arr' ->
-               let gArr =
-                     G.applyFilterVariedSize
-                       (GaussianFilterParams
-                          (L.head . S.toList . getScaleSet $ params)
-                          undefined)
-                       arr'
-                   !(Z :. (_nf' :: Int) :. (ny' :: Int) :. (nx' :: Int)) =
-                     extent downSampledArr
-                   !downSampledArr =
-                     RU.downsample [factor,factor,1]
-                                   gArr
-               in [toUnboxed . computeUnboxedS . R.slice downSampledArr $
-                   (Z :. All :. j :. i)|j <- [0 .. ny' - 1],i <- [0 .. nx' - 1]])
-            filters' .
+multiLayerMagnitudeFixedSize filters' gFilterParamsList factor inputArr =
+  L.zipWith3
+    (\(PolarSeparableFilter params _) gFilterParams arr' ->
+        let gArr = G.applyFilterVariedSize gFilterParams arr'
+            !(Z :. (_nf' :: Int) :. (ny' :: Int) :. (nx' :: Int)) = extent downSampledArr
+            !downSampledArr = RU.downsample [factor, factor, 1] gArr
+        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
+            (Z :. All :. j :. i)
+           | j <- [0 .. ny' - 1]
+           , i <- [0 .. nx' - 1] ])
+    filters'
+    gFilterParamsList .
   L.tail .
-  L.scanl' (\arr' filter' ->
-              R.map C.magnitude .
-              applyFilterSetFixedSize filter' . R.map (:+ 0) $
-              arr')
-           (delay inputArr) $
+  L.scanl'
+    (\arr' filter' ->
+        R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $ arr')
+    (delay inputArr) $
   filters'
   
 
@@ -387,32 +404,28 @@ singleLayerComplexVariedSize filterParams =
 
 multiLayerMagnitudeVariedSize
   :: (R.Source s Double)
-  => [PolarSeparableFilterParamsSet]
+  => [PolarSeparableFilterParamsSet] -> [GaussianFilterParams]
   -> Int
   -> Array s DIM3 Double
   -> [[Vector Double]]
-multiLayerMagnitudeVariedSize filterParamsList factor inputArr =
-  L.zipWith (\params arr' ->
-               let gArr =
-                     G.applyFilterVariedSize
-                       (GaussianFilterParams
-                          (L.head . S.toList . getScaleSet $ params)
-                          undefined)
-                       arr'
-                   !(Z :. _ :. (ny' :: Int) :. (nx' :: Int)) =
-                     extent downSampledArr
-                   !downSampledArr =
-                     RU.downsample [factor,factor,1]
-                                   gArr
-               in [toUnboxed . computeUnboxedS . R.slice downSampledArr $
-                   (Z :. All :. j :. i)|j <- [0 .. ny' - 1],i <- [0 .. nx' - 1]])
-            filterParamsList .
+multiLayerMagnitudeVariedSize filterParamsList gFilterParamsList factor inputArr =
+  L.zipWith3
+    (\params gFilterParams arr' ->
+        let gArr = G.applyFilterVariedSize gFilterParams arr'
+            !(Z :. _ :. (ny' :: Int) :. (nx' :: Int)) = extent downSampledArr
+            !downSampledArr = RU.downsample [factor, factor, 1] gArr
+        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
+            (Z :. All :. j :. i)
+           | j <- [0 .. ny' - 1]
+           , i <- [0 .. nx' - 1] ])
+    filterParamsList
+    gFilterParamsList .
   L.tail .
-  L.scanl' (\arr' filterParams ->
-              R.map C.magnitude .
-              applyFilterSetVariedSize filterParams . R.map (:+ 0) $
-              arr')
-           (delay inputArr) $
+  L.scanl'
+    (\arr' filterParams ->
+        R.map C.magnitude . applyFilterSetVariedSize filterParams . R.map (:+ 0) $
+        arr')
+    (delay inputArr) $
   filterParamsList
   
 

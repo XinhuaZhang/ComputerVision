@@ -1,16 +1,22 @@
-import           Application.PinwheelPCANet.ArgsParser     as Parser
+{-# LANGUAGE BangPatterns #-}
+
+module Main where
+
+import           Application.PinwheelPCANetTop.ArgsParser     as Parser
 import           Application.MultiDimensionalGMM.FisherKernel
 import           Application.MultiDimensionalGMM.GMM
 import           Application.MultiDimensionalGMM.MixtureModel
 import           Application.PinwheelPCANet.PCA
 import           Classifier.LibLinear
-import           Control.Arrow
 import           Control.Monad
+import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
+import           Control.Parallel
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel            as Parallel
+import           CV.Utility.Time
 import           Data.Array.Repa                as R
 import           Data.Conduit
 import           Data.Conduit.Binary            as CB
@@ -18,8 +24,35 @@ import           Data.Conduit.List              as CL
 import           Data.List                      as L
 import           Data.Set                       as S
 import           Data.Vector.Unboxed            as VU
+import           Foreign.Ptr
+import           Numeric.LinearAlgebra.Data     as LA
 import           Prelude                        as P
 import           System.Environment
+
+trainSink
+  :: ParallelParams
+  -> FilePath
+  -> TrainParams
+  -> Bool
+  -> Sink (Int, VU.Vector Double) (ResourceT IO) ()
+trainSink parallelParams filePath trainParams findCFlag = go [] []
+  where
+    go :: [[Double]]
+       -> [[Ptr C'feature_node]]
+       -> Sink (Int, VU.Vector Double) (ResourceT IO) ()
+    go label pss = do
+      xs <- CL.take (Parallel.batchSize parallelParams)
+      if P.length xs > 0
+        then do
+          let (ls, ys) = P.unzip xs
+          ps <- liftIO $ P.mapM (getFeatureVecPtr . Dense . VU.toList) ys
+          liftIO $ printCurrentTime
+          go ((P.map fromIntegral ls) : label) $! (ps : pss)
+        else liftIO $
+             train
+               trainParams
+               (P.concat . L.reverse $ label)
+               (P.concat . L.reverse $ pss)
 
 main = do
   args <- getArgs
@@ -29,6 +62,7 @@ main = do
   params <- parseArgs args
   gmm <- readGMM (gmmFile params) :: IO [GMM]
   pcaMatrixes <- readMatrixes (pcaFile params)
+  imageListLen <- getArrayNumFile (inputFile params)
   imageSize <-
     if isFixedSize params
       then do
@@ -55,30 +89,37 @@ main = do
         , getNameSet = Pinwheels
         }
       filterParamsList = L.zipWith filterParamsSetFunc [1,2,2,2,1] (freq params)
-      gaussianFilterParamsList =
-        L.map
-          (\gScale -> GaussianFilterParams gScale imageSize)
-          (gaussianScale params)
+      numFeature = L.sum . L.map cols $ pcaMatrixes
+      trainParams =
+        TrainParams
+        { trainSolver = L2R_L2LOSS_SVC_DUAL
+        , trainC = c params
+        , trainNumExamples = imageListLen
+        , trainFeatureIndexMax =
+          if isComplex params
+            then (4 * numFeature) * (numModel $ P.head gmm)
+            else (2 * numFeature) * (numModel $ P.head gmm)
+        , trainModel = modelName params
+        }
+      gaussianFilterParams = GaussianFilterParams (L.head $ scale params) imageSize
       magnitudeConduit =
-        pinwheelPCANetVariedSizeConduit
+        pinwheelPCANetTopVariedSizeConduit
           parallelParams
           filterParamsList
-          gaussianFilterParamsList
+          gaussianFilterParams
           (downsampleFactor params)
           pcaMatrixes
-      -- magnitudeConduit =
-      --   if isFixedSize params
-      --     then multiLayerMagnitudeFixedSizedConduit
-      --            parallelParams
-      --            (L.map makeFilterSet filterParamsList)
-      --            (downsampleFactor params)
-      --     else multiLayerMagnitudeVariedSizedConduit
-      --            parallelParams
-      --            filterParamsList
-      --            (downsampleFactor params)
+  -- if isFixedSize params
+  --   then multiLayerMagnitudeFixedSizedConduit
+  --          parallelParams
+  --          (L.map makeFilterSet filterParamsList)
+  --          (downsampleFactor params)
+  --   else multiLayerMagnitudeVariedSizedConduit
+  --          parallelParams
+  --          filterParamsList
+  --          (downsampleFactor params)
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
     (fisherVectorConduit1 parallelParams gmm) =$=
-    CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
-    predict (modelName params) ((modelName params) P.++ ".out")
+    trainSink parallelParams (labelFile params) trainParams (findC params)

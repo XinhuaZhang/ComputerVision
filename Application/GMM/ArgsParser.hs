@@ -25,6 +25,7 @@ data Flag
   | IsFixedSize
   | NumPrincipal [Int]
   | NumLayer Int
+  | GaussianScale [Double]
   deriving (Show)
 
 data Params = Params
@@ -47,6 +48,7 @@ data Params = Params
   , isFixedSize      :: Bool
   , numPrincipal     :: [Int]
   , numLayer         :: Int
+  , gaussianScale    :: [Double]
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -109,6 +111,17 @@ options =
              in Scale $ map (readDouble . L.reverse) $ go [] x)
          "[Double]")
       "Set the scale list"
+  ,  Option ['e']
+            ["gaussianScale"]
+            (ReqArg (\x ->
+                       let go xs [] = [xs]
+                           go xs (y:ys) =
+                             if y == ','
+                                then xs : go [] ys
+                                else go (y : xs) ys
+                       in GaussianScale $ map (readDouble . L.reverse) $ go [] x)
+                    "[Double]")
+            "Set the scale list"
   , Option
       ['z']
       ["complex"]
@@ -186,7 +199,8 @@ parseFlag flags = go flags defaultFlag
                  ,numGMMExample = 1
                  ,isFixedSize = False
                  ,numPrincipal = [1]
-                 ,numLayer = 1}
+                 ,numLayer = 1
+                 ,gaussianScale = [1]}
         go [] params = params
         go (x:xs) params =
           case x of
@@ -209,6 +223,7 @@ parseFlag flags = go flags defaultFlag
             IsFixedSize -> go xs (params {isFixedSize = True})
             NumPrincipal v -> go xs (params {numPrincipal = v})
             NumLayer x -> go xs (params {numLayer = x})
+            GaussianScale v -> go xs (params {gaussianScale = v})
 
 parseArgs :: [String] -> IO Params
 parseArgs args = do

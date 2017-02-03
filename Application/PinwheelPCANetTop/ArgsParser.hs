@@ -1,4 +1,4 @@
-module Application.PinwheelPCANet.ArgsParser where
+module Application.PinwheelPCANetTop.ArgsParser where
 
 import           Data.List             as L
 import           Data.Maybe
@@ -25,7 +25,7 @@ data Flag
   | IsFixedSize
   | NumPrincipal [Int]
   | NumLayer Int
-  | GaussianScale [Double]
+  | GaussianScale Double
   deriving (Show)
 
 data Params = Params
@@ -48,7 +48,7 @@ data Params = Params
   , isFixedSize      :: Bool
   , numPrincipal     :: [Int]
   , numLayer         :: Int
-  , gaussianScale    :: [Double]
+  , gaussianScale    :: Double
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -132,13 +132,7 @@ options =
           "Set the scale list"
   ,Option ['e']
           ["gaussianScale"]
-          (ReqArg (\x ->
-                     let go xs [] = [xs]
-                         go xs (y:ys) =
-                           if y == ','
-                              then xs : go [] ys
-                              else go (y : xs) ys
-                     in GaussianScale $ map (readDouble . L.reverse) $ go [] x)
+          (ReqArg (GaussianScale . readDouble)
                   "[Double]")
           "Set the scale list"
   ,Option ['z']
@@ -212,7 +206,7 @@ parseFlag flags = go flags defaultFlag
                  ,isFixedSize = False
                  ,numPrincipal = [1]
                  ,numLayer = 1
-                 ,gaussianScale = [1]}
+                 ,gaussianScale = 1}
         go [] params = params
         go (x:xs) params =
           case x of
