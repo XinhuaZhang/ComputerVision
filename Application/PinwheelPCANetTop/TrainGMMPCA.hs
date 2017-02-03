@@ -58,7 +58,7 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [1 .. (freq' - 0)]
         , getNameSet = Pinwheels
         }
-      gaussianFilterParams = GaussianFilterParams (L.head $ scale params) imageSize
+      gaussianFilterParams = GaussianFilterParams (gaussianScale params) imageSize
       filterParamsSetList =
         L.zipWith filterParamsSetFunc [1, 2, 2, 2, 1] (freq params)
       numM = numGaussian params
@@ -75,6 +75,7 @@ main = do
        pinwheelPCANetTopVariedSizeConduit
          parallelParams
          filterParamsSetList
+         gaussianFilterParams
          (L.last $ downsampleFactor params)
          pcaMatrixes =$=
        CL.map snd =$=

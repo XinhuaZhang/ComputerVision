@@ -101,7 +101,7 @@ main = do
             else (2 * numFeature) * (numModel $ P.head gmm)
         , trainModel = modelName params
         }
-      gaussianFilterParams = GaussianFilterParams (L.head $ scale params) imageSize
+      gaussianFilterParams = GaussianFilterParams (gaussianScale params) imageSize
       magnitudeConduit =
         pinwheelPCANetTopVariedSizeConduit
           parallelParams
