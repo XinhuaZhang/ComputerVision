@@ -21,6 +21,8 @@ import           Data.List                      as L
 import           Data.Vector.Unboxed            as VU
 import           GHC.Generics
 import           Prelude                        as P
+import           CV.Filter.GaussianFilter       as G
+import qualified Data.Set                       as S
 
 data PolarSeparableFeaturePoint a = PolarSeparableFeaturePoint
   { x       :: !Int
@@ -287,19 +289,27 @@ multiLayerMagnitudeFixedSize
   -> Array s DIM3 Double
   -> [[Vector Double]]
 multiLayerMagnitudeFixedSize filters' factor inputArr =
-  L.map
-    (\arr' ->
-        let !(Z :. (_nf'::Int) :. (ny'::Int) :. (nx'::Int)) = extent downSampledArr
-            !downSampledArr = RU.downsample [factor, factor, 1] arr'
-        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
-            (Z :. All :. j :. i)
-           | j <- [0 .. ny' - 1]
-           , i <- [0 .. nx' - 1] ]) .
+  L.zipWith (\(PolarSeparableFilter params _) arr' ->
+               let gArr =
+                     G.applyFilterVariedSize
+                       (GaussianFilterParams
+                          (L.head . S.toList . getScaleSet $ params)
+                          undefined)
+                       arr'
+                   !(Z :. (_nf' :: Int) :. (ny' :: Int) :. (nx' :: Int)) =
+                     extent downSampledArr
+                   !downSampledArr =
+                     RU.downsample [factor,factor,1]
+                                   gArr
+               in [toUnboxed . computeUnboxedS . R.slice downSampledArr $
+                   (Z :. All :. j :. i)|j <- [0 .. ny' - 1],i <- [0 .. nx' - 1]])
+            filters' .
   L.tail .
-  L.scanl'
-    (\arr' filter' ->
-        R.map C.magnitude . applyFilterSetFixedSize filter' . R.map (:+ 0) $ arr')
-    (delay inputArr) $
+  L.scanl' (\arr' filter' ->
+              R.map C.magnitude .
+              applyFilterSetFixedSize filter' . R.map (:+ 0) $
+              arr')
+           (delay inputArr) $
   filters'
   
 
@@ -382,20 +392,27 @@ multiLayerMagnitudeVariedSize
   -> Array s DIM3 Double
   -> [[Vector Double]]
 multiLayerMagnitudeVariedSize filterParamsList factor inputArr =
-  L.map
-    (\arr' ->
-        let !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent downSampledArr
-            !downSampledArr = RU.downsample [factor, factor, 1] arr'
-        in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
-            (Z :. All :. j :. i)
-           | j <- [0 .. ny' - 1]
-           , i <- [0 .. nx' - 1] ]) .
+  L.zipWith (\params arr' ->
+               let gArr =
+                     G.applyFilterVariedSize
+                       (GaussianFilterParams
+                          (L.head . S.toList . getScaleSet $ params)
+                          undefined)
+                       arr'
+                   !(Z :. _ :. (ny' :: Int) :. (nx' :: Int)) =
+                     extent downSampledArr
+                   !downSampledArr =
+                     RU.downsample [factor,factor,1]
+                                   gArr
+               in [toUnboxed . computeUnboxedS . R.slice downSampledArr $
+                   (Z :. All :. j :. i)|j <- [0 .. ny' - 1],i <- [0 .. nx' - 1]])
+            filterParamsList .
   L.tail .
-  L.scanl'
-    (\arr' filterParams ->
-        R.map C.magnitude . applyFilterSetVariedSize filterParams . R.map (:+ 0) $
-        arr')
-    (delay inputArr) $
+  L.scanl' (\arr' filterParams ->
+              R.map C.magnitude .
+              applyFilterSetVariedSize filterParams . R.map (:+ 0) $
+              arr')
+           (delay inputArr) $
   filterParamsList
   
 

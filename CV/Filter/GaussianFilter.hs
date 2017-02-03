@@ -109,12 +109,12 @@ gaussianVariedSizeConduit parallelParams filterParams = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
-    (do let ys =
+    (do let !ys =
               parMapChunk
                 parallelParams
                 rseq
                 (\y ->
-                    let arr =
+                    let !arr =
                           computeUnboxedS $ applyFilterVariedSize filterParams y
                     in deepSeqArray arr arr)
                 xs
