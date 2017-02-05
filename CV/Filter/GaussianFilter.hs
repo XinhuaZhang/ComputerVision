@@ -54,7 +54,7 @@ gaussian2DRing af rf sd i j =
   exp (-(sqrt r - r0) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
   where
     r = fromIntegral (i * i + j * j)
-    r0 = (8 * sd * (2 - exp (fromIntegral (-af) / 10))) / pi
+    r0 = (6 * sd * (2 - exp (fromIntegral (-af) / 10))) / pi
 
 {-# INLINE gaussian2DDouble #-}
 

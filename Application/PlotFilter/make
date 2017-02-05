@@ -2,4 +2,4 @@
 
 ghc -i../.. -j4 -O2 Main.hs -o main
 
-ghc -i../.. -j4 -O2 PlotFilteredImage.hs -o plot
+ghc -i../.. -j4 -O2 -threaded -rtsopts PlotFilteredImage.hs -o plot
