@@ -152,13 +152,14 @@ getAvgLikelihood gmm xs =
     xs /
   fromIntegral (L.length xs)
 
-em
-  :: Double -> Double
-  -> Int 
-  -> GMM -> GMM
-  -> [((Double, Double), (Double, Double))]
-  -> [VU.Vector Double]
-  -> IO GMM
+em :: Double
+   -> Double
+   -> Int
+   -> GMM
+   -> GMM
+   -> [((Double,Double),(Double,Double))]
+   -> [VU.Vector Double]
+   -> IO GMM
 em threshold lastAvgLikelihood count' oldGMM lastGMM bound xs
   | not (L.null smallVarianceIdx) =
     do putStrLn "reset small variance Gaussian"

@@ -42,7 +42,7 @@ maxPoolList
   => Int -> ([a] -> a) -> [a] -> [a]
 maxPoolList poolSize maxOp ys
   | L.length as == poolSize = max' : maxPoolList poolSize maxOp (L.tail ys)
-  | otherwise = [max']
+  | otherwise = []
   where
     (as, _bs) = L.splitAt poolSize ys
     !max' = maxOp as
@@ -83,15 +83,18 @@ poolArr
   :: (R.Source s e, Fractional e, Ord e, Unbox e)
   => PoolingType -> Int -> Array s DIM3 e -> Array U DIM3 e
 poolArr poolingType poolingSize arr' = deepSeqArray y y
-  where
-    (Z :. nf' :. ny' :. nx') = extent arr'
-    ss = L.map (\k -> R.toList $! R.slice arr' (Z :. k :. All :. All)) [0 .. nf']
-    newNy = ny' - poolingSize + 1
-    newNx = nx' - poolingSize + 1
-    y =
-      fromListUnboxed (Z :. nf' :. newNy :. newNx) .
-      L.concat . pool poolingType poolingSize $
-      ss
+  where (Z :. nf' :. ny' :. nx') = extent arr'
+        ss =
+          L.map (\k ->
+                   L.map (\j -> R.toList . R.slice arr' $ (Z :. k :. j :. All))
+                         [0 .. ny' - 1])
+                [0 .. nf' - 1]
+        newNy = ny' - poolingSize + 1
+        newNx = nx' - poolingSize + 1
+        y =
+          fromListUnboxed (Z :. nf' :. newNy :. newNx) .
+          L.concatMap (L.concat . pool poolingType poolingSize) $
+          ss
 
 poolConduit
   :: (R.Source s e, Fractional e, Ord e, Unbox e)
