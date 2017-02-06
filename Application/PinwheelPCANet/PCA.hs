@@ -9,10 +9,10 @@ import           Control.Monad                  as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Filter.GaussianFilter       as G
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
+import           Application.PinwheelPCANetMax.Pooling
 import           Data.Array
 import           Data.Array.Repa                as R
 import           Data.Binary
@@ -27,12 +27,13 @@ import           Numeric.Statistics.PCA
 import           System.IO
 
 hPCASink
-  :: ParallelParams
+  :: (R.Source s Double)
+  => ParallelParams
   -> Handle
   -> Int
   -> Int
   -> Int
-  -> Sink (R.Array U DIM3 Double) (ResourceT IO) [R.Array U DIM3 Double]
+  -> Sink (R.Array s DIM3 Double) (ResourceT IO) [R.Array U DIM3 Double]
 hPCASink parallelParams h numExample numPrincipal downsampleFactor' = do
   arrs <- CL.take numExample
   if L.null arrs
@@ -149,11 +150,10 @@ readMatrix filePath =
 pinwheelPCANetVariedSizeConduit
   :: ParallelParams
   -> [PolarSeparableFilterParamsSet]
-  -> [GaussianFilterParams]
   -> [Int]
   -> [Matrix Double]
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [[VU.Vector Double]])
-pinwheelPCANetVariedSizeConduit parallelParams filterParamsList gaussianFilterParamsList factors pcaMatrix = do
+pinwheelPCANetVariedSizeConduit parallelParams filterParamsList factors pcaMatrix = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -165,7 +165,6 @@ pinwheelPCANetVariedSizeConduit parallelParams filterParamsList gaussianFilterPa
                     ( label
                     , pinwheelPCANetVariedSize
                         filterParamsList
-                        gaussianFilterParamsList
                         factors
                         pcaMatrix
                         arr'))
@@ -174,7 +173,6 @@ pinwheelPCANetVariedSizeConduit parallelParams filterParamsList gaussianFilterPa
         pinwheelPCANetVariedSizeConduit
           parallelParams
           filterParamsList
-          gaussianFilterParamsList
           factors
           pcaMatrix)
 
@@ -183,26 +181,24 @@ pinwheelPCANetVariedSizeConduit parallelParams filterParamsList gaussianFilterPa
 pinwheelPCANetVariedSize
   :: (R.Source s Double)
   => [PolarSeparableFilterParamsSet]
-  -> [GaussianFilterParams]
   -> [Int]
   -> [Matrix Double]
   -> R.Array s DIM3 Double
   -> [[VU.Vector Double]]
-pinwheelPCANetVariedSize filterParamsList gaussianFilterParamsList factors pcaMatrix inputArr =
-  L.zipWith3
-    (\gaussianFilterParams factor arr' ->
-        let gArr = G.applyFilterVariedSize gaussianFilterParams arr'
-            downsampledArr =
+pinwheelPCANetVariedSize filterParamsList factors pcaMatrix inputArr =
+  L.zipWith
+    (\factor arr' ->
+        let downsampledArr =
               if factor == 1
                 then delay arr'
                 else downsample [factor, factor, 1] arr'
         in extractPointwiseFeature downsampledArr)
-    gaussianFilterParamsList
     factors .
   L.tail .
   L.scanl'
     (\arr' (filterParams, pcaMat) ->
         pcaTransformArray pcaMat .
+        poolArr Max 3 .
         R.map C.magnitude . applyFilterSetVariedSize filterParams . R.map (:+ 0) $
         arr')
     (computeS . delay $ inputArr) $
@@ -212,11 +208,10 @@ pinwheelPCANetVariedSize filterParamsList gaussianFilterParamsList factors pcaMa
 pinwheelPCANetTopVariedSizeConduit
   :: ParallelParams
   -> [PolarSeparableFilterParamsSet]
-  -> GaussianFilterParams
   -> Int
   -> [Matrix Double]
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, [VU.Vector Double])
-pinwheelPCANetTopVariedSizeConduit parallelParams filterParamsList gaussianFilterParams factor pcaMatrix = do
+pinwheelPCANetTopVariedSizeConduit parallelParams filterParamsList factor pcaMatrix = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -228,7 +223,6 @@ pinwheelPCANetTopVariedSizeConduit parallelParams filterParamsList gaussianFilte
                     ( label
                     , pinwheelPCANetTopVariedSize
                         filterParamsList
-                        gaussianFilterParams
                         factor
                         pcaMatrix
                         arr'))
@@ -237,7 +231,6 @@ pinwheelPCANetTopVariedSizeConduit parallelParams filterParamsList gaussianFilte
         pinwheelPCANetTopVariedSizeConduit
           parallelParams
           filterParamsList
-          gaussianFilterParams
           factor
           pcaMatrix)
 
@@ -246,53 +239,24 @@ pinwheelPCANetTopVariedSizeConduit parallelParams filterParamsList gaussianFilte
 pinwheelPCANetTopVariedSize
   :: (R.Source s Double)
   => [PolarSeparableFilterParamsSet]
-  -> GaussianFilterParams
   -> Int
   -> [Matrix Double]
   -> R.Array s DIM3 Double
   -> [VU.Vector Double]
-pinwheelPCANetTopVariedSize filterParamsList gaussianFilterParams factor pcaMatrix inputArr =
+pinwheelPCANetTopVariedSize filterParamsList factor pcaMatrix inputArr =
   extractPointwiseFeature downsampledArr
   where
     top =
       L.foldl'
         (\arr' (filterParams, pcaMat) ->
             pcaTransformArray pcaMat .
+            poolArr Max 3 .
             R.map C.magnitude .
             applyFilterSetVariedSize filterParams . R.map (:+ 0) $
             arr')
         (computeS . delay $ inputArr) $
       L.zip filterParamsList pcaMatrix
-    gArr = G.applyFilterVariedSize gaussianFilterParams top
     downsampledArr =
       if factor == 1
         then delay top
         else downsample [factor, factor, 1] top
-
-
--- {-# INLINE pinwheelPCANetComplexVariedSize #-}
-
--- pinwheelPCANetComplexVariedSize
---   :: (R.Source s Double)
---   => [PolarSeparableFilterParamsSet]
---   -> [Int]
---   -> [Matrix Double]
---   -> R.Array s DIM3 Double
---   -> [[VU.Vector Double]]
--- pinwheelPCANetComplexVariedSize filterParamsList factors pcaMatrix inputArr =
---   L.zipWith
---     (\factor arr' ->
---         let downsampledArr =
---               if factor == 1
---                 then arr'
---                 else computeUnboxedS $ downsample [factor, factor, 1] arr'
---         in extractPointwiseFeature downsampledArr)
---     factors .
---   L.tail .
---   L.scanl'
---     (\arr' (filterParams, pcaMat) ->
---         pcaTransformArray pcaMat .
---         R.map C.magnitude . applyFilterSetVariedSize filterParams $
---         arr')
---     (R.map (:+ 0) inputArr) $
---   L.zip filterParamsList pcaMatrix
