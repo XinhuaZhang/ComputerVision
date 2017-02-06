@@ -160,7 +160,7 @@ pinwheelPCANetVariedSizeConduit parallelParams filterParamsList gaussianFilterPa
     (do let ys =
               parMapChunk
                 parallelParams
-                rseq
+                rdeepseq
                 (\(LabeledArray label arr') ->
                     ( label
                     , pinwheelPCANetVariedSize
@@ -194,8 +194,8 @@ pinwheelPCANetVariedSize filterParamsList gaussianFilterParamsList factors pcaMa
         let gArr = G.applyFilterVariedSize gaussianFilterParams arr'
             downsampledArr =
               if factor == 1
-                then gArr
-                else downsample [factor, factor, 1] gArr
+                then delay arr'
+                else downsample [factor, factor, 1] arr'
         in extractPointwiseFeature downsampledArr)
     gaussianFilterParamsList
     factors .
@@ -223,7 +223,7 @@ pinwheelPCANetTopVariedSizeConduit parallelParams filterParamsList gaussianFilte
     (do let ys =
               parMapChunk
                 parallelParams
-                rseq
+                rdeepseq
                 (\(LabeledArray label arr') ->
                     ( label
                     , pinwheelPCANetTopVariedSize
@@ -266,8 +266,8 @@ pinwheelPCANetTopVariedSize filterParamsList gaussianFilterParams factor pcaMatr
     gArr = G.applyFilterVariedSize gaussianFilterParams top
     downsampledArr =
       if factor == 1
-        then gArr
-        else downsample [factor, factor, 1] gArr
+        then delay top
+        else downsample [factor, factor, 1] top
 
 
 -- {-# INLINE pinwheelPCANetComplexVariedSize #-}

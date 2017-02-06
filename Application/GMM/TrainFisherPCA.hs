@@ -86,7 +86,7 @@ main = do
         , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [1 .. (freq params - 0)]
         , getNameSet = Pinwheels
         }
       filterParamsSet2 =
@@ -94,8 +94,8 @@ main = do
         { getSizeSet = imageSize
         , getDownsampleFactorSet = 2
         , getScaleSet = S.fromDistinctAscList (scale params)
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params  - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params  - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (div (freq params) 2 - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [1 .. (div (freq params) 2  - 0)]
         , getNameSet = Pinwheels
         }
       filterParamsList = L.take (numLayer params) [filterParamsSet1, filterParamsSet2 ,filterParamsSet2]

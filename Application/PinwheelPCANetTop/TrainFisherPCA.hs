@@ -13,6 +13,7 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           Control.Parallel
 import           CV.Array.LabeledArray
+import           CV.Filter.GaussianFilter
 import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel            as Parallel
@@ -60,7 +61,7 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  gmm <- readGMM (gmmFile params) :: IO [GMM]
+  (gmm:_) <- readGMM (gmmFile params) :: IO [GMM]
   pcaMatrixes <- readMatrixes (pcaFile params)
   imageListLen <- getArrayNumFile (inputFile params)
   imageSize <-
@@ -97,8 +98,8 @@ main = do
         , trainNumExamples = imageListLen
         , trainFeatureIndexMax =
           if isComplex params
-            then (4 * numFeature) * (numModel $ P.head gmm)
-            else (2 * numFeature) * (numModel $ P.head gmm)
+            then (4 * numFeature) * (numModel gmm)
+            else (2 * numFeature) * (numModel gmm)
         , trainModel = modelName params
         }
       gaussianFilterParams = GaussianFilterParams (gaussianScale params) imageSize
@@ -107,7 +108,7 @@ main = do
           parallelParams
           filterParamsList
           gaussianFilterParams
-          (downsampleFactor params)
+          (L.last $ downsampleFactor params)
           pcaMatrixes
   -- if isFixedSize params
   --   then multiLayerMagnitudeFixedSizedConduit
@@ -121,5 +122,5 @@ main = do
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
-    (fisherVectorConduit1 parallelParams gmm) =$=
+    (fisherVectorConduit parallelParams gmm) =$=
     trainSink parallelParams (labelFile params) trainParams (findC params)
