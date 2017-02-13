@@ -150,6 +150,20 @@ getSIFTFeatureFromGradient stride (mag, ori) =
           !margin = div (x - stride * num) 2
       in L.filter (\y -> y + patchSize <= x) $
          L.take num [margin,margin + stride .. x]
+         
+
+getSIFTFeaturePointFromGradient
+  :: (R.Source s Double)
+  => (Int, Int) -> (Array s DIM2 Double, Array s DIM2 Double) -> VU.Vector Double
+getSIFTFeaturePointFromGradient (j, i) (mag, ori) =
+  getDescriptor (croppedMag, croppedOri)
+  where
+    patchSize = 16
+    y = j - div patchSize 2
+    x = i - div patchSize 2
+    croppedMag = crop [y, x] [patchSize, patchSize] mag
+    croppedOri = crop [y, x] [patchSize, patchSize] ori
+
 
 -- The vectors are point-wise vector
 siftFixedSizeConduit
