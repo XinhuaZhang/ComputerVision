@@ -32,18 +32,15 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsList =
-        L.concatMap generateMultilayerPSFParamsSet . L.tail . L.inits $
-        [filterParamsSet]
+      filters = (generateComplexFilters filterParamsSet)
   images <- readLabeledImageBinary inputPath 1
   let image = (\(LabeledArray _ arr) -> arr) . L.head $ images
       imgExtent = extent image
-  filteredImg <-
-    runResourceT
-      (CL.sourceList images $$ CL.map (\(LabeledArray _ arr) -> arr) =$=
-       singleLayerMagnitudeVariedSizedConduit parallelParams filterParamsSet =$=
-       CL.consume)
-  act <- computeActivity (read learningRate :: Double) (read count :: Int) (L.head filteredImg) image
+  act <-
+    computeActivityComplex
+      (read learningRate :: Double)
+      (read count :: Int)
+      filters
+      image
   plotImage "image.png" image
-  plotImage "recon.png" . computeRecon imgExtent (L.head filteredImg) $ act
-  
+  plotComplexImage "." . computeReconComplex filters $ act
