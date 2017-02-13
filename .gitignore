@@ -50,7 +50,7 @@ plot*
 /Application/GMM/filterTest
 /Application/GMM/test
 run*
-main*
+main
 /Application/RotateDataset/rotationTest
 *.ppm
 
