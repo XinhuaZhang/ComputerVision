@@ -17,10 +17,10 @@ import           System.Environment
 
 
 main = do
-  (inputPath:_) <- getArgs
+  (inputPath:learningRate:count:_) <- getArgs
   let parallelParams =
         ParallelParams
-        { numThread = 4
+        { numThread = 2
         , batchSize = 4
         }
       filterParamsSet =
@@ -28,8 +28,8 @@ main = do
         { getSizeSet = (0, 0)
         , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList [2]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
         , getNameSet = Pinwheels
         }
       filterParamsList =
@@ -43,5 +43,7 @@ main = do
       (CL.sourceList images $$ CL.map (\(LabeledArray _ arr) -> arr) =$=
        singleLayerMagnitudeVariedSizedConduit parallelParams filterParamsSet =$=
        CL.consume)
-  act <- computeActivity 0.1 (L.head filteredImg) image
+  act <- computeActivity (read learningRate :: Double) (read count :: Int) (L.head filteredImg) image
+  plotImage "image.png" image
   plotImage "recon.png" . computeRecon imgExtent (L.head filteredImg) $ act
+  

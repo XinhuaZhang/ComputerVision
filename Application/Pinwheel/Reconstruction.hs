@@ -10,10 +10,10 @@ import           System.Random
 
 computeActivity
   :: (R.Source s Double)
-  => Double -> Array s DIM3 Double -> Array U DIM3 Double -> IO [Double]
-computeActivity learningRate filteredArr img = do
+  => Double -> Int -> Array s DIM3 Double -> Array U DIM3 Double -> IO [Double]
+computeActivity learningRate count filteredArr img = do
   act <- M.replicateM filterNf $ randomRIO (-1, 1)
-  gradientDecent 100 learningRate (toUnboxed img) featureMapList act
+  gradientDecent count learningRate (toUnboxed img) featureMapList act
   where
     (Z :. imageNf :. _ :. _) = extent img
     featureMapList =
@@ -26,7 +26,7 @@ computeRecon
   :: (R.Source s Double)
   => DIM3 -> Array s DIM3 Double -> [Double] -> Array U DIM3 Double
 computeRecon imgExtent filteredArr act =
-  fromListUnboxed imgExtent . L.concat $
+  fromListUnboxed imgExtent . L.foldl1' (L.zipWith (+)) $
   L.zipWith (\f a -> L.map (* a) f) featureMapList act
   where
     (Z :. imageNf :. _ :. _) = imgExtent
@@ -42,9 +42,10 @@ gradientDecent
   -> [Double]
   -> IO [Double]
 gradientDecent count learningRate img projections activities
-  | count == 0 = return activities
+  | count == 0 = do print (sqrt . VU.sum . VU.map (^ (2 :: Int)) $ error')
+                    return activities
   | otherwise = do
-    print error'
+    -- print (sqrt . VU.sum . VU.map (^ (2 :: Int)) $ error')
     gradientDecent
       (count - 1)
       learningRate
@@ -53,9 +54,9 @@ gradientDecent count learningRate img projections activities
       (L.zipWith (\a d -> a + learningRate * d) activities delta)
   where
     error' =
-      VU.sum . VU.zipWith (-) img . L.foldl1' (VU.zipWith (+)) $
+      VU.zipWith (-) img . L.foldl1' (VU.zipWith (+)) $
       L.zipWith (\p a -> VU.map (* a) p) projections activities
-    delta = L.map (\p -> error' * VU.sum p) projections
+    delta = L.map (VU.sum . VU.zipWith (*) error') projections
 
 
 
