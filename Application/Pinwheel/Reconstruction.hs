@@ -1,17 +1,19 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Application.Pinwheel.Reconstruction where
 
-import           Control.Monad               as M
-import           CV.Utility.RepaArrayUtility
-import           Data.Array.Repa             as R
-import           Data.List                   as L
-import           Data.Vector.Unboxed         as VU
-import           System.Random
-import Data.Complex as C
-import qualified Data.Image as UNM
-import Data.Array as Arr
+import           Control.Monad                  as M
 import           CV.Filter.PolarSeparableFilter
-
+import           CV.Utility.RepaArrayUtility
+import           CV.Utility.Parallel
+import           Data.Array                     as Arr
+import           Data.Array.CArray              as CA
+import           Data.Array.Repa                as R
+import           Data.Complex                   as C
+import qualified Data.Image                     as UNM
+import           Data.List                      as L
+import           Data.Vector.Unboxed            as VU
+import           System.Random
+import           Math.FFT
 -- computeActivity
 --   :: (R.Source s Double)
 --   => Double -> Int -> R.Array s DIM3 Double -> R.Array U DIM3 Double -> IO [Double]
@@ -51,6 +53,42 @@ computeActivityComplex learningRate count filters img
         (\i -> R.slice img (Z :. (i :: Int) :. All :. All))
         [0 .. imageNf - 1]
     (Z :. filterNy :. filterNx) = extent . L.head $ filters
+    
+
+computeActivityConvolution
+  :: (R.Source s (Complex Double), R.Source s1 Double)
+  => Double
+  -> Int
+  -> [R.Array s DIM2 (Complex Double)]
+  -> [R.Array s DIM2 (Complex Double)]
+  -> R.Array s1 DIM3 Double
+  -> IO [[R.Array U DIM2 (Complex Double)]]
+computeActivityConvolution learningRate count filters filters180 img
+  | imageNy /= filterNy || imageNx /= filterNx =
+    error
+      "computeActivityComplex: the image and the filter have different sizes."
+  | otherwise = do
+    act <-
+      M.replicateM (L.length filters * imageNf * filterNx * filterNy) $
+      generateComplexNumber (-1, 1)
+    gradientDecentConvolution
+      count
+      learningRate
+      (L.map (R.map (:+ 0)) imageList)
+      (L.map (computeS . delay) filters)
+      (L.map (computeS . delay) filters180)
+      (L.map
+         (L.map (fromListUnboxed (Z :. filterNy :. filterNx)) .
+          splitList (filterNx * filterNy)) .
+       splitList (L.length filters * filterNx * filterNy) $
+       act)
+  where
+    (Z :. imageNf :. imageNy :. imageNx) = extent img
+    imageList =
+      L.map
+        (\i -> R.slice img (Z :. (i :: Int) :. All :. All))
+        [0 .. imageNf - 1]
+    (Z :. filterNy :. filterNx) = extent . L.head $ filters
 
 
 computeReconComplex
@@ -66,6 +104,21 @@ computeReconComplex filters acts =
   where
     (Z :. filterNy :. filterNx) = extent . L.head $ filters
     
+
+{-# INLINE computeReconConvolution #-}
+
+computeReconConvolution
+  :: (R.Source s (Complex Double))
+  => [R.Array s DIM2 (Complex Double)]
+  -> [[R.Array s DIM2 (Complex Double)]]
+  -> [R.Array U DIM2 (Complex Double)]
+computeReconConvolution filters =
+  L.map
+    (sumS .
+     L.foldl1' R.append .
+     parMap rseq (extend (Z :. All :. All :. (1 :: Int)) . uncurry convolve2D) .
+     L.zip filters)
+
 
 plotComplexImage
   :: (R.Source s (Complex Double))
@@ -93,9 +146,36 @@ plotComplexImage prefix arr = do
       L.map
         (\i ->
             UNM.arrayToImage .
-            listArray ((0, 0), (imageNy - 1, imageNx - 1)) . R.toList $
+            Arr.listArray ((0, 0), (imageNy - 1, imageNx - 1)) . R.toList $
             R.slice arr (Z :. i :. All :. All) :: UNM.ComplexImage)
         [0 .. imageNf - 1]
+        
+
+plotComplexImages
+  :: (R.Source s (Complex Double))
+  => String -> [R.Array s DIM2 (Complex Double)] -> IO ()
+plotComplexImages prefix arrs = do
+  M.zipWithM_
+    (\i arr' ->
+        UNM.writeImage (prefix L.++ "_complex_" L.++ show i L.++ ".ppm") arr')
+    [1 .. imageNf]
+    arrList
+  M.zipWithM_
+    (\i arr' ->
+        UNM.writeImage (prefix L.++ "_magnitude_" L.++ show i L.++ ".pgm") $
+        (UNM.realPart arr' :: UNM.GrayImage))
+    [1 .. imageNf]
+    arrList
+  where
+    (Z :. imageNy :. imageNx) = extent . L.head $ arrs
+    imageNf = L.length arrs
+    arrList =
+      L.map
+        (\arr' ->
+            UNM.arrayToImage .
+            Arr.listArray ((0, 0), (imageNy - 1, imageNx - 1)) . R.toList $
+            arr')
+        arrs
 
 {-# INLINE gradientDecent #-}
 
@@ -130,7 +210,7 @@ gradientDecent count learningRate imgs basis activities
         imgs
         activities
     delta = L.map (\error' -> L.map (VU.sum . VU.zipWith (*) error') basis) errors
-    
+
 
 {-# INLINE gradientDecentComplex #-}
 
@@ -163,6 +243,32 @@ gradientDecentComplex count learningRate imgs basis activities
         imgs
         activities
     delta = L.map (\error' -> L.map (VU.sum . VU.zipWith (*) error') basis) errors
+    
+gradientDecentConvolution
+  :: (R.Source s (Complex Double))
+  => Int
+  -> Double
+  -> [R.Array s DIM2 (Complex Double)]
+  -> [R.Array U DIM2 (Complex Double)]
+  -> [R.Array U DIM2 (Complex Double)]
+  -> [[R.Array U DIM2 (Complex Double)]]
+  -> IO [[R.Array U DIM2 (Complex Double)]]
+gradientDecentConvolution count learningRate imgs basis basis180 activities
+  | count == 0 = return activities
+  | otherwise = do
+    e <- M.mapM (sumAllP . R.map (^ (2 :: Int))) errors
+    print e
+    gradientDecentConvolution count learningRate imgs basis basis180 newAct
+  where
+    errors = L.zipWith (-^) imgs . computeReconConvolution basis180 $ activities
+    delta = L.map (\error' -> parMap rseq (convolve2D error') basis) errors
+    newAct =
+      L.zipWith
+        (L.zipWith (\a d -> computeS $ a +^ R.map (* (learningRate :+ 0)) d))
+        activities
+        delta
+
+
 
 {-# INLINE splitList #-}
 
@@ -200,3 +306,17 @@ generateComplexNumber bound = do
 
 complexVec2RealVec :: VU.Vector (Complex Double) -> VU.Vector Double
 complexVec2RealVec = VU.fromList . L.concatMap (\(a :+ b) -> [a,b]) . VU.toList
+
+
+{-# INLINE convolve2D #-}
+
+convolve2D
+  :: (R.Source s1 (Complex Double), R.Source s2 (Complex Double))
+  => R.Array s1 DIM2 (Complex Double)
+  -> R.Array s2 DIM2 (Complex Double)
+  -> R.Array D DIM2 (Complex Double)
+convolve2D arr1 arr2 =
+  twoDCArray2RArray . idftN [0, 1] $ liftArray2 (*) dftCArr1 dftCArr2
+  where
+    dftCArr1 = dftN [0, 1] . twoDRArray2CArray $ arr1
+    dftCArr2 = dftN [0, 1] . twoDRArray2CArray $ arr2

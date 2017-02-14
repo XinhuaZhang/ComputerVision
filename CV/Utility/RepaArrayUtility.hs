@@ -204,6 +204,16 @@ twoDCArray2RArray cArr =
     (\(Z :. j :. i) -> cArr CA.! (j, i))
   where
     ((_, _), (ny', nx')) = bounds cArr
+    
+
+{-# INLINE twoDRArray2CArray #-}
+
+twoDRArray2CArray
+  :: (Num a, Storable a, Source s a)
+  => R.Array s DIM2 a -> CArray (Int, Int) a
+twoDRArray2CArray rArr = listArray ((0, 0), (ny - 1, nx - 1)) . R.toList $ rArr
+  where
+    (Z :. ny :. nx) = extent rArr
 
 {-# INLINE threeDRArray2CArray #-}
 

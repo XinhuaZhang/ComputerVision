@@ -22,6 +22,7 @@ data PolarSeparableFilterName
   = Fans
   | Bullseye
   | Pinwheels
+  | Pinwheels180
   deriving (Show, Read)
 
 data PolarSeparableFilterParamsSet = PolarSeparableFilterParamsSet
@@ -133,6 +134,18 @@ pinwheels scale rf af x y
   | scale == 0 = angularFunc af x y * radialFunc scale  rf x y
   | otherwise =
     real2Complex (gaussian2DRing af rf scale x y) * angularFunc af x y * radialFunc scale rf x y
+    
+{-# INLINE pinwheels180 #-}
+
+pinwheels180 :: Double -> Int -> Int -> PixelOp (C.Complex Double)
+pinwheels180 scale rf af x y
+  | scale == 0 = angularFunc af x' y' * radialFunc scale rf x' y'
+  | otherwise =
+    real2Complex (gaussian2DRing af rf scale x' y') * angularFunc af x' y' *
+    radialFunc scale rf x' y'
+  where
+    x' = -x
+    y' = -y
 
 {-# INLINE getFilterFunc #-}
 
@@ -142,6 +155,7 @@ getFilterFunc
 getFilterFunc PolarSeparableFilterParams {getName = Fans} = fans
 getFilterFunc PolarSeparableFilterParams {getName = Bullseye} = bullseye
 getFilterFunc PolarSeparableFilterParams {getName = Pinwheels} = pinwheels
+getFilterFunc PolarSeparableFilterParams {getName = Pinwheels180} = pinwheels180
 
 {-# INLINE getFilterSetFunc #-}
 
@@ -151,6 +165,7 @@ getFilterSetFunc
 getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Fans} = fans
 getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Bullseye} = bullseye
 getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Pinwheels} = pinwheels
+getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Pinwheels180} = pinwheels180
 
 getFilterNum :: PolarSeparableFilterParamsSet -> Int
 getFilterNum (PolarSeparableFilterParamsSet _ _ scale rs as _) =
