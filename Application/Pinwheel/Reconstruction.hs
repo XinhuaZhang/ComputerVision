@@ -26,20 +26,24 @@ import           CV.Filter.PolarSeparableFilter
 --     filterNf = L.length featureMapList
 
 computeActivityComplex
-  :: (R.Source s (Complex Double))
-  => Double -> Int -> [R.Array s DIM2 (Complex Double)] -> R.Array U DIM3 Double -> IO [[Double]]
+  :: (R.Source s (Complex Double), R.Source s1 Double)
+  => Double
+  -> Int
+  -> [R.Array s DIM2 (Complex Double)]
+  -> R.Array s1 DIM3 Double
+  -> IO [[Complex Double]]
 computeActivityComplex learningRate count filters img
   | imageNy /= filterNy || imageNx /= filterNx =
     error
       "computeActivityComplex: the image and the filter have different sizes."
   | otherwise = do
-    act <- M.replicateM (L.length filters * imageNf) $ randomRIO (-1, 1)
-    gradientDecent
+    act <- M.replicateM (L.length filters * imageNf) $ generateComplexNumber (-1,1)
+    gradientDecentComplex
       count
       learningRate
-      (L.map (complexArr2RealVec . R.map (:+ 0)) imageList)
-      (L.map (complexArr2RealVec . delay) filters)
-      (splitList imageNf act)
+      (L.map (toUnboxed . computeS . R.map (:+ 0)) imageList)
+      (L.map (toUnboxed. computeS . delay) filters)
+      (splitList (L.length filters) act)
   where
     (Z :. imageNf :. imageNy :. imageNx) = extent img
     imageList =
@@ -47,18 +51,17 @@ computeActivityComplex learningRate count filters img
         (\i -> R.slice img (Z :. (i :: Int) :. All :. All))
         [0 .. imageNf - 1]
     (Z :. filterNy :. filterNx) = extent . L.head $ filters
-    complexArr2RealVec = VU.fromList . L.concatMap (\(a :+ b) -> [a, b]) . R.toList 
+
 
 computeReconComplex
   :: (R.Source s (Complex Double))
-  => [R.Array s DIM2 (Complex Double)] -> [[Double]] -> R.Array U DIM3 (Complex Double)
+  => [R.Array s DIM2 (Complex Double)] -> [[Complex Double]] -> R.Array U DIM3 (Complex Double)
 computeReconComplex filters acts =
   fromUnboxed (Z :. L.length acts :. filterNy :. filterNx) .
   VU.concat .
   L.map
     (L.foldl1' (VU.zipWith (+)) .
-     L.zipWith (\arr' a -> toUnboxed . computeS . R.map (* a) $ arr') filters .
-     L.map (:+ 0)) $
+     L.zipWith (\arr' a -> toUnboxed . computeS . R.map (* a) $ arr') filters) $
   acts
   where
     (Z :. filterNy :. filterNx) = extent . L.head $ filters
@@ -66,11 +69,22 @@ computeReconComplex filters acts =
 
 plotComplexImage
   :: (R.Source s (Complex Double))
-  => FilePath -> R.Array s DIM3 (Complex Double) -> IO ()
-plotComplexImage folderPath arr =
+  => String -> R.Array s DIM3 (Complex Double) -> IO ()
+plotComplexImage prefix arr = do
   M.zipWithM_
     (\i arr' ->
-        UNM.writeImage (folderPath L.++ "/complex_" L.++ show i L.++ ".ppm") arr')
+        UNM.writeImage
+          (prefix L.++ "_complex_" L.++ show i L.++
+           ".ppm")
+          arr')
+    [1 .. imageNf]
+    arrList
+  M.zipWithM_
+    (\i arr' ->
+        UNM.writeImage
+          (prefix L.++ "_magnitude_" L.++ show i L.++
+           ".pgm") $
+        (UNM.realPart arr' :: UNM.GrayImage))
     [1 .. imageNf]
     arrList
   where
@@ -95,16 +109,51 @@ gradientDecent
 gradientDecent count learningRate imgs basis activities
   | count == 0 = do
     print (sqrt . VU.sum . VU.map (^ (2 :: Int)) . VU.concat $ errors)
+    print activities
     return activities
   | otherwise
    -- print (sqrt . VU.sum . VU.map (^ (2 :: Int)) $ error')
    = do
+    print (sqrt . VU.sum . VU.map (^ (2 :: Int)) . VU.concat $ errors)
     gradientDecent
       (count - 1)
       learningRate
       imgs
       basis
       (L.zipWith (L.zipWith (\a d -> a + learningRate * d)) activities delta)
+  where
+    errors =
+      L.zipWith
+        (\img act ->
+            VU.zipWith (-) img . L.foldl1' (VU.zipWith (+)) $
+            L.zipWith (\p a -> VU.map (* a) p) basis act)
+        imgs
+        activities
+    delta = L.map (\error' -> L.map (VU.sum . VU.zipWith (*) error') basis) errors
+    
+
+{-# INLINE gradientDecentComplex #-}
+
+gradientDecentComplex
+  :: Int
+  -> Double
+  -> [VU.Vector (Complex Double)] -- multi-channel image
+  -> [VU.Vector (Complex Double)]
+  -> [[Complex Double]]
+  -> IO [[Complex Double]]
+gradientDecentComplex count learningRate imgs basis activities
+  | count == 0 = do
+    print (VU.sum . VU.map (^ (2 :: Int)) . VU.concat $ errors)
+    return activities
+  | otherwise
+   = do
+    print . VU.sum . VU.map (^ (2 :: Int)) . VU.concat $ errors
+    gradientDecentComplex
+      (count - 1)
+      learningRate
+      imgs
+      basis
+      (L.zipWith (L.zipWith (\a d -> a + (learningRate :+ 0) * d)) activities delta)
   where
     errors =
       L.zipWith
@@ -138,3 +187,16 @@ generateComplexFilters =
              | x <- [0 .. nx' - 1]
              , y <- [0 .. ny' - 1] ]) .
   generatePSFParamsSet
+
+{-# INLINE generateComplexNumber #-}
+
+generateComplexNumber :: (Double,Double) -> IO (Complex Double)
+generateComplexNumber bound = do
+  a <- randomRIO bound
+  b <- randomRIO bound
+  return (a :+ b)
+
+{-# INLINE complexVec2RealVec #-}
+
+complexVec2RealVec :: VU.Vector (Complex Double) -> VU.Vector Double
+complexVec2RealVec = VU.fromList . L.concatMap (\(a :+ b) -> [a,b]) . VU.toList

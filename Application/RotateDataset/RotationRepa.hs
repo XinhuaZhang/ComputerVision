@@ -115,8 +115,8 @@ rotateSquare2DImageS degs arr =
     
 
 rotate90Square2DImageS
-  :: (R.Source s Double)
-  => Array s DIM2 Double -> [Array U DIM2 Double]
+  :: (R.Source s e, Unbox e)
+  => Array s DIM2 e -> [Array U DIM2 e]
 rotate90Square2DImageS arr =
   parMap
     rseq
