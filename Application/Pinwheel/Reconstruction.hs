@@ -2,10 +2,10 @@
 module Application.Pinwheel.Reconstruction where
 
 import           Control.Monad                  as M
-import CV.Filter.GaussianFilter
+import           CV.Filter.GaussianFilter
 import           CV.Filter.PolarSeparableFilter
-import           CV.Utility.RepaArrayUtility
 import           CV.Utility.Parallel
+import           CV.Utility.RepaArrayUtility
 import           Data.Array                     as Arr
 import           Data.Array.CArray              as CA
 import           Data.Array.Repa                as R
@@ -13,8 +13,8 @@ import           Data.Complex                   as C
 import qualified Data.Image                     as UNM
 import           Data.List                      as L
 import           Data.Vector.Unboxed            as VU
-import           System.Random
 import           Math.FFT
+import           System.Random
 -- computeActivity
 --   :: (R.Source s Double)
 --   => Double -> Int -> R.Array s DIM3 Double -> R.Array U DIM3 Double -> IO [Double]
@@ -55,7 +55,7 @@ computeActivityComplex learningRate threshold count filters img
         (\i -> R.slice img (Z :. (i :: Int) :. All :. All))
         [0 .. imageNf - 1]
     (Z :. filterNy :. filterNx) = extent . L.head $ filters
-    
+
 
 computeActivityConvolution
   :: (R.Source s (Complex Double), R.Source s1 Double)
@@ -109,7 +109,7 @@ computeReconComplex filters acts =
   acts
   where
     (Z :. filterNy :. filterNx) = extent . L.head $ filters
-    
+
 
 {-# INLINE computeReconConvolution #-}
 
@@ -155,7 +155,7 @@ plotComplexImage prefix arr = do
             Arr.listArray ((0, 0), (imageNy - 1, imageNx - 1)) . R.toList $
             R.slice arr (Z :. i :. All :. All) :: UNM.ComplexImage)
         [0 .. imageNf - 1]
-        
+
 
 plotComplexImages
   :: (R.Source s (Complex Double))
@@ -262,7 +262,7 @@ gradientDecentComplex count learningRate threshold imgs basis activities
         imgs
         activities
     delta = L.map (\error' -> L.map (VU.sum . VU.zipWith (*) error') basis) errors
-    
+
 
 {-# INLINE gradientDecentConvolution #-}
 
@@ -320,7 +320,7 @@ generateComplexFilters =
               -- , y <- [0 .. ny' - 1] ]
     ) .
   generatePSFParamsSet
-  
+
 
 {-# INLINE generateRandomFilters #-}
 
@@ -370,6 +370,3 @@ convolve2D arr1 arr2
 flipArr :: (R.Source s e) => R.Array s DIM2 e -> R.Array D DIM2 e 
 flipArr arr' =
   R.traverse arr' id $ \f (Z :. j :. i) -> f (Z :. i :. j)
-  -- R.traverse arr' id $ \f (Z :. j :. i) -> f (Z :. ny' - 1 - j :. nx' - 1 - i)
-  -- where
-  --   (Z :. ny' :. nx') = extent arr'

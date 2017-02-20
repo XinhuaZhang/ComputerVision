@@ -207,6 +207,27 @@ makeFilterSet params@(PolarSeparableFilterParamsSet (ny, nx) downSampleFactor sc
     !cArr = listArray ((0, 0, 0), (nf' - 1, ny' - 1, nx' - 1)) . L.concat $ filterEleList
     !dftCArr = dftN [1, 2] cArr
     !filterArr = computeS $ threeDCArray2RArray dftCArr
+    
+
+makeFlippedFilterSet
+  :: PolarSeparableFilterParamsSet
+  -> PolarSeparableFilter PolarSeparableFilterParamsSet (CArray (Int,Int,Int) (C.Complex Double))
+makeFlippedFilterSet params@(PolarSeparableFilterParamsSet (ny, nx) downSampleFactor scaleSet rfSet afSet _name) =
+  PolarSeparableFilter params dftCArr
+  where
+    paramsList = generateParamsSet scaleSet rfSet afSet
+    filterEleList =
+      L.concatMap
+        (\(scale, rf, af) ->
+            makeFilterList ny' nx' (getFilterSetFunc params scale rf af))
+        paramsList
+    ny' = div ny downSampleFactor
+    nx' = div nx downSampleFactor
+    nf' = L.length filterEleList
+    rArr = fromListUnboxed (Z :. nf' :. ny' :. nx') filterEleList
+    flippedRArr = R.transpose rArr
+    cArr = threeDRArray2CArray flippedRArr
+    dftCArr = dftN [1, 2] cArr
 
 displayFilter :: PolarSeparableFilterParams -> ComplexImage
 displayFilter params@(PolarSeparableFilterParams (ny, nx) downsampleFactor scale rf af _name) =
