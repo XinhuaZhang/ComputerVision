@@ -172,13 +172,13 @@ computeCoefficientIO learningRate filter' flippedFilter' img = do
     (Z :. filterNf :. _ :. _) = extent filter'
 
 
-coefficientMagnitudeConduitIO
+coefficientMagnitudeFixedSizeConduitIO
   :: (R.Source s Double)
   => Double
   -> Filter
   -> FlippedFilter
-  -> Conduit (R.Array s DIM3 Double) IO (R.Array U DIM3 Double)
-coefficientMagnitudeConduitIO learningRate filter' flippedFilter' =
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
+coefficientMagnitudeFixedSizeConduitIO learningRate filter' flippedFilter' =
   awaitForever
     (\x -> do
        arr <-
