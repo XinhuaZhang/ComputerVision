@@ -26,6 +26,7 @@ data Flag
   | NumPrincipal [Int]
   | NumLayer Int
   | GaussianScale [Double]
+  | Threshold Double
   deriving (Show)
 
 data Params = Params
@@ -49,6 +50,7 @@ data Params = Params
   , numPrincipal     :: [Int]
   , numLayer         :: Int
   , gaussianScale    :: [Double]
+  , threshold        :: Double
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -104,6 +106,10 @@ options =
           ["learningRate"]
           (ReqArg (LearningRate . readDouble) "DOUBLE")
           "Set the stoppint criteria. It is the percentage that the probability increases. If it is lower than the learningRate, then the program stops."
+  ,Option ['h']
+          ["threshold"]
+          (ReqArg (Threshold . readDouble) "DOUBLE")
+          "Set the stoppint criteria. It is the percentage that the probability increases. If it is lower than the threshold, then the program stops."
   ,Option ['n']
           ["numGaussian"]
           (ReqArg (NumGaussian . readInt) "INT")
@@ -212,7 +218,8 @@ parseFlag flags = go flags defaultFlag
                  ,isFixedSize = False
                  ,numPrincipal = [1]
                  ,numLayer = 1
-                 ,gaussianScale = [1]}
+                 ,gaussianScale = [1]
+                 ,threshold = -15}
         go [] params = params
         go (x:xs) params =
           case x of
@@ -236,6 +243,7 @@ parseFlag flags = go flags defaultFlag
             NumPrincipal v -> go xs (params {numPrincipal = v})
             NumLayer x -> go xs (params {numLayer = x})
             GaussianScale v -> go xs (params {gaussianScale = v})
+            Threshold v -> go xs (params {threshold = v})
 
 parseArgs :: [String] -> IO Params
 parseArgs args = do
