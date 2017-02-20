@@ -2,6 +2,7 @@
 module Application.Pinwheel.Reconstruction where
 
 import           Control.Monad                  as M
+import CV.Filter.GaussianFilter
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.RepaArrayUtility
 import           CV.Utility.Parallel
@@ -29,12 +30,12 @@ import           Math.FFT
 
 computeActivityComplex
   :: (R.Source s (Complex Double), R.Source s1 Double)
-  => Double
+  => Double -> Double
   -> Int
   -> [R.Array s DIM2 (Complex Double)]
   -> R.Array s1 DIM3 Double
   -> IO [[Complex Double]]
-computeActivityComplex learningRate count filters img
+computeActivityComplex learningRate threshold count filters img
   | imageNy /= filterNy || imageNx /= filterNx =
     error
       "computeActivityComplex: the image and the filter have different sizes."
@@ -43,6 +44,7 @@ computeActivityComplex learningRate count filters img
     gradientDecentComplex
       count
       learningRate
+      threshold
       (L.map (toUnboxed . computeS . R.map (:+ 0)) imageList)
       (L.map (toUnboxed. computeS . delay) filters)
       (splitList (L.length filters) act)
@@ -57,23 +59,27 @@ computeActivityComplex learningRate count filters img
 
 computeActivityConvolution
   :: (R.Source s (Complex Double), R.Source s1 Double)
-  => Double
+  => Double -> Double
   -> Int
   -> [R.Array s DIM2 (Complex Double)]
   -> [R.Array s DIM2 (Complex Double)]
   -> R.Array s1 DIM3 Double
   -> IO [[R.Array U DIM2 (Complex Double)]]
-computeActivityConvolution learningRate count filters filters180 img
+computeActivityConvolution learningRate threshold count filters filters180 img
   | imageNy /= filterNy || imageNx /= filterNx =
-    error
-      "computeActivityComplex: the image and the filter have different sizes."
+    error $
+    "computeActivityConvolution: the image and the filter have different sizes. Image:" L.++
+    show (imageNx, imageNy) L.++
+    " filter: " L.++
+    show (filterNx, filterNy)
   | otherwise = do
     act <-
       M.replicateM (L.length filters * imageNf * filterNx * filterNy) $
-      generateComplexNumber (-1, 1)
+      generateComplexNumber (-0.01, 0.01)
     gradientDecentConvolution
       count
       learningRate
+      threshold
       (L.map (R.map (:+ 0)) imageList)
       (L.map (computeS . delay) filters)
       (L.map (computeS . delay) filters180)
@@ -116,7 +122,7 @@ computeReconConvolution filters =
   L.map
     (sumS .
      L.foldl1' R.append .
-     parMap rseq (extend (Z :. All :. All :. (1 :: Int)) . uncurry convolve2D) .
+     L.map (extend (Z :. All :. All :. (1 :: Int)) . uncurry convolve2D) .
      L.zip filters)
 
 
@@ -163,7 +169,19 @@ plotComplexImages prefix arrs = do
   M.zipWithM_
     (\i arr' ->
         UNM.writeImage (prefix L.++ "_magnitude_" L.++ show i L.++ ".pgm") $
+        (UNM.magnitude arr' :: UNM.GrayImage))
+    [1 .. imageNf]
+    arrList
+  M.zipWithM_
+    (\i arr' ->
+        UNM.writeImage (prefix L.++ "_real_" L.++ show i L.++ ".pgm") $
         (UNM.realPart arr' :: UNM.GrayImage))
+    [1 .. imageNf]
+    arrList
+  M.zipWithM_
+    (\i arr' ->
+        UNM.writeImage (prefix L.++ "_imaginary_" L.++ show i L.++ ".pgm") $
+        (UNM.imagPart arr' :: UNM.GrayImage))
     [1 .. imageNf]
     arrList
   where
@@ -216,25 +234,26 @@ gradientDecent count learningRate imgs basis activities
 
 gradientDecentComplex
   :: Int
-  -> Double
+  -> Double -> Double
   -> [VU.Vector (Complex Double)] -- multi-channel image
   -> [VU.Vector (Complex Double)]
   -> [[Complex Double]]
   -> IO [[Complex Double]]
-gradientDecentComplex count learningRate imgs basis activities
-  | count == 0 = do
-    print (VU.sum . VU.map (^ (2 :: Int)) . VU.concat $ errors)
+gradientDecentComplex count learningRate threshold imgs basis activities
+  | count == 0 || energy < threshold = do
+    print energy
     return activities
-  | otherwise
-   = do
-    print . VU.sum . VU.map (^ (2 :: Int)) . VU.concat $ errors
+  | otherwise = do
+    print energy
     gradientDecentComplex
       (count - 1)
       learningRate
+      threshold
       imgs
       basis
       (L.zipWith (L.zipWith (\a d -> a + (learningRate :+ 0) * d)) activities delta)
   where
+    energy = magnitude . VU.sum . VU.map (^ (2 :: Int)) . VU.concat $ errors
     errors =
       L.zipWith
         (\img act ->
@@ -244,31 +263,37 @@ gradientDecentComplex count learningRate imgs basis activities
         activities
     delta = L.map (\error' -> L.map (VU.sum . VU.zipWith (*) error') basis) errors
     
+
+{-# INLINE gradientDecentConvolution #-}
+
 gradientDecentConvolution
   :: (R.Source s (Complex Double))
   => Int
+  -> Double
   -> Double
   -> [R.Array s DIM2 (Complex Double)]
   -> [R.Array U DIM2 (Complex Double)]
   -> [R.Array U DIM2 (Complex Double)]
   -> [[R.Array U DIM2 (Complex Double)]]
   -> IO [[R.Array U DIM2 (Complex Double)]]
-gradientDecentConvolution count learningRate imgs basis basis180 activities
-  | count == 0 = return activities
+gradientDecentConvolution count learningRate threshold imgs basis basis180 activities
+  | count == 0 || energy < threshold = return activities
+  -- | count == 0  = return activities
   | otherwise = do
-    e <- M.mapM (sumAllP . R.map (^ (2 :: Int))) errors
-    print e
-    gradientDecentConvolution count learningRate imgs basis basis180 newAct
+    -- e <- M.mapM (sumAllP . R.map (^ (2 :: Int))) errors
+    -- print e
+    print (energy, l2Error)
+    gradientDecentConvolution (count - 1) learningRate threshold imgs basis basis180 newAct
   where
     errors = L.zipWith (-^) imgs . computeReconConvolution basis180 $ activities
-    delta = L.map (\error' -> parMap rseq (convolve2D error') basis) errors
+    l2Error = L.sum . L.map (sumAllS . R.map (^ (2 :: Int))) $ errors
+    energy = C.magnitude l2Error
+    delta = L.map (\error' -> L.map (convolve2D error') basis) errors
     newAct =
       L.zipWith
         (L.zipWith (\a d -> computeS $ a +^ R.map (* (learningRate :+ 0)) d))
         activities
         delta
-
-
 
 {-# INLINE splitList #-}
 
@@ -284,15 +309,28 @@ splitList n xs = as : splitList n bs
 generateComplexFilters :: PolarSeparableFilterParamsSet -> [R.Array U DIM2 (Complex Double)]
 generateComplexFilters =
   L.map
-    (\params@(PolarSeparableFilterParams (nx', ny') _downSampleFactor scale rf af _name) ->
+    (\params@(PolarSeparableFilterParams (ny', nx') _downSampleFactor scale rf af _name) ->
         let centerY = div ny' 2
             centerX = div nx' 2
         in fromListUnboxed
-             (Z :. ny' :. nx')
-             [ getFilterFunc params scale rf af (x - centerX) (y - centerY)
-             | x <- [0 .. nx' - 1]
-             , y <- [0 .. ny' - 1] ]) .
+             (Z :. ny' :. nx')  
+             $ makeFilterList ny' nx' (getFilterFunc params scale rf af)
+              -- [ getFilterFunc params scale rf af (x - centerX) (y - centerY)
+              -- | x <- [0 .. nx' - 1]
+              -- , y <- [0 .. ny' - 1] ]
+    ) .
   generatePSFParamsSet
+  
+
+{-# INLINE generateRandomFilters #-}
+
+generateRandomFilters :: (Int,Int) -> Int -> IO [R.Array U DIM2 (Complex Double)]
+generateRandomFilters (ny', nx') numFeature =
+  M.replicateM numFeature $
+  do xs <- M.replicateM (ny' * nx') $ randomRIO (-0.1, 0.1)
+     let ys = L.map (:+ 0) xs
+         gs = makeFilterList ny' nx' $ gaussian2D 2
+     return $ fromListUnboxed (Z :. ny' :. nx') $ L.zipWith (*) ys gs
 
 {-# INLINE generateComplexNumber #-}
 
@@ -315,8 +353,23 @@ convolve2D
   => R.Array s1 DIM2 (Complex Double)
   -> R.Array s2 DIM2 (Complex Double)
   -> R.Array D DIM2 (Complex Double)
-convolve2D arr1 arr2 =
-  twoDCArray2RArray . idftN [0, 1] $ liftArray2 (*) dftCArr1 dftCArr2
+convolve2D arr1 arr2 
+  -- | a1 /= a2 || b1 /= b2 = error "convolve2D"
+  -- | otherwise
+  =  result
   where
     dftCArr1 = dftN [0, 1] . twoDRArray2CArray $ arr1
     dftCArr2 = dftN [0, 1] . twoDRArray2CArray $ arr2
+    (Z :. a1 :. b1) = extent arr1
+    (Z :. a2 :. b2) = extent arr2
+    result = twoDCArray2RArray . idftN [0, 1] $ liftArray2 (*) dftCArr1 dftCArr2
+
+
+{-# INLINE  flipArr #-}
+
+flipArr :: (R.Source s e) => R.Array s DIM2 e -> R.Array D DIM2 e 
+flipArr arr' =
+  R.traverse arr' id $ \f (Z :. j :. i) -> f (Z :. i :. j)
+  -- R.traverse arr' id $ \f (Z :. j :. i) -> f (Z :. ny' - 1 - j :. nx' - 1 - i)
+  -- where
+  --   (Z :. ny' :. nx') = extent arr'

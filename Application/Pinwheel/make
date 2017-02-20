@@ -6,3 +6,4 @@ FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-thres
 LIBS="-lstdc++ -llapack -lblas -lgomp"
 
 cabal exec -- ghc $FLAG $LIBS -i../../ Main.hs -o main
+cabal exec -- ghc $FLAG $LIBS -i../../ MainConvolution.hs -o mainConvolution

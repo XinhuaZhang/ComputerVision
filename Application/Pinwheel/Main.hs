@@ -20,7 +20,7 @@ import Application.RotateDataset.RotationRepa
 
 
 main = do
-  (inputPath:learningRate:count:_) <- getArgs
+  (inputPath:learningRate:threshold:count:_) <- getArgs
   let parallelParams =
         ParallelParams
         { numThread = 2
@@ -30,8 +30,8 @@ main = do
         PolarSeparableFilterParamsSet
         { getSizeSet = (16, 16)
         , getDownsampleFactorSet = 1
-        , getScaleSet = S.fromDistinctAscList [2]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
+        , getScaleSet = S.fromDistinctAscList [8]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (1 - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
         , getNameSet = Pinwheels
         }
@@ -56,11 +56,13 @@ main = do
   act <-
     computeActivityComplex
       (read learningRate :: Double)
+      (read threshold :: Double)
       (read count :: Int)
       filters
       imagePatch
   act1 <- computeActivityComplex
             (read learningRate :: Double)
+            (read threshold :: Double)
             (read count :: Int)
             filters
             rotatedImagePatch

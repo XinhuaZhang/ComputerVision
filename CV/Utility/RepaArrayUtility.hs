@@ -200,11 +200,11 @@ twoDCArray2RArray
   => CArray (Int, Int) a -> R.Array D DIM2 a
 twoDCArray2RArray cArr =
   fromFunction
-    (Z :. (ny' + 1) :. (nx' + 1))
+    (Z :. (ubY - lbY + 1) :. (ubX - lbX + 1))
     (\(Z :. j :. i) -> cArr CA.! (j, i))
   where
-    ((_, _), (ny', nx')) = bounds cArr
-    
+    ((lbY, lbX), (ubY, ubX)) = bounds cArr
+
 
 {-# INLINE twoDRArray2CArray #-}
 
