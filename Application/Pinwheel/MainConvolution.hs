@@ -34,7 +34,7 @@ main = do
         { getSizeSet = imageSize
         , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList [1,2]
-        , getRadialFreqSet = S.fromDistinctAscList [1 .. (4 - 0)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
         , getNameSet = Pinwheels
         }
@@ -53,9 +53,6 @@ main = do
           , imageNf
           ]
           image
-  print . extent $ image
-  print . extent $ filters
-  print . CA.bounds $ (filters180 :: CArray (Int,Int,Int) (C.Complex Double))
   act <- computeCoefficientIO (read learningRate :: Double) filters filters180 imagePatch
   let (Z :. actNf :. _ :. _) = extent act
       act' = [threeDRArray2CArray act]

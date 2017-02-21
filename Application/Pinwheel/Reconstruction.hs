@@ -352,7 +352,7 @@ convolve2D
   :: (R.Source s1 (Complex Double), R.Source s2 (Complex Double))
   => R.Array s1 DIM2 (Complex Double)
   -> R.Array s2 DIM2 (Complex Double)
-  -> R.Array D DIM2 (Complex Double)
+  -> R.Array U DIM2 (Complex Double)
 convolve2D arr1 arr2 
   -- | a1 /= a2 || b1 /= b2 = error "convolve2D"
   -- | otherwise

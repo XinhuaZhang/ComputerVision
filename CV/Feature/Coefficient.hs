@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 module CV.Feature.Coefficient where
 
@@ -32,11 +33,16 @@ reconstruction filter' =
         let ((nfLB, nyLB, nxLB), (nf', ny', nx')) = bounds filter'
             filteredCArr =
               idftN [1, 2] . liftArray2 (*) filter' . dftN [1, 2] $ c
-        in sumS $
-           fromFunction
-             (Z :. ny' - nyLB + 1 :. nx' - nxLB + 1 :. nf' - nfLB + 1)
-             (\(Z :. j :. i :. k) ->
-                 filteredCArr CA.! (k + nfLB, j + nyLB, i + nxLB)))
+        in sumS .
+           rotate3D .
+           fromListUnboxed
+             (Z :. nf' - nfLB + 1 :. ny' - nyLB + 1 :. nx' - nxLB + 1) .
+           elems $
+           filteredCArr)
+-- fromFunction
+--   (Z :. ny' - nyLB + 1 :. nx' - nxLB + 1 :. nf' - nfLB + 1)
+--   (\(Z :. j :. i :. k) ->
+--       filteredCArr CA.! (k + nfLB, j + nyLB, i + nxLB)))
 
 
 {-# INLINE imageArray2ArrayChannels #-}
@@ -98,21 +104,24 @@ gradientDecentIO
   -> Coefficient
   -> Double
   -> IO Coefficient
-gradientDecentIO learningRate inputs filter' flippedFilter' coefficient lastEnergy
+gradientDecentIO learningRate inputs filter' flippedFilter' !coefficient lastEnergy
   | energy >= lastEnergy = do
     print (lastEnergy,energy) 
     return coefficient
   | otherwise = do
     print energy
-    gradientDecentIO learningRate inputs filter' flippedFilter' newCoefficient energy
+    -- putStrLn "before computing delta"
+    -- delta <- return $! convolve filter' errors
+    -- putStrLn "after computing delta"
+    gradientDecentIO learningRate inputs filter' flippedFilter' (newCoefficient delta) energy
   where
     recon = reconstruction flippedFilter' coefficient
     errors = L.map computeS $ L.zipWith (-^) inputs recon
     l2Error = L.sum . L.map (sumAllS . R.map (^ (2 :: Int))) $ errors
     energy = magnitude l2Error
     delta = convolve filter' errors
-    newCoefficient =
-      L.zipWith (liftArray2 (\a d -> a + (learningRate :+ 0) * d)) coefficient delta
+    newCoefficient de =
+      L.zipWith (liftArray2 (\a d -> a + (learningRate :+ 0) * d)) coefficient de
 
 {-# INLINE generateComplexNumber #-}
 

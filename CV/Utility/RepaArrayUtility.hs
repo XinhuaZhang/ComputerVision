@@ -196,12 +196,10 @@ bicubicInterpolation ds (minVal, maxVal) (y, x)
 {-# INLINE twoDCArray2RArray #-}
 
 twoDCArray2RArray
-  :: (Num a, Storable a)
-  => CArray (Int, Int) a -> R.Array D DIM2 a
+  :: (Num a, Storable a, Unbox a)
+  => CArray (Int, Int) a -> R.Array U DIM2 a
 twoDCArray2RArray cArr =
-  fromFunction
-    (Z :. (ubY - lbY + 1) :. (ubX - lbX + 1))
-    (\(Z :. j :. i) -> cArr CA.! (j + lbY, i + lbX))
+  fromListUnboxed (Z :. (ubY - lbY + 1) :. (ubX - lbX + 1)) . elems $ cArr
   where
     ((lbY, lbX), (ubY, ubX)) = bounds cArr
 
@@ -228,12 +226,12 @@ threeDRArray2CArray rArr =
 {-# INLINE threeDCArray2RArray #-}
 
 threeDCArray2RArray
-  :: (Num a, Storable a)
-  => CArray (Int, Int, Int) a -> R.Array D DIM3 a
+  :: (Num a, Storable a, Unbox a)
+  => CArray (Int, Int, Int) a -> R.Array U DIM3 a
 threeDCArray2RArray cArr =
-  fromFunction
-    (Z :. (ubC - lbC + 1) :. (ubY - lbY + 1) :. (ubX - lbX + 1))
-    (\(Z :. k :. j :. i) -> cArr CA.! (k + lbC, j + lbY, i + lbX))
+  fromListUnboxed (Z :. (ubC - lbC + 1) :. (ubY - lbY + 1) :. (ubX - lbX + 1)) .
+  elems $
+  cArr
   where
     ((lbC, lbY, lbX), (ubC, ubY, ubX)) = bounds cArr
 
@@ -307,3 +305,15 @@ extractFeatureMap arr' =
   L.map (\k -> R.toList . R.slice arr' $ (Z :. k :. All :. All)) [0 .. nf' - 1]
   where
     !(Z :. (nf' :: Int) :. _ :. _) = extent arr'
+
+-- CHW -> HWC
+
+{-# INLINE rotate3D #-}
+
+rotate3D
+  :: (R.Source s e)
+  => R.Array s DIM3 e -> R.Array D DIM3 e
+rotate3D arr' =
+  R.backpermute (Z :. h :. w :. c) (\(Z :. j :. i :. k) -> (Z :. k :. j :. i)) arr'
+  where
+    (Z :. c :. h :. w) = extent arr'

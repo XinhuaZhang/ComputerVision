@@ -182,7 +182,6 @@ makeFilter
   -> PolarSeparableFilter PolarSeparableFilterParams (R.Array U DIM2 (C.Complex Double))
 makeFilter params@(PolarSeparableFilterParams (ny, nx) downSampleFactor scale rf af _name) =
   PolarSeparableFilter params .
-  computeS .
   twoDCArray2RArray . dftN [0, 1] . listArray ((0, 0), (ny' - 1, nx' - 1)) $
   makeFilterList ny' nx' (getFilterFunc params scale rf af)
   where
@@ -206,7 +205,7 @@ makeFilterSet params@(PolarSeparableFilterParamsSet (ny, nx) downSampleFactor sc
     !nf' = L.length filterEleList
     !cArr = listArray ((0, 0, 0), (nf' - 1, ny' - 1, nx' - 1)) . L.concat $ filterEleList
     !dftCArr = dftN [1, 2] cArr
-    !filterArr = computeS $ threeDCArray2RArray dftCArr
+    !filterArr = threeDCArray2RArray dftCArr
     
 
 makeFlippedFilterSet
@@ -239,7 +238,7 @@ applyFilterFixedSize
   :: (Source s (C.Complex Double))
   => PolarSeparableFilter PolarSeparableFilterParams (R.Array U DIM2 (C.Complex Double))
   -> R.Array s DIM3 (C.Complex Double)
-  -> R.Array D DIM3 (C.Complex Double)
+  -> R.Array U DIM3 (C.Complex Double)
 applyFilterFixedSize (PolarSeparableFilter params filter') =
   filterFunc (getDownsampleFactor params) filter'
 
@@ -247,7 +246,7 @@ applyFilterSetFixedSize
   :: (Source s (C.Complex Double))
   => PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))
   -> R.Array s DIM3 (C.Complex Double)
-  -> R.Array D DIM3 (C.Complex Double)
+  -> R.Array U DIM3 (C.Complex Double)
 applyFilterSetFixedSize (PolarSeparableFilter params filter') =
   filterSetFunc (getDownsampleFactorSet params) filter'
 
@@ -255,7 +254,7 @@ applyFilterVariedSize
   :: (Source s (C.Complex Double))
   => PolarSeparableFilterParams
   -> R.Array s DIM3 (C.Complex Double)
-  -> R.Array D DIM3 (C.Complex Double)
+  -> R.Array U DIM3 (C.Complex Double)
 applyFilterVariedSize (PolarSeparableFilterParams _ downsampleFactor scale rf af name) inputArr =
   filterFunc downsampleFactor filter' inputArr
   where
@@ -268,7 +267,7 @@ applyFilterSetVariedSize
   :: (Source s (C.Complex Double))
   => PolarSeparableFilterParamsSet
   -> R.Array s DIM3 (C.Complex Double)
-  -> R.Array D DIM3 (C.Complex Double)
+  -> R.Array U DIM3 (C.Complex Double)
 applyFilterSetVariedSize (PolarSeparableFilterParamsSet _ downsampleFactor scaleSet rfSet afSet name) inputArr =
   filterSetFunc downsampleFactor filter' inputArr
   where
@@ -290,7 +289,7 @@ filterFunc
   => Int
   -> R.Array U DIM2 (C.Complex Double)
   -> R.Array s DIM3 (C.Complex Double)
-  -> R.Array D DIM3 (C.Complex Double)
+  -> R.Array U DIM3 (C.Complex Double)
 filterFunc downsampleFactor filterArr inputArr =
   threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
   where
@@ -316,7 +315,7 @@ filterSetFunc
   => Int
   -> R.Array U DIM3 (C.Complex Double)
   -> R.Array s DIM3 (C.Complex Double)
-  -> R.Array D DIM3 (C.Complex Double)
+  -> R.Array U DIM3 (C.Complex Double)
 filterSetFunc downsampleFactor filterArr inputArr =
   threeDCArray2RArray . idftN [1, 2] . threeDRArray2CArray $ multArr
   where

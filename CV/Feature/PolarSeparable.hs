@@ -366,7 +366,7 @@ multiLayerComplexFixedSize filters' factor inputArr =
             !downSampledArr =
               complexArray2RealArray $
               if factor == 1
-                then arr'
+                then delay arr'
                 else RU.downsample [factor, factor, 1] arr'
         in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. All :. j :. i)
@@ -376,7 +376,7 @@ multiLayerComplexFixedSize filters' factor inputArr =
   L.scanl'
     (\arr' filter' ->
         applyFilterSetFixedSize filter' . R.map (:+ 0) . R.map C.magnitude $ arr')
-    (R.map (:+ 0) inputArr) $
+    (computeUnboxedS $ R.map (:+ 0) inputArr) $
   filters'
 
 {-# INLINE singleLayerMagnitudeVariedSize #-}
@@ -466,7 +466,7 @@ multiLayerComplexVariedSize filterParamsList factor inputArr =
             !downSampledArr =
               complexArray2RealArray $
               if factor == 1
-                then arr'
+                then delay arr'
                 else RU.downsample [factor, factor, 1] arr'
         in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
             (Z :. All :. j :. i)
@@ -477,7 +477,7 @@ multiLayerComplexVariedSize filterParamsList factor inputArr =
     (\arr' filterParams ->
         applyFilterSetVariedSize filterParams . R.map (:+ 0) . R.map C.magnitude $
         arr')
-    (R.map (:+ 0) inputArr) $
+    (computeS $ R.map (:+ 0) inputArr) $
   filterParamsList
   
 extractPointwiseFeatureConduit

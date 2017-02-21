@@ -72,7 +72,7 @@ makeFilter params@(GaussianFilterParams sigma (nRows, nCols)) =
   where
     !filterEleList = makeFilterList nRows nCols $ gaussian2D sigma
     !filterCArr = listArray ((0, 0), (nRows - 1, nCols - 1)) . L.map (:+ 0) $ filterEleList
-    !dftFilterArr = computeS . twoDCArray2RArray $ dftN [0, 1] filterCArr
+    !dftFilterArr = twoDCArray2RArray $ dftN [0, 1] filterCArr
 
 applyFilterVariedSize
   :: (R.Source s Double)
@@ -126,7 +126,7 @@ gaussianVariedSizeConduit parallelParams filterParams = do
 
 dftImageArr
   :: (R.Source s Double)
-  => R.Array s DIM3 Double -> R.Array D DIM3 (Complex Double)
+  => R.Array s DIM3 Double -> R.Array U DIM3 (Complex Double)
 dftImageArr arr = threeDCArray2RArray dftCArr
   where
     !(Z :. nFeature :. nRows :. nCols) = extent arr
