@@ -29,13 +29,14 @@ reconstruction :: FlippedFilter -> Coefficient -> ArrayChannels
 reconstruction filter' =
   L.map
     (\c ->
-        let ((_, _, _), (nf', ny', nx')) = bounds filter'
+        let ((nfLB, nyLB, nxLB), (nf', ny', nx')) = bounds filter'
             filteredCArr =
               idftN [1, 2] . liftArray2 (*) filter' . dftN [1, 2] $ c
         in sumS $
            fromFunction
-             (Z :. ny' + 1 :. nx' + 1 :. nf' + 1)
-             (\(Z :. j :. i :. k) -> filteredCArr CA.! (k, j, i)))
+             (Z :. ny' - nyLB + 1 :. nx' - nxLB + 1 :. nf' - nfLB + 1)
+             (\(Z :. j :. i :. k) ->
+                 filteredCArr CA.! (k + nfLB, j + nyLB, i + nxLB)))
 
 
 {-# INLINE imageArray2ArrayChannels #-}
@@ -99,7 +100,7 @@ gradientDecentIO
   -> IO Coefficient
 gradientDecentIO learningRate inputs filter' flippedFilter' coefficient lastEnergy
   | energy >= lastEnergy = do
-    putStrLn ""
+    putStrLn "hehe"
     return coefficient
   | otherwise = do
     print energy
@@ -155,7 +156,7 @@ computeCoefficientIO learningRate filter' flippedFilter' img = do
     M.replicateM imgNf .
     fmap (listArray ((0, 0, 0), (filterNf - 1, imgNy - 1, imgNx - 1))) .
     M.replicateM (filterNf * imgNy * imgNx) . generateComplexNumber $
-    (0.01, 0.01)
+    (-0.01, 0.01)
   coefficients <-
     gradientDecentIO
       learningRate
@@ -205,7 +206,7 @@ coefficientMagnitudeConduit parallelParams learningRate filter' flippedFilter' =
           M.replicateM imgNf .
           fmap (listArray ((0, 0, 0), (filterNf - 1, imgNy - 1, imgNx - 1))) .
           M.replicateM (filterNf * imgNy * imgNx) . generateComplexNumber $
-          (0.01, 0.01)
+          (-0.01, 0.01)
         let ys =
               parZipWithChunk
                 parallelParams

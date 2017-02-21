@@ -223,7 +223,7 @@ makeFlippedFilterSet params@(PolarSeparableFilterParamsSet (ny, nx) downSampleFa
         paramsList
     ny' = div ny downSampleFactor
     nx' = div nx downSampleFactor
-    nf' = L.length filterEleList
+    nf' = L.length paramsList
     rArr = fromListUnboxed (Z :. nf' :. ny' :. nx') filterEleList
     flippedRArr = R.transpose rArr
     cArr = threeDRArray2CArray flippedRArr

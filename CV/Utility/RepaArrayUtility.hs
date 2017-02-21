@@ -201,7 +201,7 @@ twoDCArray2RArray
 twoDCArray2RArray cArr =
   fromFunction
     (Z :. (ubY - lbY + 1) :. (ubX - lbX + 1))
-    (\(Z :. j :. i) -> cArr CA.! (j, i))
+    (\(Z :. j :. i) -> cArr CA.! (j + lbY, i + lbX))
   where
     ((lbY, lbX), (ubY, ubX)) = bounds cArr
 
@@ -232,10 +232,10 @@ threeDCArray2RArray
   => CArray (Int, Int, Int) a -> R.Array D DIM3 a
 threeDCArray2RArray cArr =
   fromFunction
-    (Z :. (nf' + 1) :. (ny' + 1) :. (nx' + 1))
-    (\(Z :. k :. j :. i) -> cArr CA.! (k, j, i))
+    (Z :. (ubC - lbC + 1) :. (ubY - lbY + 1) :. (ubX - lbX + 1))
+    (\(Z :. k :. j :. i) -> cArr CA.! (k + lbC, j + lbY, i + lbX))
   where
-    ((_, _, _), (nf', ny', nx')) = bounds cArr
+    ((lbC, lbY, lbX), (ubC, ubY, ubX)) = bounds cArr
 
 
 {-# INLINE makeFilterList #-}
