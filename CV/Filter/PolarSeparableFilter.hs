@@ -219,14 +219,13 @@ makeFlippedFilterSet params@(PolarSeparableFilterParamsSet (ny, nx) downSampleFa
     filterEleList =
       L.concatMap
         (\(scale, rf, af) ->
-            makeFilterList ny' nx' (getFilterSetFunc params scale rf af))
+            makeFlippedFilterList ny' nx' (getFilterSetFunc params scale rf af))
         paramsList
     ny' = div ny downSampleFactor
     nx' = div nx downSampleFactor
     nf' = L.length paramsList
     rArr = fromListUnboxed (Z :. nf' :. ny' :. nx') filterEleList
-    flippedRArr = R.transpose rArr
-    cArr = threeDRArray2CArray flippedRArr
+    cArr = threeDRArray2CArray rArr
     dftCArr = dftN [1, 2] cArr
 
 displayFilter :: PolarSeparableFilterParams -> ComplexImage

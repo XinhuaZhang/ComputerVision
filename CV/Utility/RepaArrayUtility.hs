@@ -253,6 +253,22 @@ makeFilterList ny nx f =
     in f x y
   | r <- [0 .. ny - 1]
   , c <- [0 .. nx - 1] ]
+  
+{-# INLINE makeFlippedFilterList #-}
+
+makeFlippedFilterList :: Int -> Int -> (Int -> Int -> a) -> [a]
+makeFlippedFilterList ny nx f =
+  [ let !x =
+          if r < (ny `div` 2)
+            then r
+            else r - ny
+        !y =
+          if c < (nx `div` 2)
+            then c
+            else c - nx
+    in f y x
+  | r <- [0 .. ny - 1]
+  , c <- [0 .. nx - 1] ]
 
 
 {-# INLINE extractPointwiseFeature #-}

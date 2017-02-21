@@ -10,6 +10,7 @@ import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility         as RU
 import           Data.Array                          as Arr
+import           Data.Array.CArray                          as CA
 import           Data.Array.Repa                     as R
 import           Data.Complex                        as C
 import           Data.Conduit
@@ -27,14 +28,14 @@ main = do
         { numThread = 8
         , batchSize = 4
         }
-      imageSize = (200, 200)
+      imageSize = (250, 200)
       filterParamsSet =
         PolarSeparableFilterParamsSet
         { getSizeSet = imageSize
         , getDownsampleFactorSet = 1
-        , getScaleSet = S.fromDistinctAscList [1]
-        , getRadialFreqSet = S.fromDistinctAscList [1 .. (9 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
+        , getScaleSet = S.fromDistinctAscList [1,2]
+        , getRadialFreqSet = S.fromDistinctAscList [1 .. (4 - 0)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
         , getNameSet = Pinwheels
         }
       (PolarSeparableFilter _ filters) = makeFilterSet filterParamsSet
@@ -43,15 +44,18 @@ main = do
   let image = (\(LabeledArray _ arr) -> arr) . L.head $ images
       (Z :. imageNf :. _ :. _) = extent image
       imgExtent = extent image
-      point = (0, 50)
+      point = (0, 0)
       imagePatch =
         RU.crop
           [fst point, snd point, 0]
-          [ fst . getSizeSet $ filterParamsSet
-          , snd . getSizeSet $ filterParamsSet
+          [ snd . getSizeSet $ filterParamsSet
+          , fst . getSizeSet $ filterParamsSet
           , imageNf
           ]
           image
+  print . extent $ image
+  print . extent $ filters
+  print . CA.bounds $ (filters180 :: CArray (Int,Int,Int) (C.Complex Double))
   act <- computeCoefficientIO (read learningRate :: Double) filters filters180 imagePatch
   let (Z :. actNf :. _ :. _) = extent act
       act' = [threeDRArray2CArray act]

@@ -100,7 +100,7 @@ gradientDecentIO
   -> IO Coefficient
 gradientDecentIO learningRate inputs filter' flippedFilter' coefficient lastEnergy
   | energy >= lastEnergy = do
-    putStrLn "hehe"
+    print (lastEnergy,energy) 
     return coefficient
   | otherwise = do
     print energy
