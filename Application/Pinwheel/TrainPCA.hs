@@ -52,7 +52,7 @@ main = do
         , getNameSet = Pinwheels
         }
       filterParamsSetList =
-        L.zipWith filterParamsSetFunc [1, 2, 2, 2, 1] (freq params)
+        L.zipWith filterParamsSetFunc [1] (freq params)
       numM = numGaussian params
       magnitudeConduit filterParams =
         if isFixedSize params

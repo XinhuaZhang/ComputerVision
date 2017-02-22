@@ -16,6 +16,8 @@ import           Data.List                    as L
 import           Math.FFT
 import           System.Random
 import Control.Arrow
+import CV.Array.LabeledArray
+import Data.Vector.Unboxed as VU
 
 type ArrayChannels = [R.Array U DIM2 (Complex Double)]
 
@@ -76,9 +78,10 @@ gradientDecent
   -> FlippedFilter
   -> Coefficient
   -> Double
-  -> Bool
+  -> Bool -> Int
   -> Coefficient
-gradientDecent learningRate inputs filter' flippedFilter' coefficient lastEnergy bullseyeFlag
+gradientDecent learningRate inputs filter' flippedFilter' coefficient lastEnergy bullseyeFlag count
+  | count > 500 = error "gradientDecent: not converge after 500 iteration"
   | energy >= lastEnergy && lastEnergy > 0 && bullseyeFlag = coefficient
   | energy < lastEnergy && lastEnergy > 0 && not bullseyeFlag =
     gradientDecent
@@ -89,6 +92,7 @@ gradientDecent learningRate inputs filter' flippedFilter' coefficient lastEnergy
       newCoefficient
       energy
       True
+      (count + 1)
   | otherwise =
     gradientDecent
       learningRate
@@ -98,6 +102,7 @@ gradientDecent learningRate inputs filter' flippedFilter' coefficient lastEnergy
       newCoefficient
       energy
       bullseyeFlag
+      (count + 1)
   where
     recon = reconstruction flippedFilter' coefficient
     errors = L.map computeS $ L.zipWith (-^) inputs recon
@@ -166,10 +171,10 @@ computeCoefficient
   => Double
   -> Filter
   -> FlippedFilter
-  -> R.Array s DIM3 Double -> Bool
+  -> R.Array s DIM3 Double -> Bool -> Int
   -> Coefficient 
   -> R.Array U DIM3 (Complex Double)
-computeCoefficient learningRate filter' flippedFilter' img bullseyeFlag initCoefficients  =
+computeCoefficient learningRate filter' flippedFilter' img bullseyeFlag count initCoefficients  =
   fromListUnboxed (Z :. imgNf * filterNf :. imgNy :. imgNx) . L.concatMap elems $
   gradientDecent
     learningRate
@@ -179,6 +184,7 @@ computeCoefficient learningRate filter' flippedFilter' img bullseyeFlag initCoef
     initCoefficients
     (-1)
     bullseyeFlag
+    count
   where
     (Z :. imgNf :. imgNy :. imgNx) = extent img
     (Z :. filterNf :. _ :. _) = extent filter'
@@ -260,13 +266,60 @@ coefficientMagnitudeConduit parallelParams learningRate filter' flippedFilter' b
                             filter'
                             flippedFilter'
                             x
-                            bullseyeFlag $
+                            bullseyeFlag 0 $
                           c
                     in deepSeqArray arr' arr')
                 xs
                 initCoefficients
         sourceList ys
         coefficientMagnitudeConduit
+          parallelParams
+          learningRate
+          filter'
+          flippedFilter'
+          bullseyeFlag)
+
+labelCoefficientMagnitudeConduit
+  :: ParallelParams
+  -> Double
+  -> Filter
+  -> FlippedFilter
+  -> Bool
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Int, R.Array U DIM3 Double)
+labelCoefficientMagnitudeConduit parallelParams learningRate filter' flippedFilter' bullseyeFlag = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let (Z :. imgNf :. imgNy :. imgNx) =
+              extent . (\(LabeledArray _ arr') -> arr') . L.head $ xs
+            (Z :. filterNf :. _ :. _) = extent filter'
+        initCoefficients <-
+          liftIO .
+          M.replicateM (L.length xs) .
+          M.replicateM imgNf .
+          fmap (listArray ((0, 0, 0), (filterNf - 1, imgNy - 1, imgNx - 1))) .
+          M.replicateM (filterNf * imgNy * imgNx) . generateComplexNumber $
+          (-0.01, 0.01)
+        let ys =
+              parZipWithChunk
+                parallelParams
+                rseq
+                (\(LabeledArray l x) c ->
+                    let arr' =
+                          computeS .
+                          R.map magnitude .
+                          computeCoefficient
+                            learningRate
+                            filter'
+                            flippedFilter'
+                            x
+                            bullseyeFlag 0 $
+                          c
+                    in deepSeqArray arr' (l, arr'))
+                xs
+                initCoefficients
+        sourceList ys
+        labelCoefficientMagnitudeConduit
           parallelParams
           learningRate
           filter'
