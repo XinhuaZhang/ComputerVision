@@ -76,11 +76,28 @@ gradientDecent
   -> FlippedFilter
   -> Coefficient
   -> Double
+  -> Bool
   -> Coefficient
-gradientDecent learningRate inputs filter' flippedFilter' coefficient lastEnergy
-  | energy >= lastEnergy = coefficient
+gradientDecent learningRate inputs filter' flippedFilter' coefficient lastEnergy bullseyeFlag
+  | energy >= lastEnergy && lastEnergy > 0 && bullseyeFlag = coefficient
+  | energy < lastEnergy && lastEnergy > 0 && not bullseyeFlag =
+    gradientDecent
+      learningRate
+      inputs
+      filter'
+      flippedFilter'
+      newCoefficient
+      energy
+      True
   | otherwise =
-    gradientDecent learningRate inputs filter' flippedFilter' newCoefficient energy
+    gradientDecent
+      learningRate
+      inputs
+      filter'
+      flippedFilter'
+      newCoefficient
+      energy
+      bullseyeFlag
   where
     recon = reconstruction flippedFilter' coefficient
     errors = L.map computeS $ L.zipWith (-^) inputs recon
@@ -99,39 +116,41 @@ gradientDecentIO
   -> FlippedFilter
   -> Coefficient
   -> Double
+  -> Bool
   -> IO Coefficient
-gradientDecentIO learningRate inputs filter' flippedFilter' !coefficient lastEnergy
-  | energy >= lastEnergy = do
-    print (lastEnergy,energy) 
+gradientDecentIO learningRate inputs filter' flippedFilter' !coefficient lastEnergy flag
+  | energy >= lastEnergy && lastEnergy > 0 && flag = do
+    print (lastEnergy, energy)
     return coefficient
-  | otherwise = do
-    -- putStrLn "error extents:"
-    -- print . L.map extent $ errors
-    -- putStrLn "coefficients extents:"
-    -- print . L.map bounds $ coefficient
-    -- putStrLn "delta extents:"
-    -- print . L.map bounds $ delta
-    -- print .  L.take 5 . elems . L.head $ coefficient
-    -- print . extent $ filter'
-    -- putStrLn "recon extents:"
-    -- print . L.map extent $ recon
-    -- putStrLn "input extents:"
-    -- print . L.map extent $ inputs
+  | energy < lastEnergy && lastEnergy > 0 && not flag = do
     print energy
-    -- putStrLn "before computing delta"
-    -- delta <- return $! convolve filter' errors 
-    -- putStrLn "after computing delta"
-    -- nc <- return $! newCoefficient delta
-    -- putStrLn "after computing new coefficients"
-    gradientDecentIO learningRate inputs filter' flippedFilter' (newCoefficient delta) energy
+    putStrLn "change flag"
+    gradientDecentIO
+      learningRate
+      inputs
+      filter'
+      flippedFilter'
+      newCoefficient
+      energy
+      True
+  | otherwise = do
+    print energy
+    gradientDecentIO
+      learningRate
+      inputs
+      filter'
+      flippedFilter'
+      newCoefficient
+      energy
+      flag
   where
     !recon = reconstruction flippedFilter' coefficient
     !errors = L.map computeS $ L.zipWith (-^) inputs recon
     !l2Error = L.sum . L.map (sumAllS . R.map (^ (2 :: Int))) $ errors
     !energy = magnitude l2Error
     !delta = convolve filter' errors
-    newCoefficient de =
-      L.zipWith (liftArray2 (\a d -> a + (learningRate :+ 0) * d)) coefficient de
+    newCoefficient =
+      L.zipWith (liftArray2 (\a d -> a + (learningRate :+ 0) * d)) coefficient delta
 
 {-# INLINE generateComplexNumber #-}
 
@@ -147,10 +166,10 @@ computeCoefficient
   => Double
   -> Filter
   -> FlippedFilter
-  -> R.Array s DIM3 Double
-  -> Coefficient
+  -> R.Array s DIM3 Double -> Bool
+  -> Coefficient 
   -> R.Array U DIM3 (Complex Double)
-computeCoefficient learningRate filter' flippedFilter' img initCoefficients =
+computeCoefficient learningRate filter' flippedFilter' img bullseyeFlag initCoefficients  =
   fromListUnboxed (Z :. imgNf * filterNf :. imgNy :. imgNx) . L.concatMap elems $
   gradientDecent
     learningRate
@@ -158,7 +177,8 @@ computeCoefficient learningRate filter' flippedFilter' img initCoefficients =
     filter'
     flippedFilter'
     initCoefficients
-    (fromIntegral (maxBound :: Int))
+    (-1)
+    bullseyeFlag
   where
     (Z :. imgNf :. imgNy :. imgNx) = extent img
     (Z :. filterNf :. _ :. _) = extent filter'
@@ -183,7 +203,7 @@ computeCoefficientIO learningRate filter' flippedFilter' img = do
       filter'
       flippedFilter'
       initCoefficients
-      (fromIntegral (maxBound :: Int))
+      (-1) False
   return .
     fromListUnboxed (Z :. imgNf * filterNf :. imgNy :. imgNx) . L.concatMap elems $
     coefficients
@@ -212,8 +232,9 @@ coefficientMagnitudeConduit
   -> Double
   -> Filter
   -> FlippedFilter
+  -> Bool
   -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
-coefficientMagnitudeConduit parallelParams learningRate filter' flippedFilter' = do
+coefficientMagnitudeConduit parallelParams learningRate filter' flippedFilter' bullseyeFlag = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -238,10 +259,16 @@ coefficientMagnitudeConduit parallelParams learningRate filter' flippedFilter' =
                             learningRate
                             filter'
                             flippedFilter'
-                            x $
+                            x
+                            bullseyeFlag $
                           c
                     in deepSeqArray arr' arr')
                 xs
                 initCoefficients
         sourceList ys
-        coefficientMagnitudeConduit parallelParams learningRate filter' flippedFilter')
+        coefficientMagnitudeConduit
+          parallelParams
+          learningRate
+          filter'
+          flippedFilter'
+          bullseyeFlag)
