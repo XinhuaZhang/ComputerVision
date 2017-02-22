@@ -1,4 +1,4 @@
-import           Application.PinwheelPCANet.ArgsParser     as Parser
+import           Application.Pinwheel.ArgsParser     as Parser
 import           Application.MultiDimensionalGMM.FisherKernel
 import           Application.MultiDimensionalGMM.GMM
 import           Application.MultiDimensionalGMM.MixtureModel
@@ -8,6 +8,7 @@ import           Control.Arrow
 import           Control.Monad
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
+import CV.Feature.Coefficient
 import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel            as Parallel
@@ -29,8 +30,8 @@ main = do
     then error "run with --help to see options."
     else return ()
   params <- parseArgs args
-  gmm <- readGMM (gmmFile params) :: IO [GMM]
-  pcaMatrixes <- readMatrixes (pcaFile params)
+  (gmm:_) <- readGMM (gmmFile params) :: IO [GMM]
+  (pcaMatrixes:_) <- readMatrixes (pcaFile params)
   imageSize <-
     if isFixedSize params
       then do
@@ -58,10 +59,6 @@ main = do
         }
       filterParamsList =
         L.zipWith filterParamsSetFunc [1] (freq params)
-      gaussianFilterParamsList =
-        L.map
-          (\gScale -> GaussianFilterParams gScale imageSize)
-          (gaussianScale params)
       magnitudeConduit filterParams =
         if isFixedSize params
           then let (PolarSeparableFilter _ filter') = makeFilterSet filterParams
@@ -76,7 +73,7 @@ main = do
           else undefined
   print params
   runResourceT $
-    sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
+    sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit (L.head filterParamsList) =$=
     pcaLabelConduit parallelParams pcaMatrixes =$=
     CL.map (second $ extractPointwiseFeature) =$=
     (fisherVectorConduit parallelParams gmm) =$=

@@ -5,7 +5,7 @@ module Main where
 import           Application.MultiDimensionalGMM.FisherKernel
 import           Application.MultiDimensionalGMM.GMM
 import           Application.MultiDimensionalGMM.MixtureModel
-import           Application.PinwheelPCANet.ArgsParser        as Parser
+import           Application.Pinwheel.ArgsParser        as Parser
 import           Application.PinwheelPCANet.PCA
 import           Classifier.LibLinear
 import Control.Arrow
@@ -92,7 +92,7 @@ main = do
         , getNameSet = Pinwheels
         }
       filterParamsList = L.zipWith filterParamsSetFunc [1] (freq params)
-      numFeature = L.sum . L.map cols $ pcaMatrixes
+      numFeature = cols $ pcaMatrixes
       trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
@@ -100,14 +100,10 @@ main = do
         , trainNumExamples = imageListLen
         , trainFeatureIndexMax =
           if isComplex params
-            then (4 * numFeature) * (numModel $ P.head gmm)
-            else (2 * numFeature) * (numModel $ P.head gmm)
+            then (4 * numFeature) * (numModel  gmm)
+            else (2 * numFeature) * (numModel  gmm)
         , trainModel = modelName params
         }
-      gaussianFilterParamsList =
-        L.map
-          (\gScale -> GaussianFilterParams gScale imageSize)
-          (gaussianScale params)
       magnitudeConduit filterParams =
         if isFixedSize params
           then let (PolarSeparableFilter _ filter') = makeFilterSet filterParams
