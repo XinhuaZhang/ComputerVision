@@ -66,7 +66,7 @@ main = do
         { getSizeSet = imageSize
         , getDownsampleFactorSet = fa
         , getScaleSet = S.fromDistinctAscList (scale params)
-        , getRadialFreqSet = S.fromDistinctAscList [1 .. (freq' - 0)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq' - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq' - 1)]
         , getNameSet = Pinwheels
         }
@@ -82,10 +82,11 @@ main = do
           then let (PolarSeparableFilter _ filter') = makeFilterSet filterParams
                    (PolarSeparableFilter _ flippedFilter') =
                      makeFlippedFilterSet filterParams
-               in coefficientMagnitudeFixedSizeConduitIO
-                    (learningRate params)
-                    filter'
-                    flippedFilter'
+               in coefficientMagnitudeConduit
+                  parallelParams
+                  (learningRate params)
+                  filter'
+                  flippedFilter'
           else undefined
       imgArrs = L.map (\(LabeledArray _ arr) -> arr) images
   withBinaryFile (gmmFile params) WriteMode $

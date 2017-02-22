@@ -15,6 +15,7 @@ import           Data.Conduit.List            as CL
 import           Data.List                    as L
 import           Math.FFT
 import           System.Random
+import Control.Arrow
 
 type ArrayChannels = [R.Array U DIM2 (Complex Double)]
 
@@ -39,11 +40,6 @@ reconstruction filter' =
              (Z :. nf' - nfLB + 1 :. ny' - nyLB + 1 :. nx' - nxLB + 1) .
            elems $
            filteredCArr)
--- fromFunction
---   (Z :. ny' - nyLB + 1 :. nx' - nxLB + 1 :. nf' - nfLB + 1)
---   (\(Z :. j :. i :. k) ->
---       filteredCArr CA.! (k + nfLB, j + nyLB, i + nxLB)))
-
 
 {-# INLINE imageArray2ArrayChannels #-}
 
@@ -109,17 +105,31 @@ gradientDecentIO learningRate inputs filter' flippedFilter' !coefficient lastEne
     print (lastEnergy,energy) 
     return coefficient
   | otherwise = do
+    -- putStrLn "error extents:"
+    -- print . L.map extent $ errors
+    -- putStrLn "coefficients extents:"
+    -- print . L.map bounds $ coefficient
+    -- putStrLn "delta extents:"
+    -- print . L.map bounds $ delta
+    -- print .  L.take 5 . elems . L.head $ coefficient
+    -- print . extent $ filter'
+    -- putStrLn "recon extents:"
+    -- print . L.map extent $ recon
+    -- putStrLn "input extents:"
+    -- print . L.map extent $ inputs
     print energy
     -- putStrLn "before computing delta"
-    -- delta <- return $! convolve filter' errors
+    -- delta <- return $! convolve filter' errors 
     -- putStrLn "after computing delta"
+    -- nc <- return $! newCoefficient delta
+    -- putStrLn "after computing new coefficients"
     gradientDecentIO learningRate inputs filter' flippedFilter' (newCoefficient delta) energy
   where
-    recon = reconstruction flippedFilter' coefficient
-    errors = L.map computeS $ L.zipWith (-^) inputs recon
-    l2Error = L.sum . L.map (sumAllS . R.map (^ (2 :: Int))) $ errors
-    energy = magnitude l2Error
-    delta = convolve filter' errors
+    !recon = reconstruction flippedFilter' coefficient
+    !errors = L.map computeS $ L.zipWith (-^) inputs recon
+    !l2Error = L.sum . L.map (sumAllS . R.map (^ (2 :: Int))) $ errors
+    !energy = magnitude l2Error
+    !delta = convolve filter' errors
     newCoefficient de =
       L.zipWith (liftArray2 (\a d -> a + (learningRate :+ 0) * d)) coefficient de
 
@@ -202,7 +212,7 @@ coefficientMagnitudeConduit
   -> Double
   -> Filter
   -> FlippedFilter
-  -> Conduit (R.Array s DIM3 Double) IO (R.Array U DIM3 Double)
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
 coefficientMagnitudeConduit parallelParams learningRate filter' flippedFilter' = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -221,7 +231,7 @@ coefficientMagnitudeConduit parallelParams learningRate filter' flippedFilter' =
                 parallelParams
                 rseq
                 (\x c ->
-                    let arr =
+                    let arr' =
                           computeS .
                           R.map magnitude .
                           computeCoefficient
@@ -230,7 +240,7 @@ coefficientMagnitudeConduit parallelParams learningRate filter' flippedFilter' =
                             flippedFilter'
                             x $
                           c
-                    in deepSeqArray arr arr)
+                    in deepSeqArray arr' arr')
                 xs
                 initCoefficients
         sourceList ys

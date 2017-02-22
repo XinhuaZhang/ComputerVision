@@ -5,7 +5,7 @@ import           Control.Monad.Trans.Resource
 import           CV.Array.Image
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparable
-import           CV.Feature.Coefficient
+import           CV.Feature.Coefficient as CO
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility         as RU
@@ -20,6 +20,7 @@ import           Data.Image
 import           Data.List                           as L
 import           Data.Set                            as S
 import           System.Environment
+import           Data.Array.CArray            as CA
 
 main = do
   (inputPath:learningRate:threshold:count:_) <- getArgs
@@ -28,13 +29,13 @@ main = do
         { numThread = 8
         , batchSize = 4
         }
-      imageSize = (250, 200)
+      imageSize = (300, 225)
       filterParamsSet =
         PolarSeparableFilterParamsSet
         { getSizeSet = imageSize
         , getDownsampleFactorSet = 1
-        , getScaleSet = S.fromDistinctAscList [1,2]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
+        , getScaleSet = S.fromDistinctAscList [1]
+        , getRadialFreqSet = S.fromDistinctAscList [1 .. (4 - 0)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
         , getNameSet = Pinwheels
         }
@@ -54,8 +55,16 @@ main = do
           ]
           image
   act <- computeCoefficientIO (read learningRate :: Double) filters filters180 imagePatch
-  let (Z :. actNf :. _ :. _) = extent act
+  -- let (Z :. imgNf :. imgNy :. imgNx) = extent image
+  --     (Z :. filterNf :. _ :. _) = extent filters
+  -- initCoefficients <-
+  --   M.replicateM imgNf .
+  --   fmap (CA.listArray ((0, 0, 0), (filterNf - 1, imgNy - 1, imgNx - 1))) .
+  --   M.replicateM (filterNf * imgNy * imgNx) . CO.generateComplexNumber $
+  --   (-0.01, 0.01)
+  let -- (e,act) = computeCoefficient (read learningRate :: Double) filters filters180 image initCoefficients
       act' = [threeDRArray2CArray act]
+  -- print e
   plotImage "image.png" $ computeS imagePatch
   plotComplexImage
     ("Image_" L.++ show (S.toList $ getScaleSet filterParamsSet) L.++ "_" L.++

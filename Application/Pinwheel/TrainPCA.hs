@@ -47,7 +47,7 @@ main = do
         { getSizeSet = imageSize
         , getDownsampleFactorSet = fa
         , getScaleSet = S.fromDistinctAscList (scale params)
-        , getRadialFreqSet = S.fromDistinctAscList [1 .. freq']
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq' - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq' - 1)]
         , getNameSet = Pinwheels
         }
@@ -59,7 +59,8 @@ main = do
           then let (PolarSeparableFilter _ filter') = makeFilterSet filterParams
                    (PolarSeparableFilter _ flippedFilter') =
                      makeFlippedFilterSet filterParams
-               in coefficientMagnitudeFixedSizeConduitIO
+               in coefficientMagnitudeConduit
+                    parallelParams
                     (learningRate params)
                     filter'
                     flippedFilter'
