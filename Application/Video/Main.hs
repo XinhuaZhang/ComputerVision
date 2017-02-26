@@ -5,9 +5,5 @@ import           Data.Conduit
 import           Data.Conduit.List            as CL
 
 main = do
-  frames <-
-    runResourceT $
-    videoFrameSource
-      "/Users/xzhang/WorkSpace/ComputerVision/Application/Video/v_Bowling_g01_c01.avi" $$
-    CL.take 2
+  frames <- runResourceT $ videoFrameSource "v_Biking_g01_c01.avi" $$ CL.take 4
   M.zipWithM_ (\i frame -> plotFrame (show i ++ ".png") frame) [1 ..] frames

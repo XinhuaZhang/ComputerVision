@@ -10,25 +10,25 @@ import           Data.Maybe
 
 {-# INLINE getFrameSource #-}
 
-getFrameSource :: FilePath -> IO (IO (Maybe DynamicImage))
+getFrameSource :: FilePath -> IO (IO (Maybe DynamicImage), IO ())
 getFrameSource filePath = do
   (getFrame, cleanup) <- imageReader $ File filePath
-  return $! (fmap ImageRGB8 <$> getFrame) <* cleanup
+  return (fmap ImageRGB8 <$> getFrame , cleanup)
 
 
 videoFrameSource :: FilePath -> Source (ResourceT IO) DynamicImage
 videoFrameSource filePath = do
   liftIO initFFmpeg
-  frameSource <- liftIO $ getFrameSource filePath
-  go frameSource
+  (frameSource,cleanup) <- liftIO $ getFrameSource filePath
+  go frameSource cleanup
   where
-    go source = do
+     go source cl = do
       maybeFrame <- liftIO source
       case maybeFrame of
-        Nothing -> return ()
+        Nothing -> liftIO cl
         Just frame -> do
           yield frame
-          go source
+          go source cl
 
 
 plotFrame :: FilePath -> DynamicImage -> IO ()
