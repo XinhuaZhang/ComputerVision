@@ -1,0 +1,3 @@
+#!/bin/bash
+
+ghc -O3 IO.hs -o main
