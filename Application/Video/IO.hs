@@ -1,19 +1,37 @@
---module Application.Video.IO where
+module Application.Video.IO where
 
-import Codec.FFmpeg
-import Codec.Picture
-import Data.Maybe
+import           Codec.FFmpeg
+import           Codec.Picture
+import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Resource
+import           Data.Conduit
+import           Data.Conduit.List            as CL
+import           Data.Maybe
 
+{-# INLINE getFrameSource #-}
 
-go :: FilePath -> IO (Maybe DynamicImage)
-go filePath = do
+getFrameSource :: FilePath -> IO (IO (Maybe DynamicImage))
+getFrameSource filePath = do
   (getFrame, cleanup) <- imageReader $ File filePath
-  (fmap ImageRGB8 <$> getFrame) <* cleanup
+  return $! (fmap ImageRGB8 <$> getFrame) <* cleanup
 
-main = do
-  maybeFrame <-
-    go
-      "/Users/xzhang/WorkSpace/ComputerVision/Application/Video/v_Bowling_g01_c01.avi"
-  case maybeFrame of
-    Nothing -> error "error reading frame"
-    Just (ImageRGB8 frame) -> print . imageWidth $ frame
+
+videoFrameSource :: FilePath -> Source (ResourceT IO) DynamicImage
+videoFrameSource filePath = do
+  liftIO initFFmpeg
+  frameSource <- liftIO $ getFrameSource filePath
+  go frameSource
+  where
+    go source = do
+      maybeFrame <- liftIO source
+      case maybeFrame of
+        Nothing -> return ()
+        Just frame -> do
+          yield frame
+          go source
+
+
+plotFrame :: FilePath -> DynamicImage -> IO ()
+plotFrame = savePngImage
+
+
