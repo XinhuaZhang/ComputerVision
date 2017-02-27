@@ -2,10 +2,10 @@
 
 module Main where
 
-import           Application.PinwheelPCANet.ArgsParser     as Parser
 import           Application.MultiDimensionalGMM.FisherKernel
 import           Application.MultiDimensionalGMM.GMM
 import           Application.MultiDimensionalGMM.MixtureModel
+import           Application.PinwheelPCANet.ArgsParser        as Parser
 import           Application.PinwheelPCANet.PCA
 import           Classifier.LibLinear
 import           Control.Monad
@@ -14,19 +14,20 @@ import           Control.Monad.Trans.Resource
 import           Control.Parallel
 import           CV.Array.LabeledArray
 import           CV.Feature.PolarSeparable
+import           CV.Filter.GaussianFilter
 import           CV.Filter.PolarSeparableFilter
-import           CV.Utility.Parallel            as Parallel
+import           CV.Utility.Parallel                          as Parallel
 import           CV.Utility.Time
-import           Data.Array.Repa                as R
+import           Data.Array.Repa                              as R
 import           Data.Conduit
-import           Data.Conduit.Binary            as CB
-import           Data.Conduit.List              as CL
-import           Data.List                      as L
-import           Data.Set                       as S
-import           Data.Vector.Unboxed            as VU
+import           Data.Conduit.Binary                          as CB
+import           Data.Conduit.List                            as CL
+import           Data.List                                    as L
+import           Data.Set                                     as S
+import           Data.Vector.Unboxed                          as VU
 import           Foreign.Ptr
-import           Numeric.LinearAlgebra.Data     as LA
-import           Prelude                        as P
+import           Numeric.LinearAlgebra.Data                   as LA
+import           Prelude                                      as P
 import           System.Environment
 
 trainSink
@@ -85,7 +86,7 @@ main = do
         , getDownsampleFactorSet = fa
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq' - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [1 .. (freq'  - 0)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq'  - 1)]
         , getNameSet = Pinwheels
         }
       filterParamsList = L.zipWith filterParamsSetFunc [1,2,2,2,1] (freq params)
@@ -109,7 +110,6 @@ main = do
         pinwheelPCANetVariedSizeConduit
           parallelParams
           filterParamsList
-          gaussianFilterParamsList
           (downsampleFactor params)
           pcaMatrixes
   -- if isFixedSize params

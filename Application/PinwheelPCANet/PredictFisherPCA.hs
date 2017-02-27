@@ -20,6 +20,7 @@ import           Data.Set                       as S
 import           Data.Vector.Unboxed            as VU
 import           Prelude                        as P
 import           System.Environment
+import CV.Filter.GaussianFilter
 
 main = do
   args <- getArgs
@@ -51,7 +52,7 @@ main = do
         , getDownsampleFactorSet = fa
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq' - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [1 .. (freq'  - 0)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq'  - 1)]
         , getNameSet = Pinwheels
         }
       filterParamsList = L.zipWith filterParamsSetFunc [1,2,2,2,1] (freq params)
@@ -63,7 +64,6 @@ main = do
         pinwheelPCANetVariedSizeConduit
           parallelParams
           filterParamsList
-          gaussianFilterParamsList
           (downsampleFactor params)
           pcaMatrixes
       -- magnitudeConduit =

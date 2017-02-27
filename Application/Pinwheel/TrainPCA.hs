@@ -47,7 +47,7 @@ main = do
         { getSizeSet = imageSize
         , getDownsampleFactorSet = fa
         , getScaleSet = S.fromDistinctAscList (scale params)
-        , getRadialFreqSet = S.fromDistinctAscList [1 .. (freq' - 0)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq' - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq' - 1)]
         , getNameSet = Pinwheels
         }
@@ -64,7 +64,7 @@ main = do
                     (learningRate params)
                     filter'
                     flippedFilter'
-                    False
+                    True
           else undefined
       imgArrs = L.map (\(LabeledArray _ arr) -> arr) images
   print params
