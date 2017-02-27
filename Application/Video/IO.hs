@@ -7,14 +7,13 @@ import           Control.Monad.Trans.Resource
 import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.Maybe
+import Control.Arrow
 
 {-# INLINE getFrameSource #-}
 
 getFrameSource :: FilePath -> IO (IO (Maybe DynamicImage), IO ())
-getFrameSource filePath = do
-  (getFrame, cleanup) <- imageReader $ File filePath
-  return (fmap ImageRGB8 <$> getFrame , cleanup)
-
+getFrameSource filePath =
+  fmap (first $ fmap (fmap ImageY8)) . imageReader $ File filePath
 
 videoFrameSource :: FilePath -> Source (ResourceT IO) DynamicImage
 videoFrameSource filePath = do

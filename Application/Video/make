@@ -1,3 +1,3 @@
 #!/bin/bash
-
-ghc -j4 -O2 -threaded -rtsopts -i../.. Main.hs -o main
+LIBS="-lstdc++ -lopencv_video -lopencv_core"
+cabal exec -- ghc -j4 --make -O2 $LIBS -i../.. Opencv/opticalflow.o Main.hs -o main
