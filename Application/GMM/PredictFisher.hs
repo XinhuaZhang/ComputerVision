@@ -1,15 +1,16 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Main where
 
 import           Application.GMM.ArgsParser     as Parser
-import           Application.GMM.FisherKernel
-import           Application.GMM.GMM
-import           Application.GMM.MixtureModel
+import           Application.MultiDimensionalGMM.FisherKernel
+import           Application.MultiDimensionalGMM.GMM
+import           Application.MultiDimensionalGMM.MixtureModel
 import           Classifier.LibLinear
 import           Control.Arrow
 import           Control.Monad
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Feature.PolarSeparableRepa
+import           CV.Feature.PolarSeparable
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel            as Parallel
 import           Data.Array.Repa                as R
@@ -63,20 +64,20 @@ main = do
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
         , getNameSet = Pinwheels
         }
-      filterParamsList = [filterParamsSet1,filterParamsSet2]
+      filterParamsList = [filterParamsSet1 ,filterParamsSet2]
       magnitudeConduit =
         if isFixedSize params
-          then labeledArrayMagnitudeSetFixedSizeConduit
+          then multiLayerMagnitudeFixedSizedConduit
                  parallelParams
                  (L.map makeFilterSet filterParamsList)
                  (downsampleFactor params)
-          else labeledArrayMagnitudeSetVariedSizeConduit
+          else multiLayerMagnitudeVariedSizedConduit
                  parallelParams
                  filterParamsList
                  (downsampleFactor params)
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
-    (fisherVectorConduit parallelParams gmm) =$=
+    (fisherVectorConduit1 parallelParams gmm) =$=
     CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")

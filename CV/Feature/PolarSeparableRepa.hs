@@ -149,12 +149,13 @@ multiLayerMagnitudeFixedSize filters facotr img =
               arr')
           img
           filters
-      !(Z :. nf :. _ :. _) = extent downSampledArr
+      !(Z :. _ :. ny' :. nx') = extent downSampledArr
       !downSampledArr = RU.downsample [facotr, facotr, 1] arr
   in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
-      (Z :. k :. All :. All)
-     | k <- [0 .. nf - 1] ]
-     
+      (Z :. All :. j :. i)
+     | j <- [0 .. ny' - 1]
+     , i <- [0 .. nx' - 1] ]
+
 
 {-# INLINE multiLayerMagnitudeVariedSize #-}
 
@@ -173,11 +174,12 @@ multiLayerMagnitudeVariedSize filterParamsList facotr img =
               arr')
           img
           filterParamsList
-      !(Z :. nf :. _ :. _) = extent downSampledArr
+      !(Z :. _ :. ny' :. nx') = extent downSampledArr
       !downSampledArr = RU.downsample [facotr, facotr, 1] arr
   in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
-      (Z :. k :. All :. All)
-     | k <- [0 .. nf - 1] ]
+      (Z :. All :. j :. i)
+     | j <- [0 .. ny' - 1]
+     , i <- [0 .. nx' - 1] ]
 
 
 -- The following twos functions give a concatnation of feature-wise results from layer 1 to layer n.
@@ -191,11 +193,12 @@ multiLayerMagnitudeSetFixedSize
 multiLayerMagnitudeSetFixedSize filters facotr img =
   L.concatMap
     (\arr ->
-        let !(Z :. nf :. _ :. _) = extent downSampledArr
+        let !(Z :. _ :. ny' :. nx') = extent downSampledArr
             !downSampledArr = RU.downsample [facotr, facotr, 1] arr
         in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
-            (Z :. k :. All :. All)
-           | k <- [0 .. nf - 1] ]) .
+            (Z :. All :. j :. i)
+           | j <- [0 .. ny' - 1]
+           , i <- [0 .. nx' - 1] ]) .
   L.tail .
   L.scanl'
     (\arr filter' ->
@@ -215,11 +218,12 @@ multiLayerMagnitudeSetVariedSize
 multiLayerMagnitudeSetVariedSize filterParamsList facotr img =
   L.concatMap
     (\arr ->
-        let !(Z :. nf :. _ :. _) = extent downSampledArr
+        let !(Z :. _ :. ny' :. nx') = extent downSampledArr
             !downSampledArr = RU.downsample [facotr, facotr, 1] arr
         in [ toUnboxed . computeUnboxedS . R.slice downSampledArr $
-            (Z :. k :. All :. All)
-           | k <- [0 .. nf - 1] ]) .
+            (Z :. All :. j :. i)
+           | j <- [0 .. ny' - 1]
+           , i <- [0 .. nx' - 1] ]) .
   L.tail .
   L.scanl'
     (\arr filterParams ->

@@ -1,26 +1,27 @@
 module Main where
 
-import           Application.GMM.ArgsParser     as Parser
-import           Application.GMM.FisherKernel
-import           Application.GMM.GMM
-import           Application.GMM.MixtureModel
+import           Application.GMM.ArgsParser                   as Parser
 import           Application.GMM.PCA
+import           Application.MultiDimensionalGMM.FisherKernel
+import           Application.MultiDimensionalGMM.GMM
+import           Application.MultiDimensionalGMM.MixtureModel
 import           Classifier.LibLinear
 import           Control.Arrow
 import           Control.Monad
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Feature.PolarSeparableRepa
+import           CV.Feature.PolarSeparable
+import           CV.Filter.GaussianFilter
 import           CV.Filter.PolarSeparableFilter
-import           CV.Utility.Parallel            as Parallel
-import           Data.Array.Repa                as R
+import           CV.Utility.Parallel                          as Parallel
+import           Data.Array.Repa                              as R
 import           Data.Conduit
-import           Data.Conduit.Binary            as CB
-import           Data.Conduit.List              as CL
-import           Data.List                      as L
-import           Data.Set                       as S
-import           Data.Vector.Unboxed            as VU
-import           Prelude                        as P
+import           Data.Conduit.Binary                          as CB
+import           Data.Conduit.List                            as CL
+import           Data.List                                    as L
+import           Data.Set                                     as S
+import           Data.Vector.Unboxed                          as VU
+import           Prelude                                      as P
 import           System.Environment
 
 main = do
@@ -30,7 +31,7 @@ main = do
     else return ()
   params <- parseArgs args
   gmm <- readGMM (gmmFile params) :: IO [GMM]
-  pcaMatrix <- readMatrix (pcaFile params)
+  pcaMatrixes <- readMatrixes (pcaFile params)
   imageSize <-
     if isFixedSize params
       then do
@@ -53,33 +54,49 @@ main = do
         , getDownsampleFactorSet = 1
         , getScaleSet = S.fromDistinctAscList (scale params)
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [1 .. (freq params - 0)]
         , getNameSet = Pinwheels
         }
       filterParamsSet2 =
         PolarSeparableFilterParamsSet
         { getSizeSet = imageSize
-        , getDownsampleFactorSet = 1
+        , getDownsampleFactorSet = 2
         , getScaleSet = S.fromDistinctAscList (scale params)
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (freq params - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (div (freq params) 2 - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [1 .. (div (freq params) 2 - 0)]
         , getNameSet = Pinwheels
         }
-      filterParamsList = [filterParamsSet1]
+      filterParamsList = L.take (numLayer params) [filterParamsSet1, filterParamsSet2,filterParamsSet2]
+      gaussianFilterParamsList =
+        L.map
+          (\gScale -> GaussianFilterParams gScale imageSize)
+          (gaussianScale params)
       magnitudeConduit =
         if isFixedSize params
-          then labeledArrayMagnitudeSetFixedSizeConduit
-                 parallelParams
-                 (L.map makeFilterSet filterParamsList)
-                 (downsampleFactor params)
-          else labeledArrayMagnitudeSetVariedSizeConduit
-                 parallelParams
-                 filterParamsList
-                 (downsampleFactor params)
+          then if isComplex params
+                  then multiLayerComplexFixedSizedConduit
+                         parallelParams
+                         (L.map makeFilterSet filterParamsList)
+                         (downsampleFactor params)
+                  else multiLayerMagnitudeFixedSizedConduit
+                         parallelParams
+                         (L.map makeFilterSet filterParamsList)
+                         gaussianFilterParamsList
+                         (downsampleFactor params)
+          else if isComplex params
+                  then multiLayerComplexVariedSizedConduit
+                         parallelParams
+                         filterParamsList
+                         (downsampleFactor params)
+                  else multiLayerMagnitudeVariedSizedConduit
+                         parallelParams
+                         filterParamsList
+                         gaussianFilterParamsList
+                         (downsampleFactor params)
   print params
   runResourceT $
     sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$= magnitudeConduit =$=
-    pcaLabelConduit parallelParams pcaMatrix =$=
-    (fisherVectorConduit parallelParams gmm) =$=
+    pcaLabelMultiLayerConduit parallelParams pcaMatrixes =$=
+    (fisherVectorConduit1 parallelParams gmm) =$=
     CL.map (fromIntegral *** (getFeature . Dense . VU.toList)) =$=
     predict (modelName params) ((modelName params) P.++ ".out")

@@ -46,7 +46,7 @@ main =
               then "Color"
               else "Gray"
          n = 299
-         deg = 90
+         deg = 36
          rotationLen = round (360 / deg)
          imageSource path labelPath =
            imagePathSource path =$= readImageConduit isColorFlag =$=
@@ -88,14 +88,14 @@ main =
         "_fixed.bin") $$
        rotateLabeledImageConduit parallelParams deg =$=
        writeLabeledImageBinarySink
-         (outputPath P.++ "/Test/Rotated/" P.++ show n P.++ "_" P.++ str P.++
+         (outputPath P.++ "/Test/Rotated/" P.++ show n P.++ "_" P.++ show deg P.++ "_"  P.++ str P.++
           "_fixed.bin")
          (testLen * rotationLen)
-     readLabeledImagebinarySource
-       (outputPath P.++ "/Train/Original/" P.++ show n P.++ "_" P.++ str P.++
-        "_fixed.bin") $$
-       rotateLabeledImageConduit parallelParams deg =$=
-       writeLabeledImageBinarySink
-         (outputPath P.++ "/Train/Rotated/" P.++ show n P.++ "_" P.++ str P.++
-          "_fixed.bin")
-         (trainLen * rotationLen)
+     -- readLabeledImagebinarySource
+     --   (outputPath P.++ "/Train/Original/" P.++ show n P.++ "_" P.++ str P.++
+     --    "_fixed.bin") $$
+     --   rotateLabeledImageConduit parallelParams deg =$=
+     --   writeLabeledImageBinarySink
+     --     (outputPath P.++ "/Train/Rotated/" P.++ show n P.++ "_" P.++ show deg P.++ "_"  P.++ str P.++
+     --      "_fixed.bin")
+     --     (trainLen * rotationLen)

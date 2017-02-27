@@ -1,20 +1,27 @@
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module CV.Utility.RepaArrayUtility where
 
+import           Data.Array.CArray            as CA
 import           Data.Array.Repa              as R
 import           Data.Array.Repa.Stencil      as R
 import           Data.Array.Repa.Stencil.Dim2 as R
+import           Data.Complex
 import           Data.List                    as L
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
+import           Foreign.Storable
 import           Prelude                      as P
 
 -- factor = 2^n, n = 0,1,..
 -- the first factor in the list corresponds to the inner-most (right-most) dimension.
+{-# INLINE downsample #-}
 downsample
   :: (Source s e
      ,Shape sh)
-  => [Int] -> Array s sh e -> Array D sh e
+  => [Int] -> R.Array s sh e -> R.Array D sh e
 downsample factorList arr
   | L.any (< 1) newDList = error "Downsample factors are too large."
   | otherwise =
@@ -24,21 +31,26 @@ downsample factorList arr
   where dList = listOfShape . extent $ arr
         newDList = L.zipWith div dList factorList
 
+{-# INLINE downsampleUnsafe #-}
 downsampleUnsafe
   :: (Source s e
      ,Shape sh)
-  => [Int] -> Array s sh e -> Array D sh e
-downsampleUnsafe factorList arr =
-  R.backpermute newSh
-              (shapeOfList . L.zipWith (*) factorList . listOfShape)
-              arr
+  => [Int] -> R.Array s sh e -> R.Array D sh e
+downsampleUnsafe factorList arr
+  | L.all (== 1) factorList = delay arr
+  | otherwise =
+    R.backpermute newSh
+                  (shapeOfList . L.zipWith (*) factorList . listOfShape)
+                  arr
   where dList = listOfShape $ extent arr
         newSh = shapeOfList $ L.zipWith div dList factorList
+
+{-# INLINE crop #-}
 
 crop
   :: (Source s e
      ,Shape sh)
-  => [Int] -> [Int] -> Array s sh e -> Array D sh e
+  => [Int] -> [Int] -> R.Array s sh e -> R.Array D sh e
 crop start len arr
   | L.any (< 0) start ||
       L.or (L.zipWith3 (\x y z -> x > (z - y))
@@ -54,18 +66,22 @@ crop start len arr
                 arr
   where dList = listOfShape $ extent arr
 
+{-# INLINE cropUnsafe  #-}
+
 cropUnsafe
   :: (Source s e
      ,Shape sh)
-  => [Int] -> [Int] -> Array s sh e -> Array D sh e
+  => [Int] -> [Int] -> R.Array s sh e -> R.Array D sh e
 cropUnsafe start len =
   R.backpermute (shapeOfList len)
               (shapeOfList . L.zipWith (+) start . listOfShape)
 
+{-# INLINE pad  #-}
+
 pad :: (Real e
        ,Source s e
        ,Shape sh)
-    => [Int] -> Array s sh e -> Array D sh e
+    => [Int] -> R.Array s sh e -> R.Array D sh e
 pad newDims arr =
   fromFunction
     (shapeOfList dimList)
@@ -86,7 +102,7 @@ pad newDims arr =
 
 
 computeDerivativeP
-  :: Array U DIM2 Double -> IO [Array U DIM2 Double]
+  :: R.Array U DIM2 Double -> IO [R.Array U DIM2 Double]
 computeDerivativeP arr =
   do let xStencil =
            [stencil2| 0 0 0
@@ -107,7 +123,7 @@ computeDerivativeP arr =
      return $! (arr : ds')
 
 computeDerivativeS
-  :: Array U DIM2 Double -> [Array U DIM2 Double]
+  :: R.Array U DIM2 Double -> [R.Array U DIM2 Double]
 computeDerivativeS arr = arr : ds'
   where xStencil =
           [stencil2| 0 0 0
@@ -128,7 +144,7 @@ computeDerivativeS arr = arr : ds'
 
 {-# INLINE bicubicInterpolation #-}
 bicubicInterpolation
-  :: [Array U DIM2 Double] -> (Double,Double) ->  (Double,Double) -> Double
+  :: [R.Array U DIM2 Double] -> (Double,Double) ->  (Double,Double) -> Double
 bicubicInterpolation ds (minVal, maxVal) (y, x)
   | (x < 0) ||
       (x > (fromIntegral nx - 1)) || (y < 0) || (y > (fromIntegral ny - 1)) = 0
@@ -175,3 +191,129 @@ bicubicInterpolation ds (minVal, maxVal) (y, x)
       , [-6, 6, 6, -6, -4, -2, 4, 2, -3, 3, -3, 3, -2, -1, -2, -1]
       , [4, -4, -4, 4, 2, 2, -2, -2, 2, -2, 2, -2, 1, 1, 1, 1]
       ]
+
+
+{-# INLINE twoDCArray2RArray #-}
+
+twoDCArray2RArray
+  :: (Num a, Storable a, Unbox a)
+  => CArray (Int, Int) a -> R.Array U DIM2 a
+twoDCArray2RArray cArr =
+  fromListUnboxed (Z :. (ubY - lbY + 1) :. (ubX - lbX + 1)) . elems $ cArr
+  where
+    ((lbY, lbX), (ubY, ubX)) = bounds cArr
+
+
+{-# INLINE twoDRArray2CArray #-}
+
+twoDRArray2CArray
+  :: (Num a, Storable a, Source s a)
+  => R.Array s DIM2 a -> CArray (Int, Int) a
+twoDRArray2CArray rArr = listArray ((0, 0), (ny - 1, nx - 1)) . R.toList $ rArr
+  where
+    (Z :. ny :. nx) = extent rArr
+
+{-# INLINE threeDRArray2CArray #-}
+
+threeDRArray2CArray
+  :: (Num a, Storable a, Source s a)
+  => R.Array s DIM3 a -> CArray (Int, Int, Int) a
+threeDRArray2CArray rArr =
+  listArray ((0, 0, 0), (nf - 1, ny - 1, nx - 1)) . R.toList $ rArr
+  where
+    (Z :. nf :. ny :. nx) = extent rArr
+
+{-# INLINE threeDCArray2RArray #-}
+
+threeDCArray2RArray
+  :: (Num a, Storable a, Unbox a)
+  => CArray (Int, Int, Int) a -> R.Array U DIM3 a
+threeDCArray2RArray cArr =
+  fromListUnboxed (Z :. (ubC - lbC + 1) :. (ubY - lbY + 1) :. (ubX - lbX + 1)) .
+  elems $
+  cArr
+  where
+    ((lbC, lbY, lbX), (ubC, ubY, ubX)) = bounds cArr
+
+
+{-# INLINE makeFilterList #-}
+
+makeFilterList :: Int -> Int -> (Int -> Int -> a) -> [a]
+makeFilterList ny nx f =
+  [ let !x =
+          if r < (ny `div` 2)
+            then r
+            else r - ny
+        !y =
+          if c < (nx `div` 2)
+            then c
+            else c - nx
+    in f x y
+  | r <- [0 .. ny - 1]
+  , c <- [0 .. nx - 1] ]
+  
+{-# INLINE makeFlippedFilterList #-}
+
+makeFlippedFilterList :: Int -> Int -> (Int -> Int -> a) -> [a]
+makeFlippedFilterList ny nx f =
+  [ let !x =
+          if r < (ny `div` 2)
+            then r
+            else r - ny
+        !y =
+          if c < (nx `div` 2)
+            then c
+            else c - nx
+    in f y x
+  | r <- [0 .. ny - 1]
+  , c <- [0 .. nx - 1] ]
+
+
+{-# INLINE extractPointwiseFeature #-}
+
+extractPointwiseFeature
+  :: (R.Source s e, Unbox e)
+  => R.Array s DIM3 e -> [VU.Vector e]
+extractPointwiseFeature arr' =
+  [ toUnboxed . computeUnboxedS . R.slice arr' $ (Z :. All :. j :. i)
+  | j <- [0 .. ny' - 1]
+  , i <- [0 .. nx' - 1] ]
+  where
+    !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent arr'
+
+{-# INLINE extractPointwiseComplexFeature #-}
+
+extractPointwiseComplexFeature
+  :: (R.Source s (Complex Double))
+  => R.Array s DIM3 (Complex Double) -> [VU.Vector Double]
+extractPointwiseComplexFeature arr' =
+  [ VU.fromListN (2 * nf') .
+   L.concatMap (\(a :+ b) -> [a, b]) .
+   VU.toList . toUnboxed . computeUnboxedS . R.slice arr' $
+   (Z :. All :. j :. i)
+  | j <- [0 .. ny' - 1]
+  , i <- [0 .. nx' - 1] ]
+  where
+    !(Z :. nf' :. (ny' :: Int) :. (nx' :: Int)) = extent arr'
+
+{-# INLINE extractFeatureMap #-}
+
+extractFeatureMap
+  :: (R.Source s e)
+  => R.Array s DIM3 e -> [[e]]
+extractFeatureMap arr' =
+  L.map (\k -> R.toList . R.slice arr' $ (Z :. k :. All :. All)) [0 .. nf' - 1]
+  where
+    !(Z :. (nf' :: Int) :. _ :. _) = extent arr'
+
+-- CHW -> HWC
+
+{-# INLINE rotate3D #-}
+
+rotate3D
+  :: (R.Source s e)
+  => R.Array s DIM3 e -> R.Array D DIM3 e
+rotate3D arr' =
+  R.backpermute (Z :. h :. w :. c) (\(Z :. j :. i :. k) -> (Z :. k :. j :. i)) arr'
+  where
+    (Z :. c :. h :. w) = extent arr'

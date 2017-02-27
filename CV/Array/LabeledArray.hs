@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs  #-}
 module CV.Array.LabeledArray where
@@ -17,6 +19,7 @@ import           Data.Vector.Unboxed          as VU
 import           GHC.Generics
 import           Prelude                      as P
 import           System.IO
+import           CV.Utility.Parallel           
 
 data LabeledArray sh e =
   LabeledArray !Int
@@ -50,7 +53,7 @@ readLabeledImagebinary filePath =
              let size' = fromIntegral (decode sizeBS :: Word32) :: Int
              bs <- BL.hGet h size'
              let (LabeledArray label arr) = decode bs :: LabeledArray DIM3 Word8
-             return . LabeledArray label . computeUnboxedS . R.map fromIntegral $
+             return . LabeledArray label . computeUnboxedS . rescaleWord8 $
                arr))
 
 
@@ -101,7 +104,7 @@ readLabeledImagebinaryConduit = do
         (do let size' = fromIntegral (decode sizeBS :: Word32) :: Int
             bs <- CB.take size'
             let (LabeledArray label arr) = decode bs :: LabeledArray DIM3 Word8
-            yield . LabeledArray label . computeUnboxedS . R.map fromIntegral $
+            yield . LabeledArray label . computeUnboxedS . rescaleWord8 $
               arr
             go)
             
@@ -118,7 +121,7 @@ readLabeledImageBinary filePath num =
          let size' = fromIntegral (decode sizeBS :: Word32) :: Int
          bs <- BL.hGet h size'
          let (LabeledArray label arr) = decode bs :: LabeledArray DIM3 Word8
-         return . LabeledArray label . computeUnboxedS . R.map fromIntegral $ arr
+         return . LabeledArray label . computeUnboxedS . rescaleWord8 $ arr
 
 
 writeLabeledImageBinarySink :: FilePath
@@ -152,3 +155,36 @@ getArrayNumFile filePath =
        lenBS <- liftIO $ BL.hGet h 4
        let len = fromIntegral (decode lenBS :: Word32) :: Int
        return len)
+
+
+meanSubtractConduit
+  :: ParallelParams
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+meanSubtractConduit parallelParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (P.null xs)
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label arr) ->
+                    let !m = sumAllS arr / fromIntegral (nf * nx * ny)
+                        (Z :. nf :. ny :. nx) = extent arr
+                        !result = computeUnboxedS $ R.map (\x -> x - m) arr
+                    in deepSeqArray result (LabeledArray label result))
+                xs
+        sourceList ys
+        meanSubtractConduit parallelParams)
+-- awaitForever
+--   (\(LabeledArray label arr) ->
+--       let !m = sumAllS arr / fromIntegral (nf * nx * ny)
+--           (Z :. nf :. ny :. nx) = extent arr
+--       in yield $! LabeledArray label . computeUnboxedS $ R.map (\x -> x - m) arr)
+
+-- rescaleWord8 [0,255] to [-1,1]
+
+{-# INLINE rescaleWord8 #-}
+
+rescaleWord8 :: (R.Source s Word8) => R.Array s DIM3 Word8 -> R.Array R.D DIM3 Double
+rescaleWord8 = R.map (\x -> ((fromIntegral x / 255) - 0.5) * 2)

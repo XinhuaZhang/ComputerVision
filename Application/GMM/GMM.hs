@@ -252,13 +252,13 @@ emAll parallelParams filePath bound threshold gmms xs =
           !models = P.map getModelDone gmms
       printCurrentTime
       printf "%0.2f\n" avgLikelihood
-      encodeFile filePath models
+      writeGMM filePath models
       return models
     else do
       printCurrentTime
       when
         (P.all checkStateContinueDone gmms)
-        (encodeFile filePath (P.map getModelContinueDone gmms))
+        (writeGMM filePath (P.map getModelContinueDone gmms))
       gmms1 <- resetGMMList bound gmms
       let !gmms2 =
             parZipWithChunk
