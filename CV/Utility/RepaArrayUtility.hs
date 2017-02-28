@@ -137,10 +137,98 @@ computeDerivativeS arr = arr : ds'
           [stencil2| 1 0 -1
                      0 0 0
                      -1 0 1 |]
+        -- xStencil =
+        --   makeStencil2 3 3 $
+        --   \ix ->
+        --     case ix of
+        --       Z :. 0 :. (-1) -> Just (-1)
+        --       Z :. 0 :. 1 -> Just 1
+        --       _ -> Nothing
+        -- yStencil =
+        --   makeStencil2 3 3 $
+        --   \ix ->
+        --     case ix of
+        --       Z :. -1 :. 0 -> Just (-1)
+        --       Z :. 1 :. 0 -> Just 1
+        --       _ -> Nothing
+        -- xyStencil =
+        --   makeStencil2 3 3 $
+        --   \ix ->
+        --     case ix of
+        --       Z :. (-1) :. (-1) -> Just 1
+        --       Z :. (-1) :. 1 -> Just (-1)
+        --       Z :. 1 :. (-1) -> Just (-1)
+        --       Z :. 1 :. 1 -> Just 1
+        --       _ -> Nothing
         ds =
           L.map (\s -> R.map (/ 2) $ mapStencil2 BoundClamp s arr)
                 [xStencil,yStencil,xyStencil]
         ds' = L.map computeS ds
+        
+
+computeComplexDerivativeS
+  :: R.Array U DIM2 (Complex Double) -> [R.Array U DIM2 (Complex Double)]
+computeComplexDerivativeS arr = arr : ds'
+  where xStencil =
+          makeStencil2 3 3 $
+          \ix ->
+            case ix of
+              Z :. 0 :. (-1) -> Just ((-1) :+ 0)
+              Z :. 0 :. 1 -> Just (1 :+ 0)
+              _ -> Nothing
+        yStencil =
+          makeStencil2 3 3 $
+          \ix ->
+            case ix of
+              Z :. -1 :. 0 -> Just ((-1) :+ 0)
+              Z :. 1 :. 0 -> Just (1 :+ 0)
+              _ -> Nothing
+        xyStencil =
+          makeStencil2 3 3 $
+          \ix ->
+            case ix of
+              Z :. (-1) :. (-1) -> Just (1 :+ 0)
+              Z :. (-1) :. 1 -> Just ((-1) :+ 0)
+              Z :. 1 :. (-1) -> Just ((-1) :+ 0)
+              Z :. 1 :. 1 -> Just (1 :+ 0)
+              _ -> Nothing
+        ds =
+          L.map (\s -> R.map (/ (2 :+ 0)) $ mapStencil2 BoundClamp s arr)
+                [xStencil,yStencil,xyStencil]
+        ds' = L.map computeS ds
+        
+computeComplexDerivativeP
+  :: R.Array U DIM2 (Complex Double) -> IO [R.Array U DIM2 (Complex Double)]
+computeComplexDerivativeP arr =
+  do ds' <- P.mapM computeP ds
+     return $! arr : ds'
+  where xStencil =
+          makeStencil2 3 3 $
+          \ix ->
+            case ix of
+              Z :. 0 :. (-1) -> Just ((-1) :+ 0)
+              Z :. 0 :. 1 -> Just (1 :+ 0)
+              _ -> Nothing
+        yStencil =
+          makeStencil2 3 3 $
+          \ix ->
+            case ix of
+              Z :. -1 :. 0 -> Just ((-1) :+ 0)
+              Z :. 1 :. 0 -> Just (1 :+ 0)
+              _ -> Nothing
+        xyStencil =
+          makeStencil2 3 3 $
+          \ix ->
+            case ix of
+              Z :. (-1) :. (-1) -> Just (1 :+ 0)
+              Z :. (-1) :. 1 -> Just ((-1) :+ 0)
+              Z :. 1 :. (-1) -> Just ((-1) :+ 0)
+              Z :. 1 :. 1 -> Just (1 :+ 0)
+              _ -> Nothing
+        ds =
+          L.map (\s -> R.map (/ (2 :+ 0)) $ mapStencil2 BoundClamp s arr)
+                [xStencil,yStencil,xyStencil]
+        
 
 {-# INLINE bicubicInterpolation #-}
 bicubicInterpolation
@@ -191,6 +279,58 @@ bicubicInterpolation ds (minVal, maxVal) (y, x)
       , [-6, 6, 6, -6, -4, -2, 4, 2, -3, 3, -3, 3, -2, -1, -2, -1]
       , [4, -4, -4, 4, 2, 2, -2, -2, 2, -2, 2, -2, 1, 1, 1, 1]
       ]
+      
+
+{-# INLINE bicubicInterpolationComplex #-}
+
+bicubicInterpolationComplex
+  :: [R.Array U DIM2 (Complex Double)] ->  (Double,Double) -> (Complex Double)
+bicubicInterpolationComplex ds (y,x)
+  | (x < 0) ||
+      (x > (fromIntegral nx - 1)) || (y < 0) || (y > (fromIntegral ny - 1)) =
+    0 :+ 0
+  | otherwise = result
+  where (Z :. ny :. nx) = extent . P.head $ ds
+        x' = x - fromIntegral (floor x :: Int)
+        y' = y - fromIntegral (floor y :: Int)
+        idx =
+          VU.fromListN
+            4
+            [(floor y,floor x)
+            ,(floor y,ceiling x)
+            ,(ceiling y,floor x)
+            ,(ceiling y,ceiling x)] :: VU.Vector (Int,Int)
+        xs =
+          VU.concat .
+          P.map (\arr' -> VU.map (\(i,j) -> arr' R.! (Z :. i :. j)) idx) $
+          ds
+        alpha = V.map (VU.sum . VU.zipWith (*) xs) matrixA
+        arr =
+          fromListUnboxed (Z :. 4 :. 4) . V.toList $ alpha :: R.Array U DIM2 (Complex Double)
+        arr1 =
+          R.traverse
+            arr
+            id
+            (\f idx'@(Z :. j :. i) -> f idx' * (x' ^ i :+ 0) * (y' ^ j :+ 0))
+        result = sumAllS arr1
+        matrixA =
+          V.fromListN 16 . P.map (VU.fromListN 16 . P.map (:+ 0)) $
+          [[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+          ,[0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0]
+          ,[-3,3,0,0,-2,-1,0,0,0,0,0,0,0,0,0,0]
+          ,[2,-2,0,0,1,1,0,0,0,0,0,0,0,0,0,0]
+          ,[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0]
+          ,[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0]
+          ,[0,0,0,0,0,0,0,0,-3,3,0,0,-2,-1,0,0]
+          ,[0,0,0,0,0,0,0,0,2,-2,0,0,1,1,0,0]
+          ,[-3,0,3,0,0,0,0,0,-2,0,-1,0,0,0,0,0]
+          ,[0,0,0,0,-3,0,3,0,0,0,0,0,-2,0,-1,0]
+          ,[9,-9,-9,9,6,3,-6,-3,6,-6,3,-3,4,2,2,1]
+          ,[-6,6,6,-6,-3,-3,3,3,-4,4,-2,2,-2,-2,-1,-1]
+          ,[2,0,-2,0,0,0,0,0,1,0,1,0,0,0,0,0]
+          ,[0,0,0,0,2,0,-2,0,0,0,0,0,1,0,1,0]
+          ,[-6,6,6,-6,-4,-2,4,2,-3,3,-3,3,-2,-1,-2,-1]
+          ,[4,-4,-4,4,2,2,-2,-2,2,-2,2,-2,1,1,1,1]]
 
 
 {-# INLINE twoDCArray2RArray #-}
