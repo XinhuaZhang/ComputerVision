@@ -2,10 +2,11 @@
 module CV.IO.ImageIO where
 
 import           Codec.Picture
-import           Control.Monad.IO.Class (liftIO)
-import           Data.Array.Repa        as R
-import           Data.Conduit           as C
-import           Data.Conduit.List      as CL
+import           Control.Monad.IO.Class       (liftIO)
+import           Control.Monad.Trans.Resource
+import           Data.Array.Repa              as R
+import           Data.Conduit                 as C
+import           Data.Conduit.List            as CL
 import           Data.Word
 import           GHC.Float
 
@@ -17,7 +18,7 @@ imagePathSource filePath = do
   pathList <- liftIO $ readImagePathList filePath
   sourceList pathList
 
-readImageConduit :: Bool -> Conduit FilePath IO (Array D DIM3 Double)
+readImageConduit :: Bool -> Conduit FilePath (ResourceT IO) (Array D DIM3 Double)
 readImageConduit isColor =
   awaitForever
     (\filePath -> do
@@ -176,7 +177,7 @@ rgb2Gray bound r g b
 
 {-# INLINE func #-}
 func :: Double -> Double -> Double
-func bound x 
+func bound x
   | y < 0.04045 = y / 12.92
   | otherwise = ((y + 0.055) / 1.055) ** 2.4
   where !y = x / bound

@@ -1,0 +1,9 @@
+#/bin/bash
+
+export OMP_NUM_THREADS=14
+FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3 -funbox-strict-fields" 
+OBJPATH="../../Classifier/LibLinear/"
+LIBS="-lstdc++ -llapack -lblas -lgomp"
+
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisher.hs -o trainFisher
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisher.hs -o predictFisher

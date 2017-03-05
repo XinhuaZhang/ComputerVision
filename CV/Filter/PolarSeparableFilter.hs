@@ -156,6 +156,7 @@ getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Fans} = fans
 getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Bullseye} = bullseye
 getFilterSetFunc PolarSeparableFilterParamsSet {getNameSet = Pinwheels} = pinwheels
 
+{-# INLINE getFilterNum #-}
 getFilterNum :: PolarSeparableFilterParamsSet -> Int
 getFilterNum (PolarSeparableFilterParamsSet _ _ scale rs as _) =
   (P.product . P.map Set.size $ [rs, as]) * Set.size scale
