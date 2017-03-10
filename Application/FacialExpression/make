@@ -5,5 +5,7 @@ FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-thres
 OBJPATH="../../Classifier/LibLinear/"
 LIBS="-lstdc++ -llapack -lblas -lgomp"
 
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainFisher.hs -o trainFisher
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictFisher.hs -o predictFisher
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Main.hs -o main
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o MainRawPixel.hs -o mainPixel
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Train.hs -o train
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Predict.hs -o predict

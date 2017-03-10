@@ -34,7 +34,9 @@ newParameter solver c = C'parameter
   , c'parameter'p = 0.1
   , c'parameter'init_sol = nullPtr
   }
-  
+
+{-# INLINE getFeature #-}
+
 getFeature :: LibLinearFeature -> [C'feature_node]
 getFeature (Dense xs) = pairs ++ [C'feature_node (-1) 0]
   where

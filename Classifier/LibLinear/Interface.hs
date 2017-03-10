@@ -9,6 +9,7 @@ module Classifier.LibLinear.Interface where
 import           Classifier.LibLinear.Bindings
 import           Classifier.LibLinear.Example
 import           Classifier.LibLinear.Solver
+import           Control.Monad                 as M
 import           Control.Monad.IO.Class        (liftIO)
 import           Control.Monad.Trans.Resource
 import           Data.Conduit
@@ -31,10 +32,16 @@ data TrainParams = TrainParams
 train
   :: TrainParams -> [Double] -> [Ptr C'feature_node] -> IO ()
 train (TrainParams solver c numExample maxIndex modelName) label feature =
-  do labelPtr <- getLabelVecPtr label
+  do when (P.length feature /= numExample)
+          (putStrLn $
+           "train: numExample (" P.++ show numExample P.++
+           ") in train parameters doesn't equal to the actual number (" P.++
+           show (P.length feature) P.++
+           ")")
+     labelPtr <- getLabelVecPtr label
      featurePtr <- newArray feature
      let p =
-           C'problem {c'problem'l = fromIntegral numExample
+           C'problem {c'problem'l = fromIntegral . P.length $ feature
                      ,c'problem'n = fromIntegral maxIndex
                      ,c'problem'y = labelPtr
                      ,c'problem'x = featurePtr
@@ -87,10 +94,16 @@ predict predictModel output = do
 findParameterC
   :: TrainParams -> [Double] -> [Ptr C'feature_node] -> IO ()
 findParameterC (TrainParams solver c numExample maxIndex modelName) label feature =
-  do labelPtr <- getLabelVecPtr label
+  do when (P.length feature /= numExample)
+          (putStrLn $
+           "findParameterC: numExample (" P.++ show numExample P.++
+           ") in train parameters doesn't equal to the actual number (" P.++
+           show (P.length feature) P.++
+           ")")
+     labelPtr <- getLabelVecPtr label
      featurePtr <- newArray feature
      let p =
-           C'problem {c'problem'l = fromIntegral numExample
+           C'problem {c'problem'l = fromIntegral . P.length $ feature
                      ,c'problem'n = fromIntegral maxIndex
                      ,c'problem'y = labelPtr
                      ,c'problem'x = featurePtr
@@ -107,7 +120,7 @@ findParameterC (TrainParams solver c numExample maxIndex modelName) label featur
                             (\bestRate' ->
                                do c'find_parameter_C problem'
                                                      param'
-                                                     3
+                                                     10
                                                      (realToFrac c)
                                                      1024
                                                      bestC'

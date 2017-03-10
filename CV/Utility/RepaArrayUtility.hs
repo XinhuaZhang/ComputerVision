@@ -16,11 +16,12 @@ downsample
      ,Shape sh)
   => [Int] -> Array s sh e -> Array D sh e
 downsample factorList arr
+  | L.all (== 1) factorList = delay arr
   | L.any (< 1) newDList = error "Downsample factors are too large."
   | otherwise =
     R.backpermute (shapeOfList newDList)
-                (shapeOfList . L.zipWith (*) factorList . listOfShape)
-                arr
+                  (shapeOfList . L.zipWith (*) factorList . listOfShape)
+                  arr
   where dList = listOfShape . extent $ arr
         newDList = L.zipWith div dList factorList
 
