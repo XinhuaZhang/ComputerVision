@@ -96,7 +96,43 @@ cropRescaleConduit parallelParams =
                           xs
                 sourceList ys
                 cropRescaleConduit parallelParams)
-                
+
+
+cropSquareConduit
+  :: (R.Source s Double)
+  => ParallelParams
+  -> Int
+  -> Conduit (((Int, Int), (Int, Int)), R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
+cropSquareConduit parallelParams size' = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(((xMin, yMin), (xLen, yLen)), arr) ->
+                    let (Z :. nf' :. _ :. _) = extent arr
+                        newXMin =
+                          if xLen >= yLen
+                            then xMin
+                            else xMin - div (yLen - xLen) 2
+                        newYMin =
+                          if yLen >= xLen
+                            then yMin
+                            else yMin - div (xLen - yLen) 2
+                        len = max xLen yLen
+                        croppedArr =
+                          Utility.crop
+                            [newXMin, newYMin, 0 :: Int]
+                            [len, len, nf']
+                            arr
+                        rescaledArr = rescale25D (size', size') (0, 255) croppedArr
+                    in deepSeqArray rescaledArr rescaledArr)
+                xs
+        sourceList ys
+        cropSquareConduit parallelParams size')
+
 pixelConduit
   :: (R.Source s Double)
   => ParallelParams

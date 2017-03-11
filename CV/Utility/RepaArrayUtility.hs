@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE QuasiQuotes #-}
 module CV.Utility.RepaArrayUtility where
 
@@ -176,3 +177,38 @@ bicubicInterpolation ds (minVal, maxVal) (y, x)
       , [-6, 6, 6, -6, -4, -2, 4, 2, -3, 3, -3, 3, -2, -1, -2, -1]
       , [4, -4, -4, 4, 2, 2, -2, -2, 2, -2, 2, -2, 1, 1, 1, 1]
       ]
+
+{-# INLINE rescale2D #-}
+
+rescale2D
+  :: (Source s Double)
+  => (Int, Int) -> (Double, Double) -> Array s DIM2 Double -> Array D DIM2 Double
+rescale2D (newNy, newNx) bound arr =
+  fromFunction
+    (Z :. newNy :. newNx)
+    (\(Z :. j :. i) ->
+        bicubicInterpolation
+          ds
+          bound
+          (fromIntegral j * ratioY, fromIntegral i * ratioX))
+  where
+    ds = computeDerivativeS . computeUnboxedS . delay $ arr
+    (Z :. ny' :. nx') = extent arr
+    ratioX = fromIntegral (nx' - 1) / fromIntegral (newNx - 1) 
+    ratioY = fromIntegral (ny' - 1) / fromIntegral (newNy - 1) 
+
+{-# INLINE rescale25D #-}
+
+rescale25D
+  :: (Source s Double)
+  => (Int, Int) -> (Double, Double) -> Array s DIM3 Double -> Array U DIM3 Double
+rescale25D newSize bound arr =
+  fromUnboxed (Z :. nf' :. ny' :. nx') .
+  VU.concat .
+  L.map
+    (\i ->
+        toUnboxed . computeUnboxedS . rescale2D newSize bound . R.slice arr $
+        (Z :. i :. All :. All)) $
+  [0 .. nf' - 1]
+  where
+    (Z :. nf' :. ny' :. nx') = extent arr
