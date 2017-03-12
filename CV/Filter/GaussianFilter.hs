@@ -21,10 +21,12 @@ gaussian1D sd i =
   exp (-1 * (fromIntegral i ^ 2) / (2 * (sd ^ 2)))
 
 {-# INLINE gaussian2D #-}
+
 gaussian2D
   :: (Floating a)
   => a -> Int -> Int -> a
-gaussian2D sd i j = 1 / ((2 * pi) * sd * sd) * exp (-r / (2 * (sd ^ 2)))
+gaussian2D sd i j =
+  1 / ((2 * pi) * sd * sd) * exp (-r / (2 * (sd ^ (2 :: Int))))
   where
     r = fromIntegral (i * i + j * j)
     

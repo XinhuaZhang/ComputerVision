@@ -1,6 +1,8 @@
 module CV.Utility.Coordinates where
 
 {-Coordinate Functions-}
+{-# INLINE angleFunctionDeg #-}             
+
 angleFunctionDeg
   :: (Floating a, Ord a)
   => a -> a -> a
@@ -18,6 +20,9 @@ angleFunctionDeg i j
   | otherwise = 180 + ratio / (pi / 2) * 90
   where
     ratio = atan $ j / i
+    
+
+{-# INLINE angleFunctionRad #-}             
 
 angleFunctionRad
   :: (Floating a, Ord a)
@@ -37,10 +42,15 @@ angleFunctionRad i j
   where
     ratio = atan $ j / i
 
+
+{-# INLINE deg2Rad #-}
+
 deg2Rad
   :: (Floating a)
   => a -> a
 deg2Rad deg = (deg / 360.0) * 2 * pi
+
+{-# INLINE rad2Deg #-}
 
 rad2Deg
   :: (Floating a)

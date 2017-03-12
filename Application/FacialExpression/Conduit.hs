@@ -160,41 +160,36 @@ pixelConduit parallelParams downSampleFactor =
 applyFilterCenterFixedSizeConduit
   :: (R.Source s Double)
   => ParallelParams
-  -> PolarSeparableFilter PolarSeparableFilterParamsSet [VU.Vector (Complex Double)] 
+  -> Int
+  -> [VU.Vector (Complex Double)]
   -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (VU.Vector Double)
-applyFilterCenterFixedSizeConduit parallelParams filter'@(PolarSeparableFilter filterParams filterVecs) =
-  do xs <- CL.take (batchSize parallelParams)
-     unless (L.null xs)
-            (do let ys =
-                      parMapChunk
-                        parallelParams
-                        rdeepseq
-                        (\x ->
-                           let (Z :. nf' :. ny' :. nx') = extent x
-                               downSampleFactor =
-                                 getDownsampleFactorSet filterParams
-                               newNx = div nx' downSampleFactor
-                               newNy = div ny' downSampleFactor
-                               img =
-                                 downsample
-                                   [downSampleFactor,downSampleFactor,1]
-                                   x
-                               imgVecs =
-                                 L.map (\i ->
-                                          VU.map (:+ 0) .
-                                          toUnboxed . computeS . R.slice img $
-                                          (Z :. i :. All :. All))
-                                       [0 .. nf' - 1]
-                           in -- normalizeVec .
-                              complexVec2RealVec .
-                              VU.fromList .
-                              L.concatMap
-                                (\imgVec ->
-                                   L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
-                              imgVecs)
-                        xs
-                sourceList ys
-                applyFilterCenterFixedSizeConduit parallelParams filter')
+applyFilterCenterFixedSizeConduit parallelParams downSampleFactor filterVecs = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\x ->
+                    let (Z :. nf' :. _ :. _) = extent x
+                        img =
+                          downsample [downSampleFactor, downSampleFactor, 1] x
+                        imgVecs =
+                          L.map
+                            (\i ->
+                                VU.map (:+ 0) . toUnboxed . computeS . R.slice img $
+                                (Z :. i :. All :. All))
+                            [0 .. nf' - 1]
+                        -- normalizeVec .
+                    in complexVec2RealVec .
+                       VU.fromList .
+                       L.concatMap
+                         (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
+                       imgVecs)
+                xs
+        sourceList ys
+        applyFilterCenterFixedSizeConduit parallelParams downSampleFactor filterVecs)
 
 
 applyFilterCenterVariedSizeConduit
