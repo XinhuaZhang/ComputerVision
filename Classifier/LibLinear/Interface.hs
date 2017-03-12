@@ -120,7 +120,7 @@ findParameterC (TrainParams solver c numExample maxIndex modelName) label featur
                             (\bestRate' ->
                                do c'find_parameter_C problem'
                                                      param'
-                                                     10
+                                                     8
                                                      (realToFrac c)
                                                      1024
                                                      bestC'

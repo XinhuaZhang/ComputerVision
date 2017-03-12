@@ -122,7 +122,7 @@ cropSquareConduit parallelParams size' = do
                             then yMin
                             else yMin - div (xLen - yLen) 2
                         len = max xLen yLen
-                        croppedArr =
+                        croppedArr = 
                           Utility.crop
                             [newXMin, newYMin, 0 :: Int]
                             [len, len, nf']
@@ -150,17 +150,58 @@ pixelConduit parallelParams downSampleFactor =
                                  downsample
                                    [downSampleFactor,downSampleFactor,1]
                                    x
-                           in normalizeVec . toUnboxed . computeS $ img)
+                           in toUnboxed . computeS $ img)
                         xs
                 sourceList ys
                 pixelConduit parallelParams downSampleFactor)
+                
+
+
+applyFilterCenterFixedSizeConduit
+  :: (R.Source s Double)
+  => ParallelParams
+  -> PolarSeparableFilter PolarSeparableFilterParamsSet [VU.Vector (Complex Double)] 
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (VU.Vector Double)
+applyFilterCenterFixedSizeConduit parallelParams filter'@(PolarSeparableFilter filterParams filterVecs) =
+  do xs <- CL.take (batchSize parallelParams)
+     unless (L.null xs)
+            (do let ys =
+                      parMapChunk
+                        parallelParams
+                        rdeepseq
+                        (\x ->
+                           let (Z :. nf' :. ny' :. nx') = extent x
+                               downSampleFactor =
+                                 getDownsampleFactorSet filterParams
+                               newNx = div nx' downSampleFactor
+                               newNy = div ny' downSampleFactor
+                               img =
+                                 downsample
+                                   [downSampleFactor,downSampleFactor,1]
+                                   x
+                               imgVecs =
+                                 L.map (\i ->
+                                          VU.map (:+ 0) .
+                                          toUnboxed . computeS . R.slice img $
+                                          (Z :. i :. All :. All))
+                                       [0 .. nf' - 1]
+                           in -- normalizeVec .
+                              complexVec2RealVec .
+                              VU.fromList .
+                              L.concatMap
+                                (\imgVec ->
+                                   L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
+                              imgVecs)
+                        xs
+                sourceList ys
+                applyFilterCenterFixedSizeConduit parallelParams filter')
 
 
 applyFilterCenterVariedSizeConduit
   :: (R.Source s Double)
   => ParallelParams
   -> PolarSeparableFilterParamsSet
-  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (VU.Vector (Double))
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (VU.Vector Double)
 applyFilterCenterVariedSizeConduit parallelParams params@(PolarSeparableFilterParamsSet _ downSampleFactor scaleSet rfSet afSet name) =
   do xs <- CL.take (batchSize parallelParams)
      unless (L.null xs)
@@ -170,7 +211,6 @@ applyFilterCenterVariedSizeConduit parallelParams params@(PolarSeparableFilterPa
                         rdeepseq
                         (\x ->
                            let (Z :. nf' :. ny' :. nx') = extent x
-                               (Z :. nfFilter :. _ :. _) = extent filterArr
                                newNx = div nx' downSampleFactor
                                newNy = div ny' downSampleFactor
                                paramsSet =
@@ -180,23 +220,24 @@ applyFilterCenterVariedSizeConduit parallelParams params@(PolarSeparableFilterPa
                                                                rfSet
                                                                afSet
                                                                name
-                               (PolarSeparableFilter _ filterArr) =
+                               (PolarSeparableFilter _ filterVecs) =
                                  makeCenterFilterSet paramsSet
                                img =
                                  downsample
                                    [downSampleFactor,downSampleFactor,1]
                                    x
-                           in normalizeVec . complexVec2RealVec . VU.fromList $
-                              [VU.sum $
-                               VU.zipWith
-                                 (*)
-                                 (VU.map (:+ 0) .
-                                  toUnboxed . computeS . R.slice img $
-                                  (Z :. j :. All :. All))
-                                 (toUnboxed . computeS . R.slice filterArr $
-                                  (Z :. i :. All :. All))
-                              |j <- [0 .. nf' - 1]
-                              ,i <- [0 .. nfFilter - 1]])
+                               imgVecs =
+                                 L.map (\i ->
+                                          VU.map (:+ 0) .
+                                          toUnboxed . computeS . R.slice img $
+                                          (Z :. i :. All :. All))
+                                       [0 .. nf' - 1]
+                           in complexVec2RealVec .
+                              VU.fromList .
+                              L.concatMap
+                                (\imgVec ->
+                                   L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
+                              imgVecs)
                         xs
                 liftIO printCurrentTime
                 sourceList ys
@@ -254,17 +295,16 @@ complexVec2PhaseVec = VU.map phase
 
 makeCenterFilterSet
   :: PolarSeparableFilterParamsSet
-  -> PolarSeparableFilter PolarSeparableFilterParamsSet (R.Array U DIM3 (C.Complex Double))
-makeCenterFilterSet params@(PolarSeparableFilterParamsSet (ny, nx) _downSampleFactor scaleSet rfSet afSet _name) =
-  PolarSeparableFilter params $
-  R.fromListUnboxed (Z :. getFilterNum params :. ny :. nx) filterEleList
-  where
-    paramsList = generateParamsSet scaleSet rfSet afSet
-    filterEleList =
-      L.concatMap
-        (\(scale, rf, af) ->
-            makeCenterFilterList ny nx (getFilterSetFunc params scale rf af))
-        paramsList
+  -> PolarSeparableFilter PolarSeparableFilterParamsSet [VU.Vector (Complex Double)]
+makeCenterFilterSet params@(PolarSeparableFilterParamsSet (ny,nx) _downSampleFactor scaleSet rfSet afSet _name) =
+  PolarSeparableFilter params $ L.map (VU.fromListN (nx * ny)) filterEleList
+  where paramsList = generateParamsSet scaleSet rfSet afSet
+        filterEleList =
+          L.map (\(scale,rf,af) ->
+                   makeCenterFilterList ny
+                                        nx
+                                        (getFilterSetFunc params scale rf af))
+                paramsList
 
 
 {-# INLINE makeCenterFilterList #-}

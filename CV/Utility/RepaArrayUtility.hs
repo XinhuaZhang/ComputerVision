@@ -202,13 +202,11 @@ rescale2D (newNy, newNx) bound arr =
 rescale25D
   :: (Source s Double)
   => (Int, Int) -> (Double, Double) -> Array s DIM3 Double -> Array U DIM3 Double
-rescale25D newSize bound arr =
+rescale25D newSize@(nx',ny') bound arr =
   fromUnboxed (Z :. nf' :. ny' :. nx') .
   VU.concat .
-  L.map
-    (\i ->
-        toUnboxed . computeUnboxedS . rescale2D newSize bound . R.slice arr $
-        (Z :. i :. All :. All)) $
+  L.map (\i ->
+           toUnboxed . computeUnboxedS . rescale2D newSize bound . R.slice arr $
+           (Z :. i :. All :. All)) $
   [0 .. nf' - 1]
-  where
-    (Z :. nf' :. ny' :. nx') = extent arr
+  where (Z :. nf' :. _ :. _) = extent arr

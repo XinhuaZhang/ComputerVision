@@ -16,27 +16,30 @@ import           System.Environment
 main =
   do (path:_) <- getArgs
      let parallelParams =
-           ParallelParams {numThread = 4
-                          ,batchSize = 40}
+           ParallelParams {numThread = 16
+                          ,batchSize = 320}
          filterParamsSet =
-           PolarSeparableFilterParamsSet {getSizeSet = (0,0)
+           PolarSeparableFilterParamsSet {getSizeSet = (n,n)
                                          ,getDownsampleFactorSet = 1
                                          ,getScaleSet =
-                                            S.fromDistinctAscList [4,8,16,20]
+                                            S.fromDistinctAscList [12]
                                          ,getRadialFreqSet =
                                             S.fromDistinctAscList [0 .. (16 - 1)]
                                          ,getAngularFreqSet =
                                             S.fromDistinctAscList [0 .. (16 - 1)]
                                          ,getNameSet = Pinwheels}
+         filter' = makeCenterFilterSet filterParamsSet
+         n = 128
      labels <- runResourceT $ labelSource' path $$ CL.consume
      landmarks <- runResourceT $ landmarksSource path $$ CL.consume
      featurePtr <-
        runResourceT $
        filePathSource path $$ readImageConduit False =$=
        mergeSource (CL.sourceList landmarks) =$=
-       cropConduit parallelParams =$=
-       applyFilterCenterVariedSizeConduit parallelParams filterParamsSet =$=
-       -- CL.map complexVec2RealVec =$=
+       -- cropConduit parallelParams =$=
+       cropSquareConduit parallelParams n =$=
+       applyFilterCenterFixedSizeConduit parallelParams filter' =$=
+       -- applyFilterCenterVariedSizeConduit parallelParams filterParamsSet =$=
        featurePtrConduitP parallelParams =$=
        CL.consume
      let trainParams =
