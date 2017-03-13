@@ -15,6 +15,7 @@ import           Data.Array.Repa             as R
 import           Data.Complex                as C
 import           Data.List                   as L
 import           Data.Set                    as Set
+import           Data.Vector.Unboxed         as VU
 import           Foreign.Storable
 import           Math.FFT
 import           Prelude                     as P
@@ -353,5 +354,29 @@ makeFilterList ny nx f =
             then c
             else c - nx
     in f x y
+  | r <- [0 .. ny - 1]
+  , c <- [0 .. nx - 1] ]
+
+
+{-# INLINE makeCenterFilterSet #-}
+
+makeCenterFilterSet
+  :: PolarSeparableFilterParamsSet
+  -> PolarSeparableFilter PolarSeparableFilterParamsSet [VU.Vector (C.Complex Double)]
+makeCenterFilterSet params@(PolarSeparableFilterParamsSet (ny,nx) _downSampleFactor scaleSet rfSet afSet _name) =
+  PolarSeparableFilter params $ L.map (VU.fromListN (nx * ny)) filterEleList
+  where paramsList = generateParamsSet scaleSet rfSet afSet
+        filterEleList =
+          L.map (\(scale,rf,af) ->
+                   makeCenterFilterList ny
+                                        nx
+                                        (getFilterSetFunc params scale rf af))
+                paramsList
+
+{-# INLINE makeCenterFilterList #-}
+
+makeCenterFilterList :: Int -> Int -> (Int -> Int -> a) -> [a]
+makeCenterFilterList ny nx f =
+  [ f (r - div ny 2) (c - div nx 2)
   | r <- [0 .. ny - 1]
   , c <- [0 .. nx - 1] ]
