@@ -27,8 +27,8 @@ main = do
         { getSizeSet = (n, n)
         , getDownsampleFactorSet = downsampleFactor
         , getScaleSet = S.fromDistinctAscList [4, 8, 16]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
         , getNameSet = Pinwheels
         }
       (PolarSeparableFilter _ polarSeparableFilter) = makeCenterFilterSet polarSeparableFilterParamsSet
@@ -38,7 +38,7 @@ main = do
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
         , getCartesianGratingFilterScale = [12, 18, 24]
         , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5]
-        , getCartesianGratingFilterAngle = [0, 45, 90, 135]
+        , getCartesianGratingFilterAngle = [0,10..360-10] -- [0, 45, 90, 135]
         }
       (CartesianGratingFilter _ cartesianGratingFilter) = CF.makeFilter cartesianGratingFilterParams
       hyperbolicFilterParams =
@@ -46,10 +46,11 @@ main = do
         { getHyperbolicFilterSize = (n, n)
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
         , getHyperbolicFilterScale = [12, 18, 24]
-        , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1]
-        , getHyperbolicFilterAngle = [0, 45, 90]
+        , getHyperbolicFilterFreq = [0.125,0.25,0.5,1]
+        , getHyperbolicFilterAngle = [0,10..90]--[0, 45, 90]
         }
       (HyperbolicFilter _ hyperbolicFilter) = HF.makeFilter hyperbolicFilterParams
+      filters = [cartesianGratingFilter]
       n = 128
       downsampleFactor = 1
   labels <- runResourceT $ labelSource' path $$ CL.consume
@@ -63,7 +64,7 @@ main = do
     applyFilterCenterFixedSizeConduit
       parallelParams
       downsampleFactor
-      (L.concat [polarSeparableFilter, hyperbolicFilter, cartesianGratingFilter]) =$=
+      filters =$=
     -- applyFilterCenterVariedSizeConduit parallelParams filterParamsSet =$=
     featurePtrConduitP parallelParams =$=
     CL.consume
@@ -73,7 +74,7 @@ main = do
         , trainC = 0.125
         , trainNumExamples = L.length featurePtr
         , trainFeatureIndexMax =
-          (getFilterNum polarSeparableFilterParamsSet) * 2
+          (L.sum . L.map L.length $ filters) * 2
         , trainModel = "SVM_model"
         }
   print trainParams
