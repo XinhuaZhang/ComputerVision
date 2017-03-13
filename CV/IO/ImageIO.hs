@@ -13,7 +13,7 @@ import           GHC.Float
 readImagePathList :: FilePath -> IO [String]
 readImagePathList = fmap lines . readFile
 
-imagePathSource :: FilePath -> C.Source IO FilePath
+imagePathSource :: FilePath -> C.Source (ResourceT IO) FilePath
 imagePathSource filePath = do
   pathList <- liftIO $ readImagePathList filePath
   sourceList pathList

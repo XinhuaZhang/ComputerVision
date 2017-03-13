@@ -10,6 +10,7 @@ import           Foreign.Ptr
 import           Classifier.LibLinear.Bindings
 import           Classifier.LibLinear.Solver
 import           Prelude                                       as P
+import           Control.Monad.Trans.Resource
 
 data LibLinearFeature = Dense [Double] | Sparse [Double]
 
@@ -18,7 +19,7 @@ readLabelFile filePath =
   do bs <- readFile filePath
      return . P.map (\x -> read x :: Double) . lines $! bs
 
-labelSource :: FilePath -> Source IO Double
+labelSource :: FilePath -> Source (ResourceT IO) Double
 labelSource filePath =
   do labels <- liftIO . readLabelFile $ filePath
      sourceList labels

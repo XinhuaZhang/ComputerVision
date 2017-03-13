@@ -56,3 +56,14 @@ hyperbolic scale theta freq x y =
     s = sin theta
     u = fromIntegral x * c - fromIntegral y * s
     v = fromIntegral x * s + fromIntegral y * c
+
+{-# INLINE getFilterNum #-}
+getFilterNum :: HyperbolicFilterParams -> Int
+getFilterNum (HyperbolicFilterParams _ _ scales fs as) =
+  L.product . L.map L.length $ [scales, fs, as]
+
+{-# INLINE changeSizeParams #-}
+
+changeSizeParams :: HyperbolicFilterParams -> (Int, Int) -> HyperbolicFilterParams
+changeSizeParams (HyperbolicFilterParams _ df scale freq angle) newSize =
+  HyperbolicFilterParams newSize df scale freq angle

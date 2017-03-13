@@ -56,3 +56,14 @@ cartesianGrating scale theta freq x y =
     s = sin theta
     u = fromIntegral x * c - fromIntegral y * s
 
+{-# INLINE getFilterNum #-}
+
+getFilterNum :: CartesianGratingFilterParams -> Int
+getFilterNum (CartesianGratingFilterParams _ _ scales fs as) =
+  L.product . L.map L.length $ [scales, fs, as]
+
+{-# INLINE changeSizeParams #-}
+
+changeSizeParams :: CartesianGratingFilterParams -> (Int, Int) -> CartesianGratingFilterParams
+changeSizeParams (CartesianGratingFilterParams _ df scale freq angle) newSize =
+  CartesianGratingFilterParams newSize df scale freq angle

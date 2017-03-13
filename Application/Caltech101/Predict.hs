@@ -51,9 +51,7 @@ main = do
       n = 0
       downsampleFactor = 1
       maxSize = 300
-  labels <- sourceToList $ labelSource labelListPath
-  xs <-
-    runResourceT $
+  runResourceT $
     imagePathSource imageListPath $$ readImageConduit True =$=
     resizeImageConduit parallelParams 300 =$=
     applyFilterCenterVariedSizeConduit
@@ -61,17 +59,6 @@ main = do
       polarSeparableFilterParamsSet
       cartesianGratingFilterParams
       hyperbolicFilterParams =$=
-    featurePtrConduit =$=
-    CL.consume
-  let trainParams =
-        TrainParams
-        { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 0.125
-        , trainNumExamples = L.length xs
-        , trainFeatureIndexMax =
-          (PF.getFilterNum polarSeparableFilterParamsSet + CF.getFilterNum cartesianGratingFilterParams +
-           HF.getFilterNum hyperbolicFilterParams) *
-          2
-        , trainModel = "SVM_model"
-        }
-  train trainParams labels xs
+    featureConduit =$=
+    mergeSource (labelSource labelListPath) =$=
+    predict "SVM_model" "SVM_model.out"

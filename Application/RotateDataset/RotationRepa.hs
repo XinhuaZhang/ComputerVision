@@ -16,6 +16,7 @@ import           Data.Conduit.List           as CL
 import           Data.List                   as L
 import           Data.Vector.Unboxed         as VU
 import           Prelude                     as P
+import           Control.Monad.Trans.Resource
 
 -- First pading image to be a square image then rotating it
 recaleAndRotate2DImageS
@@ -114,6 +115,8 @@ rotateSquare2DImageS degs arr =
     !center = fromIntegral (nx - 1) / 2
 
 -- Set the maximum value of the maximum size, the ratio is intact.
+{-# INLINE resize2DImageS #-}   
+
 resize2DImageS
   :: (R.Source s Double)
   => Int -> Array s DIM2 Double -> Array U DIM2 Double
@@ -326,3 +329,34 @@ resizeLabeledImageConduit parallelParams n = do
                 xs
         sourceList ys
         resizeLabeledImageConduit parallelParams n)
+        
+  
+-- Set the maximum value of the maximum size, the ratio is intact.
+resizeImageConduit
+  :: (R.Source s Double)
+  => ParallelParams
+  -> Int
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
+resizeImageConduit parallelParams n = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\x ->
+                    let (Z :. nf' :. _ :. _) = extent x
+                        (Z :. ny' :. nx') = extent . L.head $ zs
+                        zs =
+                          L.map
+                            (\i ->
+                                resize2DImageS n . R.slice x $
+                                (Z :. i :. All :. All))
+                            [0 .. nf' - 1]
+                    in fromUnboxed (Z :. nf' :. ny' :. nx') .
+                       VU.concat . L.map toUnboxed $
+                       zs)
+                xs
+        sourceList ys
+        resizeImageConduit parallelParams n)
