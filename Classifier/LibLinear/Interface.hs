@@ -14,6 +14,7 @@ import           Control.Monad.IO.Class        (liftIO)
 import           Control.Monad.Trans.Resource
 import           Data.Conduit
 import           Data.Conduit.List             as CL
+import           Data.List                     as L
 import           Foreign                       as F
 import           Foreign.C
 import           Foreign.Marshal.Array
@@ -132,3 +133,54 @@ findParameterC (TrainParams solver c numExample maxIndex modelName) label featur
                                     show bestC ++
                                     " CV accuracy = " ++
                                     show (100 * bestRate) ++ "%"))))
+
+trainNPredict
+  :: TrainParams
+  -> [(Double, [C'feature_node])]
+  -> [(Double, [C'feature_node])]
+  -> IO Double
+trainNPredict (TrainParams solver c numExample maxIndex _modelName) trainLabelFeature testLabelFeature = do
+  when
+    (numExample /= P.length trainLabelFeature)
+    (error $
+     "trainNPredict: numExample (" P.++ show numExample P.++
+     ") in train parameters doesn't equal to the actual number (" P.++
+     show (P.length trainLabelFeature) P.++
+     ")")
+  when
+    (maxIndex /= (P.length . snd . P.head $ trainLabelFeature))
+    (error $
+     "trainNPredict: maxIndex (" P.++ show maxIndex P.++
+     ") in train parameters doesn't equal to the actual number (" P.++
+     show (P.length . snd . P.head $ trainLabelFeature) P.++
+     ")")
+  trainLabelPtr <- getLabelVecPtr . fst . L.unzip $ trainLabelFeature
+  trainFeaturePtr <- join . fmap newArray . M.mapM newArray . snd . L.unzip $ trainLabelFeature
+  let p =
+        C'problem
+        { c'problem'l = fromIntegral . P.length $ trainLabelFeature
+        , c'problem'n = fromIntegral maxIndex
+        , c'problem'y = trainLabelPtr
+        , c'problem'x = trainFeaturePtr
+        , c'problem'bias = -1.0
+        }
+  model <- with p (with (newParameter solver c) . c'train)
+  (numCorrect, numTotal) <-
+    M.foldM
+      (\(!correct, !total) (target, xs) -> do
+         prediction <- withArray xs (c'predict model)
+         let correctNew =
+               if (round target :: Int) == round prediction
+                 then correct + 1
+                 else correct
+         putStrLn $
+           show target P.++ " " P.++ show prediction P.++ " " P.++
+           show (correctNew / (total + 1) * 100) P.++
+           "%"
+         return $
+           if (round target :: Int) == round prediction
+             then (correct + 1, total + 1)
+             else (correct, total + 1))
+      (0 :: Double, 0 :: Double)
+      testLabelFeature
+  return $! numCorrect / numTotal
