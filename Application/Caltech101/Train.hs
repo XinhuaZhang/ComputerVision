@@ -27,7 +27,7 @@ main = do
         PolarSeparableFilterParamsSet
         { getSizeSet = (n, n)
         , getDownsampleFactorSet = downsampleFactor
-        , getScaleSet = S.fromDistinctAscList [4, 8, 16]
+        , getScaleSet = S.fromDistinctAscList [8,16,24]
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
         , getNameSet = Pinwheels
@@ -36,7 +36,7 @@ main = do
         CartesianGratingFilterParams
         { getCartesianGratingFilterSize = (n, n)
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [12, 18, 24]
+        , getCartesianGratingFilterScale = [24, 48, 64]
         , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5]
         , getCartesianGratingFilterAngle = [0,10 .. 360 - 10]
         }
@@ -44,14 +44,14 @@ main = do
         HyperbolicFilterParams
         { getHyperbolicFilterSize = (n, n)
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [12, 18, 24]
+        , getHyperbolicFilterScale = [24, 48, 64]
         , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1]
         , getHyperbolicFilterAngle = [0,10 .. 90 - 10]
         }
       n = 0
       downsampleFactor = 1
       maxSize = 300
-  labels <- sourceToList $ labelSource labelListPath
+  labels <-  runResourceT $ labelSource labelListPath $$ CL.consume
   xs <-
     runResourceT $
     imagePathSource imageListPath $$ readImageConduit True =$=
@@ -66,7 +66,7 @@ main = do
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 0.125
+        , trainC = 1
         , trainNumExamples = L.length xs
         , trainFeatureIndexMax =
           (PF.getFilterNum polarSeparableFilterParamsSet + CF.getFilterNum cartesianGratingFilterParams +

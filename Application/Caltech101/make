@@ -1,6 +1,6 @@
 #/bin/bash
 
-export OMP_NUM_THREADS=14
+export OMP_NUM_THREADS=16
 FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3 -funbox-strict-fields" 
 OBJPATH="../../Classifier/LibLinear/"
 LIBS="-lstdc++ -llapack -lblas -lgomp"

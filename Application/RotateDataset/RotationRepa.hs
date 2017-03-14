@@ -354,9 +354,10 @@ resizeImageConduit parallelParams n = do
                                 resize2DImageS n . R.slice x $
                                 (Z :. i :. All :. All))
                             [0 .. nf' - 1]
-                    in fromUnboxed (Z :. nf' :. ny' :. nx') .
-                       VU.concat . L.map toUnboxed $
-                       zs)
+                        arr = fromUnboxed (Z :. nf' :. ny' :. nx') .
+                              VU.concat . L.map toUnboxed $
+                              zs
+                    in deepSeqArray arr arr)
                 xs
         sourceList ys
         resizeImageConduit parallelParams n)
