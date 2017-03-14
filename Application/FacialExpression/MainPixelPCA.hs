@@ -35,7 +35,7 @@ main = do
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
         , trainC = 1
-        , trainNumExamples = undefined
+        , trainNumExamples = 0
         , trainFeatureIndexMax = n ^ 2
         , trainModel = "SVM_model"
         }

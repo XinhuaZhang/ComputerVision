@@ -13,7 +13,7 @@ import           Numeric.Statistics.PCA
 {-# INLINE computePCAMatrix #-}
 
 computePCAMatrix :: Int -> [VU.Vector Double] -> Matrix Double
-computePCAMatrix numPrincipal xs = pcaN arr' numPrincipal
+computePCAMatrix numPrincipal xs = snd $ pcaN arr' numPrincipal
   where
     arr' = listArray (1, L.length xs) . L.map (LA.fromList . VU.toList) $ xs
 
