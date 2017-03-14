@@ -67,11 +67,11 @@ applyFilterCenterVariedSizeConduit parallelParams params@(PolarSeparableFilterPa
                                 VU.map (:+ 0) . toUnboxed . computeS . R.slice img $
                                 (Z :. i :. All :. All))
                             [0 .. nf' - 1]
-                    in complexVec2RealVec .
-                       VU.fromList .
-                       L.concatMap
-                         (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
-                       imgVecs)
+                    in normalizeVec . complexVec2RealVec .
+                           VU.fromList .
+                           L.concatMap
+                             (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
+                           imgVecs)
                 xs
         sourceList ys
         applyFilterCenterVariedSizeConduit
@@ -91,9 +91,29 @@ featurePtrConduit =
 featureConduit :: Conduit (VU.Vector Double) (ResourceT IO) [C'feature_node]
 featureConduit = awaitForever (yield . getFeature . Dense . VU.toList)
 
+featureConduitP
+  :: ParallelParams
+  -> Conduit (VU.Vector Double) (ResourceT IO) [C'feature_node]
+featureConduitP parallelParams =
+  do xs <- CL.take (batchSize parallelParams)
+     unless (L.null xs)
+            (do let ys =
+                      parMapChunk parallelParams
+                                  rseq
+                                  (getFeature . Dense . VU.toList)
+                                  xs
+                sourceList ys
+                featureConduitP parallelParams)
+
 {-# INLINE complexVec2RealVec #-}
 
 complexVec2RealVec :: VU.Vector (Complex Double) -> VU.Vector Double
 complexVec2RealVec vec = a VU.++ b
   where
     (a, b) = VU.unzip . VU.map polar $ vec
+
+{-# INLINE normalizeVec #-}
+
+normalizeVec :: VU.Vector Double -> VU.Vector Double
+normalizeVec vec = VU.map (/s) vec
+  where s = sqrt . VU.sum . VU.map (^2) $ vec

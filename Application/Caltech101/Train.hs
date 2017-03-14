@@ -17,7 +17,7 @@ import           Data.Vector.Unboxed                    as VU
 import           System.Environment
 
 main = do
-  (imageListPath:labelListPath:_) <- getArgs
+  (imageListPath:labelListPath:isColorStr:_) <- getArgs
   let parallelParams =
         ParallelParams
         { numThread = 16
@@ -50,12 +50,13 @@ main = do
         }
       n = 0
       downsampleFactor = 1
-      maxSize = 300
+      maxSize = 100
+      isColor = read isColorStr :: Bool
   labels <-  runResourceT $ labelSource labelListPath $$ CL.consume
   xs <-
     runResourceT $
-    imagePathSource imageListPath $$ readImageConduit True =$=
-    resizeImageConduit parallelParams 300 =$=
+    imagePathSource imageListPath $$ readImageConduit isColor =$=
+    resizeImageConduit parallelParams maxSize =$=
     applyFilterCenterVariedSizeConduit
       parallelParams
       polarSeparableFilterParamsSet
@@ -66,12 +67,14 @@ main = do
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 1
+        , trainC = 128
         , trainNumExamples = L.length xs
         , trainFeatureIndexMax =
           (PF.getFilterNum polarSeparableFilterParamsSet + CF.getFilterNum cartesianGratingFilterParams +
            HF.getFilterNum hyperbolicFilterParams) *
-          2
+          if isColor
+             then 6
+             else 2
         , trainModel = "SVM_model"
         }
   train trainParams labels xs

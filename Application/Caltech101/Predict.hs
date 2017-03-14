@@ -17,7 +17,7 @@ import           Data.Vector.Unboxed                    as VU
 import           System.Environment
 
 main = do
-  (imageListPath:labelListPath:_) <- getArgs
+  (imageListPath:labelListPath:isColorStr:_) <- getArgs
   let parallelParams =
         ParallelParams
         { numThread = 16
@@ -50,15 +50,16 @@ main = do
         }
       n = 0
       downsampleFactor = 1
-      maxSize = 300
+      maxSize = 100
+      isColor = read isColorStr :: Bool
   runResourceT $
-    imagePathSource imageListPath $$ readImageConduit True =$=
-    resizeImageConduit parallelParams 300 =$=
+    imagePathSource imageListPath $$ readImageConduit isColor =$=
+    resizeImageConduit parallelParams maxSize =$=
     applyFilterCenterVariedSizeConduit
       parallelParams
       polarSeparableFilterParamsSet
       cartesianGratingFilterParams
       hyperbolicFilterParams =$=
-    featureConduit =$=
+    featureConduitP parallelParams =$=
     mergeSource (labelSource labelListPath) =$=
     predict "SVM_model" "SVM_model.out"

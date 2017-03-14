@@ -47,10 +47,10 @@ main = do
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
         , getHyperbolicFilterScale = [12, 18, 24]
         , getHyperbolicFilterFreq = [0.125,0.25,0.5,1]
-        , getHyperbolicFilterAngle = [0,10..90]--[0, 45, 90]
+        , getHyperbolicFilterAngle = [0,10..90-10]--[0, 45, 90]
         }
       (HyperbolicFilter _ hyperbolicFilter) = HF.makeFilter hyperbolicFilterParams
-      filters = [cartesianGratingFilter]
+      filters = [polarSeparableFilter,cartesianGratingFilter,hyperbolicFilter]
       n = 128
       downsampleFactor = 1
   labels <- runResourceT $ labelSource' path $$ CL.consume
