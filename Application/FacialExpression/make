@@ -6,6 +6,7 @@ OBJPATH="../../Classifier/LibLinear/"
 LIBS="-lstdc++ -llapack -lblas -lgomp"
 
 cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Main.hs -o main
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o MainPCA.hs -o mainPCA
 cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o MainRawPixel.hs -o mainPixel
 cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o MainPixelPCA.hs -o mainPixelPCA
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Train.hs -o train

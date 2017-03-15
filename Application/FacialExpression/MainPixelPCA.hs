@@ -18,7 +18,7 @@ main = do
   (path:_) <- getArgs
   let parallelParams =
         ParallelParams
-        { numThread = 16
+        { numThread = 2
         , batchSize = 320
         }
       n = 128
@@ -36,10 +36,12 @@ main = do
         { trainSolver = L2R_L2LOSS_SVC_DUAL
         , trainC = 1
         , trainNumExamples = 0
-        , trainFeatureIndexMax = n ^ 2
+        , trainFeatureIndexMax = 2400
         , trainModel = "SVM_model"
         }
   print trainParams
+  print . L.length $ features
+  print . VU.length . L.head $ features
   crossValidation
     trainParams
     8

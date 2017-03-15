@@ -1,4 +1,5 @@
 import           Application.FacialExpression.Conduit
+import           Application.FacialExpression.PCA
 import           Classifier.LibLinear
 import           Control.Monad                        as M
 import           Control.Monad.Trans.Resource
@@ -26,7 +27,7 @@ main = do
         PolarSeparableFilterParamsSet
         { getSizeSet = (n, n)
         , getDownsampleFactorSet = downsampleFactor
-        , getScaleSet = S.fromDistinctAscList [16,20,24] --[6, 8, 10, 12,16]
+        , getScaleSet = S.fromDistinctAscList [16,20,24]
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
         , getNameSet = Pinwheels
@@ -36,8 +37,8 @@ main = do
         CartesianGratingFilterParams
         { getCartesianGratingFilterSize = (n, n)
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [16,32,48,64]-- [12, 18, 24]
-        , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5, 1]
+        , getCartesianGratingFilterScale = [16,32,64]
+        , getCartesianGratingFilterFreq = [0.1, 0.2, 0.4,0.6,0.8]
         , getCartesianGratingFilterAngle = [0,10..360-10] -- [0, 45, 90, 135]
         }
       (CartesianGratingFilter _ cartesianGratingFilter) = CF.makeFilter cartesianGratingFilterParams
@@ -45,8 +46,8 @@ main = do
         HyperbolicFilterParams
         { getHyperbolicFilterSize = (n, n)
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [16,32,48,64] -- [12, 18, 24]
-        , getHyperbolicFilterFreq = [0.125,0.25,0.5,1]
+        , getHyperbolicFilterScale = [16,32,64]
+        , getHyperbolicFilterFreq = [0.1, 0.2, 0.4,0.6,0.8, 1]
         , getHyperbolicFilterAngle = [0,10..90-10]--[0, 45, 90]
         }
       (HyperbolicFilter _ hyperbolicFilter) = HF.makeFilter hyperbolicFilterParams
@@ -55,27 +56,29 @@ main = do
       downsampleFactor = 1
   labels <- runResourceT $ labelSource' path $$ CL.consume
   landmarks <- runResourceT $ landmarksSource path $$ CL.consume
-  featurePtr <-
+  features <-
     runResourceT $
     filePathSource path $$ readImageConduit False =$=
     mergeSource (CL.sourceList landmarks) =$=
-    -- cropConduit parallelParams =$=
     cropSquareConduit parallelParams n =$=
     applyFilterCenterFixedSizeConduit
       parallelParams
       downsampleFactor
       filters =$=
-    -- applyFilterCenterVariedSizeConduit parallelParams filterParamsSet =$=
-    featurePtrConduitP parallelParams =$=
     CL.consume
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 0.125
-        , trainNumExamples = L.length featurePtr
+        , trainC = 1
+        , trainNumExamples = L.length features
         , trainFeatureIndexMax =
           (L.sum . L.map L.length $ filters) * 2
         , trainModel = "SVM_model"
         }
   print trainParams
-  findParameterC trainParams (L.map fromIntegral labels) featurePtr
+  crossValidation
+    trainParams
+    8
+    (L.sum . L.map L.length $ filters) 
+    (L.zip (L.map fromIntegral labels) features)
+

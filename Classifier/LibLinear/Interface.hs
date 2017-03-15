@@ -148,7 +148,7 @@ trainNPredict (TrainParams solver c numExample maxIndex _modelName) trainLabelFe
      show (P.length trainLabelFeature) P.++
      ")")
   when
-    (maxIndex /= (P.length . snd . P.head $ trainLabelFeature))
+    ((maxIndex + 1) /= (P.length . snd . P.head $ trainLabelFeature))
     (error $
      "trainNPredict: maxIndex (" P.++ show maxIndex P.++
      ") in train parameters doesn't equal to the actual number (" P.++
@@ -173,14 +173,15 @@ trainNPredict (TrainParams solver c numExample maxIndex _modelName) trainLabelFe
                if (round target :: Int) == round prediction
                  then correct + 1
                  else correct
-         putStrLn $
-           show target P.++ " " P.++ show prediction P.++ " " P.++
-           show (correctNew / (total + 1) * 100) P.++
-           "%"
+         -- putStrLn $
+         --   show target P.++ " " P.++ show prediction P.++ " " P.++
+         --   show (correctNew / (total + 1) * 100) P.++
+         --   "%"
          return $
            if (round target :: Int) == round prediction
              then (correct + 1, total + 1)
              else (correct, total + 1))
       (0 :: Double, 0 :: Double)
       testLabelFeature
+  putStrLn $ show (numCorrect / numTotal * 100) P.++ "%"
   return $! numCorrect / numTotal
