@@ -27,25 +27,25 @@ main = do
         PolarSeparableFilterParamsSet
         { getSizeSet = (n, n)
         , getDownsampleFactorSet = downsampleFactor
-        , getScaleSet = S.fromDistinctAscList [4, 8, 16]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
+        , getScaleSet = S.fromDistinctAscList [6,8,10] --[8, 16, 24]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
         , getNameSet = Pinwheels
         }
       cartesianGratingFilterParams =
         CartesianGratingFilterParams
         { getCartesianGratingFilterSize = (n, n)
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [12, 18, 24]
-        , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5]
+        , getCartesianGratingFilterScale = [8,16,24] --[24, 48, 64]
+        , getCartesianGratingFilterFreq = [0.1,0.2,0.4,0.6,0.8] -- [0.125, 0.25, 0.5]
         , getCartesianGratingFilterAngle = [0,10 .. 360 - 10]
         }
       hyperbolicFilterParams =
         HyperbolicFilterParams
         { getHyperbolicFilterSize = (n, n)
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [12, 18, 24]
-        , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1]
+        , getHyperbolicFilterScale = [8,16,24] --[ 24,48,64]
+        , getHyperbolicFilterFreq = [0.1,0.2,0.4,0.6,0.8] --[0.125, 0.25, 0.5, 1]
         , getHyperbolicFilterAngle = [0,10 .. 90 - 10]
         }
       n = 0

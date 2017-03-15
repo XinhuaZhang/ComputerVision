@@ -67,7 +67,8 @@ applyFilterCenterVariedSizeConduit parallelParams params@(PolarSeparableFilterPa
                                 VU.map (:+ 0) . toUnboxed . computeS . R.slice img $
                                 (Z :. i :. All :. All))
                             [0 .. nf' - 1]
-                    in normalizeVec . complexVec2RealVec .
+                    in  --normalizeVec .
+                        complexVec2RealVec .
                            VU.fromList .
                            L.concatMap
                              (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
