@@ -39,4 +39,4 @@ gaussian2D' af rf sd i j =
   1 / ((2 * pi) * sd * sd) *
   exp (-(sqrt r - r0) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
   where r = fromIntegral (i * i + j * j)
-        r0 = (1 * fromIntegral (af) * sd) / pi
+        r0 = (3 * fromIntegral (af) * sd) / pi
