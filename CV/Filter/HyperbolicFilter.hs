@@ -1,15 +1,19 @@
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE BangPatterns #-}
 module CV.Filter.HyperbolicFilter where
 
 import           Control.DeepSeq
 import           CV.Filter.GaussianFilter
+import           CV.Utility.Coordinates
+import           CV.FilterExpansion
 import           Data.Complex             as C
 import           Data.List                as L
 import           Data.Vector.Unboxed      as VU
-import           CV.Utility.Coordinates
+
 
 data HyperbolicFilterParams = HyperbolicFilterParams
-  { getHyperbolicFilterSize             :: !(Int, Int)   -- (nx,ny)
+  { getHyperbolicFilterRows             :: !Int
+  , getHyperbolicFilterCols             :: !Int
   , getHyperbolicFilterDownsampleFactor :: !Int
   , getHyperbolicFilterScale            :: ![Double]
   , getHyperbolicFilterFreq             :: ![Double]
@@ -23,28 +27,39 @@ data HyperbolicFilter = HyperbolicFilter
   { getHyperbolicFilterParams :: HyperbolicFilterParams
   , getHyperbolicFilter       :: [VU.Vector (Complex Double)]
   }
-  
+
 instance NFData HyperbolicFilter where
   rnf !_ = ()
 
-makeFilter :: HyperbolicFilterParams -> HyperbolicFilter
-makeFilter params@(HyperbolicFilterParams (nx, ny) downsampleFactor scales freqs angles) =
-  HyperbolicFilter
-    params
-    [ VU.fromListN
-       (newNx * newNy)
-       [ hyperbolic scale angle freq (x - centerX) (y - centerY)
-       | y <- [0 .. newNy - 1]
-       , x <- [0 .. newNx - 1] ]
-    | angle <- radAngles
-    , scale <- scales
-    , freq <- freqs ]
-  where
-    newNx = div nx downsampleFactor
-    newNy = div ny downsampleFactor
-    centerX = div newNx 2
-    centerY = div newNy 2
-    radAngles = L.map deg2Rad angles
+
+instance FilterExpansion HyperbolicFilter where
+  type FilterParameter HyperbolicFilter = HyperbolicFilterParams
+  {-# INLINE makeFilter #-}
+  makeFilter (HyperbolicFilter params@(HyperbolicFilterParams rows cols downsampleFactor scales freqs angles) _) =
+    HyperbolicFilter
+      params
+      [ VU.fromListN
+         (newCols * newRows)
+         [ hyperbolic scale angle freq (x - centerC) (y - centerR)
+         | y <- [0 .. newRows - 1]
+         , x <- [0 .. newCols - 1] ]
+      | angle <- radAngles
+      , scale <- scales
+      , freq <- freqs ]
+    where
+      newCols = div cols downsampleFactor
+      newRows = div rows downsampleFactor
+      centerC = div newCols 2
+      centerR = div newRows 2
+      radAngles = L.map deg2Rad angles
+  getFilterSize (HyperbolicFilter (HyperbolicFilterParams _ _ _ scales fs as) _) =
+    L.product . L.map L.length $ [scales, fs, as]
+  getFilterParameter = getHyperbolicFilterParams
+  {-# INLINE getFilterVectors #-}
+  getFilterVectors (HyperbolicFilter _ vecs) = vecs
+  {-# INLINE changeSizeParameter #-}
+  changeSizeParameter rows cols (HyperbolicFilter (HyperbolicFilterParams _ _ df scale freq angle) vecs) =
+    HyperbolicFilter (HyperbolicFilterParams rows cols df scale freq angle) vecs
 
 {-# INLINE hyperbolic #-}
 
@@ -56,14 +71,3 @@ hyperbolic scale theta freq x y =
     s = sin theta
     u = fromIntegral x * c - fromIntegral y * s
     v = fromIntegral x * s + fromIntegral y * c
-
-{-# INLINE getFilterNum #-}
-getFilterNum :: HyperbolicFilterParams -> Int
-getFilterNum (HyperbolicFilterParams _ _ scales fs as) =
-  L.product . L.map L.length $ [scales, fs, as]
-
-{-# INLINE changeSizeParams #-}
-
-changeSizeParams :: HyperbolicFilterParams -> (Int, Int) -> HyperbolicFilterParams
-changeSizeParams (HyperbolicFilterParams _ df scale freq angle) newSize =
-  HyperbolicFilterParams newSize df scale freq angle

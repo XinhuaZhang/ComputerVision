@@ -1,15 +1,18 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
 module CV.Filter.CartesianGratingFilter where
 
 import           Control.DeepSeq
 import           CV.Filter.GaussianFilter
+import           CV.Utility.Coordinates
+import           CV.FilterExpansion
 import           Data.Complex             as C
 import           Data.List                as L
 import           Data.Vector.Unboxed      as VU
-import           CV.Utility.Coordinates
 
 data CartesianGratingFilterParams = CartesianGratingFilterParams
-  { getCartesianGratingFilterSize             :: !(Int, Int)   -- (nx,ny)
+  { getCartesianGratingFilterRows             :: !Int
+  , getCartesianGratingFilterCols             :: !Int
   , getCartesianGratingFilterDownsampleFactor :: !Int
   , getCartesianGratingFilterScale            :: ![Double]
   , getCartesianGratingFilterFreq             :: ![Double]
@@ -23,28 +26,40 @@ data CartesianGratingFilter = CartesianGratingFilter
   { getCartesianGratingFilterParams :: CartesianGratingFilterParams
   , getCartesianGratingFilter       :: [VU.Vector (Complex Double)]
   }
-  
+
 instance NFData CartesianGratingFilter where
   rnf !_ = ()
 
-makeFilter :: CartesianGratingFilterParams -> CartesianGratingFilter
-makeFilter params@(CartesianGratingFilterParams (nx, ny) downsampleFactor scales freqs angles) =
-  CartesianGratingFilter
-    params
-    [ VU.fromListN
-       (newNx * newNy)
-       [ cartesianGrating scale angle freq (x - centerX) (y - centerY)
-       | y <- [0 .. newNy - 1]
-       , x <- [0 .. newNx - 1] ]
-    | angle <- radAngles
-    , scale <- scales
-    , freq <- freqs ]
-  where
-    newNx = div nx downsampleFactor
-    newNy = div ny downsampleFactor
-    centerX = div newNx 2
-    centerY = div newNy 2
-    radAngles = L.map deg2Rad angles
+instance FilterExpansion CartesianGratingFilter where
+  type FilterParameter CartesianGratingFilter = CartesianGratingFilterParams
+  {-# INLINE makeFilter #-}
+  makeFilter (CartesianGratingFilter params@(CartesianGratingFilterParams rows cols downsampleFactor scales freqs angles) _) =
+    CartesianGratingFilter
+      params
+      [ VU.fromListN
+         (newCols * newRows)
+         [ cartesianGrating scale angle freq (x - centerC) (y - centerR)
+         | y <- [0 .. newRows - 1]
+         , x <- [0 .. newCols - 1] ]
+      | angle <- radAngles
+      , scale <- scales
+      , freq <- freqs ]
+    where
+      newCols = div cols downsampleFactor
+      newRows = div rows downsampleFactor
+      centerC = div newCols 2
+      centerR = div newRows 2
+      radAngles = L.map deg2Rad angles
+  getFilterSize (CartesianGratingFilter (CartesianGratingFilterParams _ _ _ scales fs as) _) =
+    L.product . L.map L.length $ [scales, fs, as]
+  getFilterParameter = getCartesianGratingFilterParams
+  {-# INLINE getFilterVectors #-}
+  getFilterVectors (CartesianGratingFilter _ vecs) = vecs
+  {-# INLINE changeSizeParameter #-}
+  changeSizeParameter rows cols (CartesianGratingFilter (CartesianGratingFilterParams _ _ df scale freq angle) vecs) =
+    CartesianGratingFilter
+      (CartesianGratingFilterParams rows cols df scale freq angle)
+      vecs
 
 {-# INLINE cartesianGrating #-}
 
@@ -55,15 +70,3 @@ cartesianGrating scale theta freq x y =
     c = cos theta
     s = sin theta
     u = fromIntegral x * c - fromIntegral y * s
-
-{-# INLINE getFilterNum #-}
-
-getFilterNum :: CartesianGratingFilterParams -> Int
-getFilterNum (CartesianGratingFilterParams _ _ scales fs as) =
-  L.product . L.map L.length $ [scales, fs, as]
-
-{-# INLINE changeSizeParams #-}
-
-changeSizeParams :: CartesianGratingFilterParams -> (Int, Int) -> CartesianGratingFilterParams
-changeSizeParams (CartesianGratingFilterParams _ df scale freq angle) newSize =
-  CartesianGratingFilterParams newSize df scale freq angle
