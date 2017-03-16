@@ -374,3 +374,6 @@ featureConduitP parallelParams =
 normalizeVec :: VU.Vector Double -> VU.Vector Double
 normalizeVec vec = VU.map (/s) vec
   where s = sqrt . VU.sum . VU.map (^2) $ vec
+
+
+
