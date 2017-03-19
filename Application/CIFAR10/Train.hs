@@ -1,8 +1,8 @@
 import           Application.FacialExpression.Conduit
+import           Application.RotateDataset.RotationRepa
 import           Classifier.LibLinear
 import           Control.Monad                        as M
 import           Control.Monad.Trans.Resource
-import           CV.Array.Image
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel
 import           CV.V4Filter
@@ -18,15 +18,15 @@ main = do
   let parallelParams =
         ParallelParams
         { numThread = 16
-        , batchSize = 320
+        , batchSize = 3200
         }
       polarSeparableFilterParamsSet =
         PolarSeparableFilterParamsSet
         { getSizeSet = (n, n)
         , getDownsampleFactorSet = downsampleFactor
-        , getScaleSet = S.fromDistinctAscList [2, 3, 4]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
+        , getScaleSet = S.fromDistinctAscList [4,6,8] --[1.5, 2, 3, 4] -- [4,6,8]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (6 - 1)] -- 6x6
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (6 - 1)]
         , getNameSet = Pinwheels
         }
       cartesianGratingFilterParams =
@@ -34,7 +34,7 @@ main = do
         { getCartesianGratingFilterRows = n
         , getCartesianGratingFilterCols = n
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [4, 6, 8, 10]
+        , getCartesianGratingFilterScale = [4, 8, 16]
         , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5, 1]
         , getCartesianGratingFilterAngle = [0,10 .. 360 - 10]
         }
@@ -43,7 +43,7 @@ main = do
         { getHyperbolicFilterRows = n
         , getHyperbolicFilterCols = n
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [4, 6, 8, 10]
+        , getHyperbolicFilterScale = [4, 8, 16] -- [4,8,16]
         , getHyperbolicFilterFreq = [0.5, 1, 1.5]
         , getHyperbolicFilterAngle = [0,10 .. 90 - 10]
         }
@@ -57,21 +57,21 @@ main = do
         getFilterVectors
           (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
       filters = [polarSeparableFilter, cartesianGratingFilter, hyperbolicFilter]
-      n = 32
+      n = 64
       downsampleFactor = 1
       isColor = read isColorStr :: Bool
-  labels <- runResourceT $ labelSource labelListPath $$ CL.consume
+  labels <- readLabelFile labelListPath
   featurePtr <-
     runResourceT $
-    filePathSource imageListPath $$ readImageConduit isColor =$=
-    -- cropSquareConduit parallelParams n =$=
+    imagePathSource imageListPath $$ readImageConduit isColor =$=
+    resizeImageConduit parallelParams n =$=
     applyFilterFixedSizeConduit parallelParams downsampleFactor filters =$=
     featurePtrConduitP parallelParams =$=
     CL.consume
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 1
+        , trainC = 32
         , trainNumExamples = L.length featurePtr
         , trainFeatureIndexMax =
           (getFilterSize
@@ -86,4 +86,22 @@ main = do
         , trainModel = "SVM_model"
         }
   print trainParams
+  -- bestC <- findParameterC trainParams labels featurePtr
+  -- let trainParams1 =
+  --       TrainParams
+  --       { trainSolver = L2R_L2LOSS_SVC_DUAL
+  --       , trainC = bestC
+  --       , trainNumExamples = L.length featurePtr
+  --       , trainFeatureIndexMax =
+  --         (getFilterSize
+  --            (PolarSeparableFilter polarSeparableFilterParamsSet [] :: PolarSeparableFilterExpansion) +
+  --          getFilterSize
+  --            (CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter) +
+  --          getFilterSize
+  --            (HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)) *
+  --         if isColor
+  --           then 6
+  --           else 2
+  --       , trainModel = "SVM_model"
+  --       }
   train trainParams labels featurePtr

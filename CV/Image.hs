@@ -1,5 +1,6 @@
 module CV.Image
-  ( module Data.Image
-  ) where
+--   ( module Data.Image
+--   ) 
+     where
 
-import           Data.Image
+-- import           Data.Image

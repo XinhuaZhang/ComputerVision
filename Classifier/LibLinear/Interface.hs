@@ -81,19 +81,19 @@ predict predictModel output = do
                 if (round target :: Int) == round prediction
                   then correct + 1
                   else correct
-          liftIO $
-            putStrLn $
-            show target P.++ " " P.++ show prediction P.++ " " P.++
-            show
-              (fromIntegral correctNew / fromIntegral (total + 1) * 100 :: Double) P.++
-            "%"
+          -- liftIO $
+          --   putStrLn $
+          --   show target P.++ " " P.++ show prediction P.++ " " P.++
+          --   show
+          --     (fromIntegral correctNew / fromIntegral (total + 1) * 100 :: Double) P.++
+          --   "%"
           if (round target :: Int) == round prediction
             then func model (correct + 1, total + 1)
             else func model (correct, total + 1)
         Nothing -> return (correct, total)
 
 findParameterC
-  :: TrainParams -> [Double] -> [Ptr C'feature_node] -> IO ()
+  :: TrainParams -> [Double] -> [Ptr C'feature_node] -> IO Double
 findParameterC (TrainParams solver c numExample maxIndex modelName) label feature =
   do when (P.length feature /= numExample)
           (putStrLn $
@@ -121,7 +121,7 @@ findParameterC (TrainParams solver c numExample maxIndex modelName) label featur
                             (\bestRate' ->
                                do c'find_parameter_C problem'
                                                      param'
-                                                     2
+                                                     5
                                                      (realToFrac c)
                                                      1024
                                                      bestC'
@@ -132,7 +132,8 @@ findParameterC (TrainParams solver c numExample maxIndex modelName) label featur
                                     "Best C = " ++
                                     show bestC ++
                                     " CV accuracy = " ++
-                                    show (100 * bestRate) ++ "%"))))
+                                    show (100 * bestRate) ++ "%"
+                                  return . (\(CDouble x) -> x) $ bestC))))
 
 trainNPredict
   :: TrainParams
