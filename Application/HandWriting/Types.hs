@@ -6,7 +6,7 @@ import           Data.Vector.Unboxed as VU
 import           Data.Word
 
 data OfflineCharacter = OfflineCharacter
-  { tag       :: !Int16
+  { tag       :: !Word16
   , width     :: !Word16
   , height    :: !Word16
   , character :: Vector Word8
