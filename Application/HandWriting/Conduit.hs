@@ -37,6 +37,19 @@ plotCharacter filePath (OfflineCharacter _ w h c) =
         arr' =
           R.fromUnboxed (Z :. h' :. w')
                         c
+                        
+plotSparseCharacter
+  :: FilePath -> SparseOfflineCharacter -> IO ()
+plotSparseCharacter filePath (SparseOfflineCharacter _ w h c) =
+  writePng filePath $ generateImage (\i j -> arr' R.! (Z :. j :. i)) w' h'
+  where
+    h' = fromIntegral h
+    w' = fromIntegral w
+    arr' =
+      R.fromUnboxed (Z :. h' :. w') .
+      VU.accumulate (+) (VU.replicate (fromIntegral $ w * h) 0) .
+      VU.map (first fromIntegral) $
+      c
 
 applyFilterVariedSizeConduit
   :: ParallelParams
@@ -76,7 +89,30 @@ applyFilterVariedSizeConduit parallelParams polarFilterParams cartesianGratingFi
                                              polarFilterParams
                                              cartesianGratingFilterParams
                                              hyperbolicFilterParams)
+                                             
 
+applyFilterfixedSizeSparseConduit
+  :: ParallelParams
+  -> [[VU.Vector (Complex Double)]]
+  -> Conduit SparseOfflineCharacter (ResourceT IO) (Double, VU.Vector Double)
+applyFilterfixedSizeSparseConduit parallelParams filterVecsList = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(SparseOfflineCharacter t w h c) ->
+                    ( fromIntegral t
+                    , applyFilterSparse
+                        (VU.map
+                           (\(i, v) -> (fromIntegral i, 0 :+ fromIntegral v))
+                           c)
+                        filterVecsList))
+                xs
+        sourceList ys
+        applyFilterfixedSizeSparseConduit parallelParams filterVecsList)
 
 {-# INLINE applyFilter #-}
 
@@ -84,10 +120,24 @@ applyFilter :: VU.Vector (Complex Double)
             -> [[VU.Vector (Complex Double)]]
             -> VU.Vector Double
 applyFilter imgVec =
-  normalizeVec .
   VU.concat .
   L.map
-    (complexVec2RealVec . VU.fromList . L.map (VU.sum . VU.zipWith (*) imgVec))
+    (normalizeVec .
+     complexVec2RealVec . VU.fromList . L.map (VU.sum . VU.zipWith (*) imgVec))
+
+{-# INLINE applyFilterSparse #-}
+
+applyFilterSparse :: VU.Vector (Int, Complex Double)
+                  -> [[VU.Vector (Complex Double)]]
+                  -> VU.Vector Double
+applyFilterSparse imgVec =
+  VU.concat .
+  L.map
+    (normalizeVec .
+     complexVec2RealVec .
+     VU.fromList .
+     L.map
+       (\filterVec -> VU.sum . VU.map (\(i, v) -> (filterVec VU.! i) * v) $ imgVec)) 
 
 {-# INLINE normalizeVec #-}
 

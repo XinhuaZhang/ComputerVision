@@ -3,6 +3,7 @@ module Application.HandWriting.IO
   , hwdbSource
   , offlineCharacterConduit
   , writeSink
+  , sparseOfflineCharacterConduit
   ) where
 
 import           Application.HandWriting.Types
@@ -67,3 +68,13 @@ writeSink filePath = do
            BL.hPut h . encode $ len'
            BL.hPut h x)
   liftIO $ hClose h
+  
+sparseOfflineCharacterConduit :: Conduit BS.ByteString (ResourceT IO) SparseOfflineCharacter
+sparseOfflineCharacterConduit = do
+  sizeBs <- CB.take 4
+  unless
+    (BL.null sizeBs)
+    (do let size' = fromIntegral . runGet getWord32le $ sizeBs
+        dataBs <- CB.take size'
+        yield . decode $ dataBs
+        sparseOfflineCharacterConduit)
