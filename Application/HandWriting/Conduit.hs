@@ -14,6 +14,8 @@ import           CV.Utility.RepaArrayUtility
 import           CV.V4Filter                  hiding
                                                (applyFilterVariedSizeConduit)
 import           Data.Array.Repa              as R
+import           Data.Binary
+import           Data.ByteString.Lazy         as BL
 import           Data.Complex
 import           Data.Conduit
 import           Data.Conduit.List            as CL
@@ -21,6 +23,7 @@ import           Data.List                    as L
 import           Data.Vector.Unboxed          as VU
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
+import           System.IO
 
 plotCharacter
   :: FilePath -> OfflineCharacter -> IO ()
@@ -132,3 +135,19 @@ featureConduitP parallelParams =
 testSink
   :: Sink OfflineCharacter (ResourceT IO) ()
 testSink = awaitForever (\(OfflineCharacter _ w h _) -> liftIO . print $ (w,h))
+
+
+rescaleConduit :: ParallelParams -> Conduit OfflineCharacter (ResourceT IO) ByteString
+rescaleConduit parallelParams = undefined
+
+
+writeSink :: FilePath -> Sink ByteString (ResourceT IO) ()
+writeSink filePath = do
+  h <- liftIO $ openBinaryFile filePath WriteMode
+  CL.foldMapM
+    (\x ->
+        liftIO $
+        do let len' = fromIntegral . BL.length $ x :: Word32
+           BL.hPut h . encode $ len'
+           BL.hPut h x)
+  liftIO $ hClose h
