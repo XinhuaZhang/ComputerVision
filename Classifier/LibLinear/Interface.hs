@@ -150,17 +150,17 @@ trainNPredict (TrainParams solver c numExample maxIndex _modelName) trainLabelFe
      ")")
   when
     ((maxIndex + 1) /= (P.length . snd . P.head $ trainLabelFeature))
-    (error $
+    (putStrLn $
      "trainNPredict: maxIndex (" P.++ show maxIndex P.++
      ") in train parameters doesn't equal to the actual number (" P.++
      show (P.length . snd . P.head $ trainLabelFeature) P.++
-     ")")
+     ")\nDo you use PCA?\nAre features sparse?\n")
   trainLabelPtr <- getLabelVecPtr . fst . L.unzip $ trainLabelFeature
   trainFeaturePtr <- join . fmap newArray . M.mapM newArray . snd . L.unzip $ trainLabelFeature
   let p =
         C'problem
         { c'problem'l = fromIntegral . P.length $ trainLabelFeature
-        , c'problem'n = fromIntegral maxIndex
+        , c'problem'n = fromIntegral ((P.length . snd . P.head $ trainLabelFeature) - 1)--maxIndex
         , c'problem'y = trainLabelPtr
         , c'problem'x = trainFeaturePtr
         , c'problem'bias = -1.0

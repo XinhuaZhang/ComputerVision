@@ -18,7 +18,7 @@ main = do
   (path:_) <- getArgs
   let parallelParams =
         ParallelParams
-        { numThread = 2
+        { numThread = 8
         , batchSize = 320
         }
       n = 128
@@ -31,19 +31,21 @@ main = do
     cropSquareConduit parallelParams n =$=
     pixelConduit parallelParams 1 =$=
     CL.consume
-  let trainParams =
+  let n = 454
+      trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 1
+        , trainC = 256
         , trainNumExamples = 0
-        , trainFeatureIndexMax = 2400
+        , trainFeatureIndexMax = n
         , trainModel = "SVM_model"
         }
   print trainParams
   print . L.length $ features
   print . VU.length . L.head $ features
-  crossValidation
+  crossValidationPCA
+    parallelParams
     trainParams
     8
-    2400
+    n
     (L.zip (L.map fromIntegral labels) features)

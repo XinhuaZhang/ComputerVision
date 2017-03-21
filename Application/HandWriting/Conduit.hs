@@ -128,3 +128,7 @@ featureConduitP parallelParams =
                       xs
                 CL.sourceList ys
                 featureConduitP parallelParams)
+
+testSink
+  :: Sink OfflineCharacter (ResourceT IO) ()
+testSink = awaitForever (\(OfflineCharacter _ w h _) -> liftIO . print $ (w,h))

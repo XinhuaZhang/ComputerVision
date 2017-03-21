@@ -150,7 +150,7 @@ pixelConduit parallelParams downSampleFactor =
                                  downsample
                                    [downSampleFactor,downSampleFactor,1]
                                    x
-                           in toUnboxed . computeS $ img)
+                           in normalizeVec . toUnboxed . computeS $ img)
                         xs
                 sourceList ys
                 pixelConduit parallelParams downSampleFactor)

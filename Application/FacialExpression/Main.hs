@@ -24,9 +24,9 @@ main = do
         PolarSeparableFilterParamsSet
         { getSizeSet = (n, n)
         , getDownsampleFactorSet = downsampleFactor
-        , getScaleSet = S.fromDistinctAscList [16, 20, 24] --[6, 8, 10, 12,16]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
+        , getScaleSet = S.fromDistinctAscList [8,16]-- [16, 20, 24] --[6, 8, 10, 12,16]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
         , getNameSet = Pinwheels
         }
       cartesianGratingFilterParams =
@@ -34,17 +34,17 @@ main = do
         { getCartesianGratingFilterRows = n
         , getCartesianGratingFilterCols = n
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [16, 32, 48, 64] -- [12, 18, 24]
+        , getCartesianGratingFilterScale = [24] --[16, 32, 48, 64] -- [12, 18, 24]
         , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5, 1]
-        , getCartesianGratingFilterAngle = [0,10 .. 360 - 10] -- [0, 45, 90, 135]
+        , getCartesianGratingFilterAngle = [0,10 .. 180 - 10] -- [0, 45, 90, 135]
         }
       hyperbolicFilterParams =
         HyperbolicFilterParams
         { getHyperbolicFilterRows = n
         , getHyperbolicFilterCols = n
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [16, 32, 48, 64] -- [12, 18, 24]
-        , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1]
+        , getHyperbolicFilterScale = [24] -- [16, 32, 48, 64] -- [12, 18, 24]
+        , getHyperbolicFilterFreq = [0.5, 1 , 1.5]
         , getHyperbolicFilterAngle = [0,10 .. 90 - 10] --[0, 45, 90]
         }
       polarSeparableFilter =
@@ -56,8 +56,8 @@ main = do
       hyperbolicFilter =
         getFilterVectors
           (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
-      filters = [polarSeparableFilter, cartesianGratingFilter, hyperbolicFilter]
-      n = 256
+      filters = [polarSeparableFilter,hyperbolicFilter, cartesianGratingFilter]
+      n = 128
       downsampleFactor = 1
   labels <- runResourceT $ labelSource' path $$ CL.consume
   landmarks <- runResourceT $ landmarksSource path $$ CL.consume
@@ -72,7 +72,7 @@ main = do
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 0.125
+        , trainC = 32
         , trainNumExamples = L.length featurePtr
         , trainFeatureIndexMax = (L.sum . L.map L.length $ filters) * 2
         , trainModel = "SVM_model"
