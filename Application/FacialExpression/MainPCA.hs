@@ -17,8 +17,8 @@ import           System.Environment
 main =
   do (path:_) <- getArgs
      let parallelParams =
-           ParallelParams {numThread = 4
-                          ,batchSize = 320}
+           ParallelParams {numThread = 12
+                          ,batchSize = 480}
          polarSeparableFilterParamsSet =
            PolarSeparableFilterParamsSet {getSizeSet = (n,n)
                                          ,getDownsampleFactorSet =
@@ -35,7 +35,7 @@ main =
                                          ,getDownsampleFactorSet =
                                             downsampleFactor
                                          ,getScaleSet =
-                                            S.fromDistinctAscList [8]
+                                            S.fromDistinctAscList [8,12]
                                          ,getRadialFreqSet =
                                             S.fromDistinctAscList [0 .. (8 - 1)]
                                          ,getAngularFreqSet =
@@ -58,28 +58,29 @@ main =
                                   ,getHyperbolicFilterDownsampleFactor =
                                      downsampleFactor
                                   ,getHyperbolicFilterScale = [24]
-                                  ,getHyperbolicFilterFreq = [0.25,0.5,1]
+                                  ,getHyperbolicFilterFreq = [0.125,0.25,0.5,1]
                                   ,getHyperbolicFilterAngle = [0,10 .. 90 - 10] --[0, 45, 90]
                                    }
          polarSeparableFilter =
            getFilterVectors
-             (makeFilter $
+             (makeFilterGrid gridSize $
               PolarSeparableFilter polarSeparableFilterParamsSet [] :: PolarSeparableFilterExpansion)
          polarSeparableFilter1 =
            getFilterVectors
-             (makeFilter $
+             (makeFilterGrid gridSize $
               PolarSeparableFilter polarSeparableFilterParamsSet1 [] :: PolarSeparableFilterExpansion)
          cartesianGratingFilter =
            getFilterVectors
-             (makeFilter $
+             (makeFilterGrid gridSize $
               CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter)
          hyperbolicFilter =
            getFilterVectors
-             (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
+             (makeFilterGrid gridSize $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
          filters =
            [polarSeparableFilter,cartesianGratingFilter,hyperbolicFilter]
          n = 128
          downsampleFactor = 1
+         gridSize = (16,16)
      labels <- runResourceT $ labelSource' path $$ CL.consume
      landmarks <- runResourceT $ landmarksSource path $$ CL.consume
      features <-

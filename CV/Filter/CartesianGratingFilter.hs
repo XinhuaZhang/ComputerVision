@@ -36,30 +36,56 @@ instance FilterExpansion CartesianGratingFilter where
   makeFilter (CartesianGratingFilter params@(CartesianGratingFilterParams rows cols downsampleFactor scales freqs angles) _) =
     CartesianGratingFilter
       params
-      [ VU.fromListN
+      [VU.fromListN
          (newCols * newRows)
-         [ cartesianGrating scale angle freq (x - centerC) (y - centerR)
-         | y <- [0 .. newRows - 1]
-         , x <- [0 .. newCols - 1] ]
-      | angle <- radAngles
-      , scale <- scales
-      , freq <- freqs ]
-    where
-      newCols = div cols downsampleFactor
-      newRows = div rows downsampleFactor
-      centerC = div newCols 2
-      centerR = div newRows 2
-      radAngles = L.map deg2Rad angles
+         [cartesianGrating scale
+                           angle
+                           freq
+                           (x - centerC)
+                           (y - centerR)
+         |y <- [0 .. newRows - 1]
+         ,x <- [0 .. newCols - 1]]
+      |angle <- radAngles
+      ,scale <- scales
+      ,freq <- freqs]
+    where newCols = div cols downsampleFactor
+          newRows = div rows downsampleFactor
+          centerC = div newCols 2
+          centerR = div newRows 2
+          radAngles = L.map deg2Rad angles
   getFilterSize (CartesianGratingFilter (CartesianGratingFilterParams _ _ _ scales fs as) _) =
-    L.product . L.map L.length $ [scales, fs, as]
+    L.product . L.map L.length $ [scales,fs,as]
   getFilterParameter = getCartesianGratingFilterParams
   {-# INLINE getFilterVectors #-}
   getFilterVectors (CartesianGratingFilter _ vecs) = vecs
   {-# INLINE changeSizeParameter #-}
   changeSizeParameter rows cols (CartesianGratingFilter (CartesianGratingFilterParams _ _ df scale freq angle) vecs) =
-    CartesianGratingFilter
-      (CartesianGratingFilterParams rows cols df scale freq angle)
-      vecs
+    CartesianGratingFilter (CartesianGratingFilterParams rows cols df scale freq angle)
+                           vecs
+  {-# INLINE makeFilterGrid #-}
+  makeFilterGrid (nr,nc) (CartesianGratingFilter params@(CartesianGratingFilterParams rows cols downsampleFactor scales freqs angles) _) =
+    CartesianGratingFilter params .
+    L.concatMap
+      (\(centerR,centerC) ->
+         [VU.fromListN
+            (newCols * newRows)
+            [cartesianGrating scale
+                              angle
+                              freq
+                              (x - centerC)
+                              (y - centerR)
+            |y <- [0 .. newRows - 1]
+            ,x <- [0 .. newCols - 1]]
+         |angle <- radAngles
+         ,scale <- scales
+         ,freq <- freqs]) $
+    grid2D (newRows,newCols)
+           (nr,nc)
+    where newCols = div cols downsampleFactor
+          newRows = div rows downsampleFactor
+          radAngles = L.map deg2Rad angles
+  getFilterSizeGrid (nr,nc) (CartesianGratingFilter (CartesianGratingFilterParams _ _ _ scales fs as) _) =
+    (L.product . L.map L.length $ [scales,fs,as]) * nr * nc
 
 {-# INLINE cartesianGrating #-}
 

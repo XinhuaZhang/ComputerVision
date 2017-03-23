@@ -16,28 +16,39 @@ import           Data.Word
 import           System.Environment
 
 main = do
-  (path:_) <- getArgs
+  (path:modelName:gridSizeStr:_) <- getArgs
   let parallelParams =
         ParallelParams
-        { numThread = 32
-        , batchSize = 6400
+        { numThread = 12
+        , batchSize = 4800
         }
       polarSeparableFilterParamsSet =
         PolarSeparableFilterParamsSet
         { getSizeSet = (n, n)
         , getDownsampleFactorSet = downsampleFactor
-        , getScaleSet = S.fromDistinctAscList [16]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (16 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
+        , getScaleSet = S.fromDistinctAscList [4]
+        , getRadialFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
+        , getAngularFreqSet = S.fromDistinctAscList [0 .. (4 - 1)]
         , getNameSet = Pinwheels
         }
+      polarSeparableFilterParamsSet1 =
+        PolarSeparableFilterParamsSet {getSizeSet = (n,n)
+                                      ,getDownsampleFactorSet =
+                                         downsampleFactor
+                                      ,getScaleSet =
+                                         S.fromDistinctAscList [8]
+                                      ,getRadialFreqSet =
+                                         S.fromDistinctAscList [0 .. (8 - 1)]
+                                      ,getAngularFreqSet =
+                                         S.fromDistinctAscList [0 .. (8 - 1)]
+                                      ,getNameSet = Pinwheels}
       cartesianGratingFilterParams =
         CartesianGratingFilterParams
         { getCartesianGratingFilterRows = n
         , getCartesianGratingFilterCols = n
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [24]
-        , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5, 1]
+        , getCartesianGratingFilterScale = [12]
+        , getCartesianGratingFilterFreq = [0.125,0.25, 0.5, 1]
         , getCartesianGratingFilterAngle = [0,10 .. 180 - 10]
         }
       hyperbolicFilterParams =
@@ -45,27 +56,32 @@ main = do
         { getHyperbolicFilterRows = n
         , getHyperbolicFilterCols = n
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [24]
-        , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1]
+        , getHyperbolicFilterScale = [12]
+        , getHyperbolicFilterFreq = [0.125,0.25, 0.5, 1]
         , getHyperbolicFilterAngle = [0,10 .. 90 - 10]
         }
       psf =
-        makeFilter . changeSizeParameter n n $
+        makeFilterGrid gridSize . changeSizeParameter n n $
         PolarSeparableFilter polarSeparableFilterParamsSet [] :: PolarSeparableFilterExpansion
+      psf1 =
+        makeFilterGrid gridSize . changeSizeParameter n n $
+        PolarSeparableFilter polarSeparableFilterParamsSet1 [] :: PolarSeparableFilterExpansion
       cgf =
-        makeFilter . changeSizeParameter n n $
+        makeFilterGrid gridSize . changeSizeParameter n n $
         CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter
       hf =
-        makeFilter . changeSizeParameter n n $
+        makeFilterGrid gridSize . changeSizeParameter n n $
         HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter
       psfVecs = getFilterVectors psf
+      psfVecs1 = getFilterVectors psf1
       cgfVecs = getFilterVectors cgf
       hfVecs = getFilterVectors hf
-      filterVecsList = [psfVecs, cgfVecs, hfVecs]
+      filterVecsList = [psfVecs1,cgfVecs,hfVecs]
       n = 128
       downsampleFactor = 1
+      gridSize = read gridSizeStr :: (Int,Int)
   runResourceT $
     CB.sourceFile path $$ sparseOfflineCharacterConduit =$=
     applyFilterfixedSizeSparseConduit parallelParams filterVecsList =$=
     featureConduitP parallelParams =$=
-    predict "SVM_model" "SVM_model.out"
+    predict modelName (modelName L.++ ".out")

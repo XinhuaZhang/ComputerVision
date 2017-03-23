@@ -118,11 +118,11 @@ applyFilter :: [VU.Vector (Complex Double)]
             -> [[VU.Vector (Complex Double)]]
             -> VU.Vector Double
 applyFilter imgVecs =
-  -- normalizeVec .
+  normalizeVec .
   VU.concat .
   L.map
     (\filterVecs ->
-        normalizeVec .
+        -- normalizeVec .
         complexVec2RealVec .
         VU.fromList .
         L.concatMap

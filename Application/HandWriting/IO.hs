@@ -74,7 +74,7 @@ sparseOfflineCharacterConduit = do
   sizeBs <- CB.take 4
   unless
     (BL.null sizeBs)
-    (do let size' = fromIntegral . runGet getWord32le $ sizeBs
+    (do let size' = fromIntegral (decode sizeBs :: Word32) 
         dataBs <- CB.take size'
         yield . decode $ dataBs
         sparseOfflineCharacterConduit)
