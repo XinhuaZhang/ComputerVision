@@ -9,7 +9,6 @@ import           CV.V4Filter
 import           Data.Conduit
 import           Data.Conduit.List                    as CL
 import           Data.List                            as L
-import           Data.Set                             as S
 import           Data.Vector.Unboxed                  as VU
 import           System.Environment
 
@@ -20,18 +19,23 @@ main = do
         { numThread = 16
         , batchSize = 320
         }
-      polarSeparableFilterParamsSet =
-        PolarSeparableFilterParamsSet
-        { getSizeSet = (n, n)
-        , getDownsampleFactorSet = downsampleFactor
-        , getScaleSet = S.fromDistinctAscList [8,16]-- [16, 20, 24] --[6, 8, 10, 12,16]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
-        , getNameSet = Pinwheels
+      polarSeparableFilterParams =
+        PolarSeparableFilterParamsGrid
+        { getPolarSeparableFilterGridRows = 1
+        , getPolarSeparableFilterGridCols = 1
+        , getPolarSeparableFilterRows = n
+        , getPolarSeparableFilterCols = n
+        , getPolarSeparableFilterDownsampleFactor = downsampleFactor
+        , getPolarSeparableFilterScale = [8, 16] -- [16, 20, 24] --[6, 8, 10, 12,16]
+        , getPolarSeparableFilterRadialFreq = [0 .. (8 - 1)]
+        , getPolarSeparableFilterAngularFreq = [0 .. (8 - 1)]
+        , getPolarSeparableFilterName = Pinwheels
         }
       cartesianGratingFilterParams =
         CartesianGratingFilterParams
-        { getCartesianGratingFilterRows = n
+        { getCartesianGratingFilterGridRows = 1
+        , getCartesianGratingFilterGridCols = 1
+        , getCartesianGratingFilterRows = n
         , getCartesianGratingFilterCols = n
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
         , getCartesianGratingFilterScale = [24] --[16, 32, 48, 64] -- [12, 18, 24]
@@ -40,23 +44,30 @@ main = do
         }
       hyperbolicFilterParams =
         HyperbolicFilterParams
-        { getHyperbolicFilterRows = n
+        { getHyperbolicFilterGridRows = 1
+        , getHyperbolicFilterGridCols = 1
+        , getHyperbolicFilterRows = n
         , getHyperbolicFilterCols = n
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
         , getHyperbolicFilterScale = [24] -- [16, 32, 48, 64] -- [12, 18, 24]
-        , getHyperbolicFilterFreq = [0.5, 1 , 1.5]
+        , getHyperbolicFilterFreq = [0.5, 1, 1.5]
         , getHyperbolicFilterAngle = [0,10 .. 90 - 10] --[0, 45, 90]
         }
       polarSeparableFilter =
         getFilterVectors
-          (makeFilter $ PolarSeparableFilter polarSeparableFilterParamsSet [] :: PolarSeparableFilterExpansion)
+          (makeFilter $ PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion)
       cartesianGratingFilter =
         getFilterVectors
           (makeFilter $ CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter)
       hyperbolicFilter =
         getFilterVectors
           (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
-      filters = [polarSeparableFilter,hyperbolicFilter, cartesianGratingFilter]
+      filters =
+        L.zipWith3
+          (\a b c -> a L.++ b L.++ c)
+          polarSeparableFilter
+          hyperbolicFilter
+          cartesianGratingFilter
       n = 128
       downsampleFactor = 1
   labels <- runResourceT $ labelSource' path $$ CL.consume
@@ -67,6 +78,7 @@ main = do
     mergeSource (CL.sourceList landmarks) =$=
     cropSquareConduit parallelParams n =$=
     applyFilterFixedSizeConduit parallelParams downsampleFactor filters =$=
+    CL.map VU.concat =$=
     featurePtrConduitP parallelParams =$=
     CL.consume
   let trainParams =

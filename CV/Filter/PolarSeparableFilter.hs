@@ -7,9 +7,9 @@ module CV.Filter.PolarSeparableFilter where
 
 
 import           CV.Filter.GaussianFilter
+import           CV.FilterExpansion
 import           CV.Utility.Coordinates
 import           CV.Utility.RepaArrayUtility as RU
-import           CV.FilterExpansion
 import           Data.Array.CArray           as CA
 import           Data.Array.Repa             as R
 import           Data.Complex                as C
@@ -49,7 +49,20 @@ data PolarSeparableFilterParams = PolarSeparableFilterParams
   , getName             :: !PolarSeparableFilterName
   } deriving (Show)
 
-type PolarSeparableFilterExpansion = PolarSeparableFilter PolarSeparableFilterParamsSet [VU.Vector (Complex Double)]
+
+data PolarSeparableFilterParamsGrid = PolarSeparableFilterParamsGrid
+  { getPolarSeparableFilterRows             :: !Int
+  , getPolarSeparableFilterCols             :: !Int
+  , getPolarSeparableFilterGridRows         :: !Int
+  , getPolarSeparableFilterGridCols         :: !Int
+  , getPolarSeparableFilterDownsampleFactor :: !Int
+  , getPolarSeparableFilterScale            :: ![Double]
+  , getPolarSeparableFilterRadialFreq       :: ![Int]
+  , getPolarSeparableFilterAngularFreq      :: ![Int]
+  , getPolarSeparableFilterName             :: !PolarSeparableFilterName
+  } deriving (Show)
+
+type PolarSeparableFilterExpansion = PolarSeparableFilter PolarSeparableFilterParamsGrid [[VU.Vector (Complex Double)]]
 
 -- this function is to make sure that the params sequence is correct
 {-# INLINE generateParamsSet #-}  
@@ -354,62 +367,65 @@ makeFilterList ny nx f =
 -- V4 Filter
 
 instance FilterExpansion PolarSeparableFilterExpansion where
-  type FilterParameter PolarSeparableFilterExpansion = PolarSeparableFilterParamsSet
+  type FilterParameter PolarSeparableFilterExpansion = PolarSeparableFilterParamsGrid
   {-# INLINE makeFilter #-}
-  makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsSet (rows,cols) downSampleFactor scaleSet rfSet afSet _name) _) =
+  makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsGrid gRows gCols rows cols downSampleFactor scaleSet rfSet afSet filterName) _) =
     PolarSeparableFilter params .
-    L.map (\(scale,rf,af) ->
-             VU.fromListN
-               (newCols * newRows)
-               [getFilterSetFunc params
-                                 scale
-                                 rf
-                                 af
-                                 (c - centerC)
-                                 (r - centerR)
-               |r <- [0 .. newRows - 1]
-               ,c <- [0 .. newCols - 1]]) $
-    paramsList
-    where paramsList = generateParamsSet scaleSet rfSet afSet
-          newCols = div cols downSampleFactor
-          newRows = div rows downSampleFactor
-          centerC = div newCols 2
-          centerR = div newRows 2
-  getFilterSize (PolarSeparableFilter params _) = getFilterNum params
+    L.map
+      (\(centerR, centerC) ->
+          L.map
+            (\(scale, rf, af) ->
+                VU.fromListN
+                  (newCols * newRows)
+                  [ getFilterByName
+                     filterName
+                     scale
+                     rf
+                     af
+                     (c - centerC)
+                     (r - centerR)
+                  | r <- [0 .. newRows - 1]
+                  , c <- [0 .. newCols - 1] ])
+            [ (scale, rf, af)
+            | scale <- scaleSet
+            , rf <- rfSet
+            , af <- afSet ]) $
+    grid2D (newRows, newCols) (gRows, gCols)
+    where
+      newCols = div cols downSampleFactor
+      newRows = div rows downSampleFactor
+  getFilterSize (PolarSeparableFilter params _) =
+    getFilterNumList params * getPolarSeparableFilterRows params *
+    getPolarSeparableFilterCols params
   getFilterParameter (PolarSeparableFilter params _) = params
   {-# INLINE getFilterVectors #-}
   getFilterVectors (PolarSeparableFilter _ vecs) = vecs
   {-# INLINE changeSizeParameter #-}
-  changeSizeParameter rows cols (PolarSeparableFilter (PolarSeparableFilterParamsSet _ downsampleFactor scaleSet rfSet afSet name) vecs) =
+  changeSizeParameter rows cols (PolarSeparableFilter (PolarSeparableFilterParamsGrid gRows gCols _ _ downsampleFactor scaleSet rfSet afSet name) vecs) =
     PolarSeparableFilter
-      (PolarSeparableFilterParamsSet (rows,cols)
-                                     downsampleFactor
-                                     scaleSet
-                                     rfSet
-                                     afSet
-                                     name)
+      (PolarSeparableFilterParamsGrid
+         gRows
+         gCols
+         rows
+         cols
+         downsampleFactor
+         scaleSet
+         rfSet
+         afSet
+         name)
       vecs
-  {-# INLINE makeFilterGrid #-}
-  makeFilterGrid (nr,nc) (PolarSeparableFilter params@(PolarSeparableFilterParamsSet (rows,cols) downSampleFactor scaleSet rfSet afSet _name) _) =
-    PolarSeparableFilter params .
-    L.concatMap
-      (\(centerR,centerC) ->
-         L.map (\(scale,rf,af) ->
-                  VU.fromListN
-                    (newCols * newRows)
-                    [getFilterSetFunc params
-                                      scale
-                                      rf
-                                      af
-                                      (c - centerC)
-                                      (r - centerR)
-                    |r <- [0 .. newRows - 1]
-                    ,c <- [0 .. newCols - 1]]) $
-         paramsList) $
-    grid2D (newRows,newCols)
-           (nr,nc)
-    where paramsList = generateParamsSet scaleSet rfSet afSet
-          newCols = div cols downSampleFactor
-          newRows = div rows downSampleFactor
-  getFilterSizeGrid (nr,nc) (PolarSeparableFilter params _) =
-    (getFilterNum params) * nr * nc
+
+{-# INLINE getFilterByName #-}
+
+getFilterByName
+  :: PolarSeparableFilterName
+  -> (Double -> Int -> Int -> (Int -> Int -> Complex Double))
+getFilterByName Fans = fans
+getFilterByName Bullseye = bullseye
+getFilterByName Pinwheels = pinwheels
+
+{-# INLINE getFilterNumList #-}
+
+getFilterNumList :: PolarSeparableFilterParamsGrid -> Int
+getFilterNumList (PolarSeparableFilterParamsGrid _ _ _ _ _ scale rs as _) =
+  (P.product . P.map L.length $ [rs, as]) * L.length scale

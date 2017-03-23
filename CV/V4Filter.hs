@@ -24,10 +24,10 @@ import           Data.Vector.Unboxed              as VU
 applyFilterVariedSizeConduit
   :: (R.Source s Double)
   => ParallelParams
-  -> PolarSeparableFilterParamsSet
+  -> PolarSeparableFilterParamsGrid
   -> CartesianGratingFilterParams
   -> HyperbolicFilterParams
-  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (VU.Vector Double)
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) [VU.Vector Double]
 applyFilterVariedSizeConduit parallelParams polarFilterParams cartesianGratingFilterParams hyperbolicFilterParams = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -50,8 +50,14 @@ applyFilterVariedSizeConduit parallelParams polarFilterParams cartesianGratingFi
                         psfVecs = getFilterVectors psf
                         cgfVecs = getFilterVectors cgf
                         hfVecs = getFilterVectors hf
-                        filterVecsList = [psfVecs, cgfVecs, hfVecs]
-                        downSampleFactor = getDownsampleFactorSet polarFilterParams
+                        filterVecsList =
+                          L.zipWith3
+                            (\a b c -> a L.++ b L.++ c)
+                            psfVecs
+                            cgfVecs
+                            hfVecs
+                        downSampleFactor =
+                          getPolarSeparableFilterDownsampleFactor polarFilterParams
                         img =
                           downsample [downSampleFactor, downSampleFactor, 1] x
                         imgVecs =
@@ -74,7 +80,7 @@ applyFilterFixedSizeConduit
   => ParallelParams
   -> Int
   -> [[VU.Vector (Complex Double)]]
-  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (VU.Vector Double)
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) [VU.Vector Double]
 applyFilterFixedSizeConduit parallelParams downSampleFactor filterVecsList = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -116,13 +122,11 @@ complexVec2RealVec vec = a VU.++ b
 
 applyFilter :: [VU.Vector (Complex Double)]
             -> [[VU.Vector (Complex Double)]]
-            -> VU.Vector Double
+            -> [VU.Vector Double]
 applyFilter imgVecs =
-  normalizeVec .
-  VU.concat .
   L.map
     (\filterVecs ->
-        -- normalizeVec .
+        normalizeVec .
         complexVec2RealVec .
         VU.fromList .
         L.concatMap

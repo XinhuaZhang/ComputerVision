@@ -14,57 +14,71 @@ import           Data.Vector.Unboxed                  as VU
 import           System.Environment
 
 main = do
-  (imageListPath:labelListPath:isColorStr:_) <- getArgs
+  (imageListPath:labelListPath:isColorStr:gridSizeStr:_) <- getArgs
   let parallelParams =
         ParallelParams
         { numThread = 16
         , batchSize = 3200
         }
-      polarSeparableFilterParamsSet =
-        PolarSeparableFilterParamsSet
-        { getSizeSet = (n, n)
-        , getDownsampleFactorSet = downsampleFactor
-        , getScaleSet = S.fromDistinctAscList [4,6,8]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (6 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (6 - 1)]
-        , getNameSet = Pinwheels
+      polarSeparableFilterParams =
+        PolarSeparableFilterParamsGrid
+        { getPolarSeparableFilterGridRows = fst gridSize
+        , getPolarSeparableFilterGridCols = snd gridSize
+        , getPolarSeparableFilterRows = n
+        , getPolarSeparableFilterCols = n
+        , getPolarSeparableFilterDownsampleFactor = downsampleFactor
+        , getPolarSeparableFilterScale = [8]
+        , getPolarSeparableFilterRadialFreq = [0 .. (8 - 1)]
+        , getPolarSeparableFilterAngularFreq = [0 .. (8 - 1)]
+        , getPolarSeparableFilterName = Pinwheels
         }
       cartesianGratingFilterParams =
         CartesianGratingFilterParams
-        { getCartesianGratingFilterRows = n
+        { getCartesianGratingFilterGridRows = fst gridSize
+        , getCartesianGratingFilterGridCols = snd gridSize
+        , getCartesianGratingFilterRows = n
         , getCartesianGratingFilterCols = n
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [4, 8,16]
+        , getCartesianGratingFilterScale = [16]
         , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5, 1]
-        , getCartesianGratingFilterAngle = [0,10 .. 360 - 10]
+        , getCartesianGratingFilterAngle = [0,10 .. 180 - 10] -- [0, 45, 90, 135]
         }
       hyperbolicFilterParams =
         HyperbolicFilterParams
-        { getHyperbolicFilterRows = n
+        { getHyperbolicFilterGridRows = fst gridSize
+        , getHyperbolicFilterGridCols = snd gridSize
+        , getHyperbolicFilterRows = n
         , getHyperbolicFilterCols = n
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [4,  8, 16]
-        , getHyperbolicFilterFreq = [0.5, 1, 1.5]
-        , getHyperbolicFilterAngle = [0,10 .. 90 - 10]
+        , getHyperbolicFilterScale = [16]
+        , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1, 1.5]
+        , getHyperbolicFilterAngle = [0,10 .. 90 - 10] --[0, 45, 90]
         }
       polarSeparableFilter =
         getFilterVectors
-          (makeFilter $ PolarSeparableFilter polarSeparableFilterParamsSet [] :: PolarSeparableFilterExpansion)
+          (makeFilter $ PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion)
       cartesianGratingFilter =
         getFilterVectors
           (makeFilter $ CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter)
       hyperbolicFilter =
         getFilterVectors
           (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
-      filters = [polarSeparableFilter, cartesianGratingFilter, hyperbolicFilter]
+      filters =
+        L.zipWith3
+          (\a b c -> a L.++ b L.++ c)
+          polarSeparableFilter
+          cartesianGratingFilter
+          hyperbolicFilter
       n = 64
       downsampleFactor = 1
       isColor = read isColorStr :: Bool
+      gridSize = read gridSizeStr :: (Int, Int)
   labels <- readLabelFile labelListPath
   runResourceT $
     imagePathSource imageListPath $$ readImageConduit isColor =$=
     resizeImageConduit parallelParams n =$=
     applyFilterFixedSizeConduit parallelParams downsampleFactor filters =$=
+    CL.map VU.concat =$=
     featureConduitP parallelParams =$=
     mergeSource (labelSource labelListPath) =$=
     predict "SVM_model" "SVM_model.out"

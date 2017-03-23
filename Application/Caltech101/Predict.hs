@@ -15,51 +15,61 @@ import           Data.Vector.Unboxed                    as VU
 import           System.Environment
 
 main = do
-  (imageListPath:labelListPath:isColorStr:_) <- getArgs
+  (imageListPath:labelListPath:isColorStr:gridSizeStr:_) <- getArgs
   let parallelParams =
         ParallelParams
         { numThread = 16
         , batchSize = 320
         }
-      polarSeparableFilterParamsSet =
-        PolarSeparableFilterParamsSet
-        { getSizeSet = (n, n)
-        , getDownsampleFactorSet = downsampleFactor
-        , getScaleSet = S.fromDistinctAscList [6, 8, 10] --[8, 16, 24]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (8 - 1)]
-        , getNameSet = Pinwheels
+      polarSeparableFilterParams =
+        PolarSeparableFilterParamsGrid
+        { getPolarSeparableFilterGridRows = fst gridSize
+        , getPolarSeparableFilterGridCols = snd gridSize
+        , getPolarSeparableFilterRows = n
+        , getPolarSeparableFilterCols = n
+        , getPolarSeparableFilterDownsampleFactor = downsampleFactor
+        , getPolarSeparableFilterScale = [16]
+        , getPolarSeparableFilterRadialFreq = [0 .. (16 - 1)]
+        , getPolarSeparableFilterAngularFreq = [0 .. (8 - 1)]
+        , getPolarSeparableFilterName = Pinwheels
         }
       cartesianGratingFilterParams =
         CartesianGratingFilterParams
-        { getCartesianGratingFilterRows = n
+        { getCartesianGratingFilterGridRows = fst gridSize
+        , getCartesianGratingFilterGridCols = snd gridSize
+        , getCartesianGratingFilterRows = n
         , getCartesianGratingFilterCols = n
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [8, 16, 24] --[24, 48, 64]
-        , getCartesianGratingFilterFreq = [0.1, 0.2, 0.4, 0.6, 0.8] -- [0.125, 0.25, 0.5]
-        , getCartesianGratingFilterAngle = [0,10 .. 360 - 10]
+        , getCartesianGratingFilterScale = [24]
+        , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5, 1]
+        , getCartesianGratingFilterAngle = [0,10 .. 180 - 10]
         }
       hyperbolicFilterParams =
         HyperbolicFilterParams
-        { getHyperbolicFilterRows = n
+        { getHyperbolicFilterGridRows = fst gridSize
+        , getHyperbolicFilterGridCols = snd gridSize
+        , getHyperbolicFilterRows = n
         , getHyperbolicFilterCols = n
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [8, 16, 24] --[ 24,48,64]
-        , getHyperbolicFilterFreq = [0.1, 0.2, 0.4, 0.6, 0.8] --[0.125, 0.25, 0.5, 1]
-        , getHyperbolicFilterAngle = [0,10 .. 90 - 10]
+        , getHyperbolicFilterScale = [24]
+        , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1]
+        , getHyperbolicFilterAngle = [0,10 .. 90 - 10] --[0, 45, 90]
         }
+      gridSize = read gridSizeStr :: (Int, Int)
       n = 0
       downsampleFactor = 1
       maxSize = 100
       isColor = read isColorStr :: Bool
+  labels <- runResourceT $ labelSource labelListPath $$ CL.consume
   runResourceT $
     imagePathSource imageListPath $$ readImageConduit isColor =$=
     resizeImageConduit parallelParams maxSize =$=
     applyFilterVariedSizeConduit
       parallelParams
-      polarSeparableFilterParamsSet
+      polarSeparableFilterParams
       cartesianGratingFilterParams
       hyperbolicFilterParams =$=
-    featureConduitP parallelParams =$=
+    CL.map VU.concat =$=
+    featureConduit =$=
     mergeSource (labelSource labelListPath) =$=
     predict "SVM_model" "SVM_model.out"

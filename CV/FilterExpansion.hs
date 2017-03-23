@@ -11,10 +11,8 @@ class FilterExpansion a  where
   makeFilter :: a -> a
   getFilterSize :: a -> Int
   getFilterParameter :: a -> FilterParameter a
-  getFilterVectors :: a -> [Vector (Complex Double)]
+  getFilterVectors :: a -> [[Vector (Complex Double)]]
   changeSizeParameter :: Int -> Int -> a -> a
-  makeFilterGrid :: (Int,Int) -> a -> a
-  getFilterSizeGrid :: (Int,Int) -> a -> Int
 
 
 {-# INLINE grid1D #-}
