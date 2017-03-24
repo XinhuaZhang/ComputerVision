@@ -12,7 +12,7 @@ import           Control.Monad.Trans.Resource
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           CV.V4Filter                  hiding
-                                               (applyFilterVariedSizeConduit)
+                                               (applyFilterVariedSizeConduit,applyV4QuardTreeFilterConduit)
 import           Data.Array.Repa              as R
 import           Data.Binary
 import           Data.ByteString              as BS
@@ -162,6 +162,31 @@ applyFilterfixedSizeSparseConduit parallelParams filterVecsList =
                         xs
                 sourceList ys
                 applyFilterfixedSizeSparseConduit parallelParams filterVecsList)
+                
+
+applyV4QuardTreeFilterConduit
+  :: ParallelParams
+  -> V4QuardTreeFilter
+  -> Conduit SparseOfflineCharacter (ResourceT IO) (Double, [[VU.Vector Double]])
+applyV4QuardTreeFilterConduit parallelParams filters = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(SparseOfflineCharacter t _ _ c) ->
+                    ( fromIntegral t
+                    , L.map
+                        (applyFilterSparse
+                           (VU.map
+                              (\(i, v) -> (fromIntegral i, fromIntegral v :+ 0))
+                              c))
+                        filters))
+                xs
+        sourceList ys
+        applyV4QuardTreeFilterConduit parallelParams filters)
 
 {-# INLINE applyFilter #-}
 

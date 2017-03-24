@@ -2,14 +2,18 @@
 
 module CV.V4Filter
   ( module V4
+  , V4QuardTreeFilterParams(..)
+  , V4QuardTreeFilter
+  , generateV4FilterQuardTreeFilter
+  , applyV4QuardTreeFilterConduit
   , applyFilterVariedSizeConduit
   , applyFilterFixedSizeConduit
   ) where
 
 import           Control.Monad                    as M
 import           Control.Monad.Trans.Resource
-import           CV.Filter.CartesianGratingFilter as V4 
-import           CV.Filter.HyperbolicFilter       as V4 
+import           CV.Filter.CartesianGratingFilter as V4
+import           CV.Filter.HyperbolicFilter       as V4
 import           CV.Filter.PolarSeparableFilter   as V4 hiding (makeFilter)
 import           CV.FilterExpansion               as V4
 import           CV.Utility.Parallel
@@ -20,6 +24,109 @@ import           Data.Conduit
 import           Data.Conduit.List                as CL
 import           Data.List                        as L
 import           Data.Vector.Unboxed              as VU
+
+data V4QuardTreeFilterParams = V4FilterQuardTreeFilterParams
+  { quardTreeLayer                  :: !Int
+  , rows                            :: !Int
+  , cols                            :: !Int
+  , polarSeparableFilterScale       :: ![Double]
+  , polarSeparableFilterRadialFreq  :: ![Int]
+  , polarSeparableFilterAngularFreq :: ![Int]
+  , polarSeparableFilterName        :: PolarSeparableFilterName
+  , cartesianGratingFilterScale     :: ![Double]
+  , cartesianGratingFilterFreq      :: ![Double]
+  , cartesianGratingFilterAngle     :: !Double
+  , hyperbolicFilterFilterScale     :: ![Double]
+  , hyperbolicFilterFilterFreq      :: ![Double]
+  , hyperbolicFilterFilterAngle     :: !Double
+  } deriving (Show)
+
+type V4QuardTreeFilter = [[[VU.Vector (Complex Double)]]]
+
+
+generateV4FilterQuardTreeFilter :: V4QuardTreeFilterParams -> V4QuardTreeFilter
+generateV4FilterQuardTreeFilter params =
+  L.zipWith3
+    (\i psfRadialFreq psfAngleFreq ->
+        let gridRows = 2 ^ i
+            gridCols = gridRows
+            polarSeparableFilterParams =
+              PolarSeparableFilterParamsGrid
+              { getPolarSeparableFilterGridRows = gridRows
+              , getPolarSeparableFilterGridCols = gridCols
+              , getPolarSeparableFilterRows = rows params
+              , getPolarSeparableFilterCols = cols params
+              , getPolarSeparableFilterDownsampleFactor = 1
+              , getPolarSeparableFilterScale = polarSeparableFilterScale params
+              , getPolarSeparableFilterRadialFreq = [0 .. psfRadialFreq - 1]
+              , getPolarSeparableFilterAngularFreq = [0 .. psfAngleFreq - 1]
+              , getPolarSeparableFilterName = polarSeparableFilterName params
+              }
+            cgfAngle = cartesianGratingFilterAngle params
+            cartesianGratingFilterParams =
+              CartesianGratingFilterParams
+              { getCartesianGratingFilterGridRows = gridRows
+              , getCartesianGratingFilterGridCols = gridCols
+              , getCartesianGratingFilterRows = rows params
+              , getCartesianGratingFilterCols = cols params
+              , getCartesianGratingFilterDownsampleFactor = 1
+              , getCartesianGratingFilterScale = cartesianGratingFilterScale params
+              , getCartesianGratingFilterFreq = cartesianGratingFilterFreq params
+              , getCartesianGratingFilterAngle = [0,cgfAngle .. 180 - cgfAngle]
+              }
+            hfAngle = hyperbolicFilterFilterAngle params
+            hyperbolicFilterParams =
+              HyperbolicFilterParams
+              { getHyperbolicFilterGridRows = gridRows
+              , getHyperbolicFilterGridCols = gridCols
+              , getHyperbolicFilterRows = rows params
+              , getHyperbolicFilterCols = cols params
+              , getHyperbolicFilterDownsampleFactor = 1
+              , getHyperbolicFilterScale = hyperbolicFilterFilterScale params
+              , getHyperbolicFilterFreq = hyperbolicFilterFilterFreq params
+              , getHyperbolicFilterAngle = [0,hfAngle .. 90 - hfAngle]
+              }
+            psf =
+              getFilterVectors
+                (makeFilter $ PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion)
+            cgf =
+              getFilterVectors
+                (makeFilter $
+                 CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter)
+            hf =
+              getFilterVectors
+                (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
+        in L.zipWith3 (\a b c -> L.concat [a, b, c]) psf cgf hf)
+    [quardTreeLayer params - 1 .. 0]
+    (polarSeparableFilterRadialFreq params)
+    (polarSeparableFilterAngularFreq params)
+    
+
+applyV4QuardTreeFilterConduit
+  :: (R.Source s Double)
+  => ParallelParams
+  -> V4QuardTreeFilter
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) [[VU.Vector Double]]
+applyV4QuardTreeFilterConduit parallelParams filters = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\x ->
+                    let (Z :. channels :. _ :. _) = extent x
+                        imgVecs =
+                          L.map
+                            (\i ->
+                                VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                                (Z :. i :. All :. All))
+                            [0 .. channels - 1]
+                    in L.map (applyFilter imgVecs) filters)
+                xs
+        sourceList ys
+        applyV4QuardTreeFilterConduit parallelParams filters)
 
 applyFilterVariedSizeConduit
   :: (R.Source s Double)
