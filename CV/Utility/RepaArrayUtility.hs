@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE QuasiQuotes #-}
 module CV.Utility.RepaArrayUtility where
@@ -9,6 +11,7 @@ import           Data.List                    as L
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
+import           Data.Complex
 
 -- factor = 2^n, n = 0,1,..
 -- the first factor in the list corresponds to the inner-most (right-most) dimension.
@@ -210,3 +213,40 @@ rescale25D newSize@(nx',ny') bound arr =
            (Z :. i :. All :. All)) $
   [0 .. nf' - 1]
   where (Z :. nf' :. _ :. _) = extent arr
+
+{-# INLINE extractPointwiseFeature #-}
+
+extractPointwiseFeature
+  :: (R.Source s e, Unbox e)
+  => R.Array s DIM3 e -> [VU.Vector e]
+extractPointwiseFeature arr' =
+  [ toUnboxed . computeUnboxedS . R.slice arr' $ (Z :. All :. j :. i)
+  | j <- [0 .. ny' - 1]
+  , i <- [0 .. nx' - 1] ]
+  where
+    !(Z :. _ :. (ny'::Int) :. (nx'::Int)) = extent arr'
+
+{-# INLINE extractPointwiseComplexFeature #-}
+
+extractPointwiseComplexFeature
+  :: (R.Source s (Complex Double))
+  => R.Array s DIM3 (Complex Double) -> [VU.Vector Double]
+extractPointwiseComplexFeature arr' =
+  [ VU.fromListN (2 * nf') .
+   L.concatMap (\(a :+ b) -> [a, b]) .
+   VU.toList . toUnboxed . computeUnboxedS . R.slice arr' $
+   (Z :. All :. j :. i)
+  | j <- [0 .. ny' - 1]
+  , i <- [0 .. nx' - 1] ]
+  where
+    !(Z :. nf' :. (ny' :: Int) :. (nx' :: Int)) = extent arr'
+
+{-# INLINE extractFeatureMap #-}
+
+extractFeatureMap
+  :: (R.Source s e)
+  => R.Array s DIM3 e -> [[e]]
+extractFeatureMap arr' =
+  L.map (\k -> R.toList . R.slice arr' $ (Z :. k :. All :. All)) [0 .. nf' - 1]
+  where
+    !(Z :. (nf' :: Int) :. _ :. _) = extent arr'

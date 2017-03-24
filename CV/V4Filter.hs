@@ -39,10 +39,9 @@ data V4QuardTreeFilterParams = V4FilterQuardTreeFilterParams
   , hyperbolicFilterFilterScale     :: ![Double]
   , hyperbolicFilterFilterFreq      :: ![Double]
   , hyperbolicFilterFilterAngle     :: !Double
-  } deriving (Show)
+  } deriving (Show,Read)
 
 type V4QuardTreeFilter = [[[VU.Vector (Complex Double)]]]
-
 
 generateV4FilterQuardTreeFilter :: V4QuardTreeFilterParams -> V4QuardTreeFilter
 generateV4FilterQuardTreeFilter params =
@@ -57,7 +56,8 @@ generateV4FilterQuardTreeFilter params =
               , getPolarSeparableFilterRows = rows params
               , getPolarSeparableFilterCols = cols params
               , getPolarSeparableFilterDownsampleFactor = 1
-              , getPolarSeparableFilterScale = polarSeparableFilterScale params
+              , getPolarSeparableFilterScale =
+                L.map (/ (2 ^ i)) $ polarSeparableFilterScale params
               , getPolarSeparableFilterRadialFreq = [0 .. psfRadialFreq - 1]
               , getPolarSeparableFilterAngularFreq = [0 .. psfAngleFreq - 1]
               , getPolarSeparableFilterName = polarSeparableFilterName params
@@ -70,7 +70,8 @@ generateV4FilterQuardTreeFilter params =
               , getCartesianGratingFilterRows = rows params
               , getCartesianGratingFilterCols = cols params
               , getCartesianGratingFilterDownsampleFactor = 1
-              , getCartesianGratingFilterScale = cartesianGratingFilterScale params
+              , getCartesianGratingFilterScale =
+                L.map (/ (2 ^ i)) $ cartesianGratingFilterScale params
               , getCartesianGratingFilterFreq = cartesianGratingFilterFreq params
               , getCartesianGratingFilterAngle = [0,cgfAngle .. 180 - cgfAngle]
               }
@@ -82,7 +83,8 @@ generateV4FilterQuardTreeFilter params =
               , getHyperbolicFilterRows = rows params
               , getHyperbolicFilterCols = cols params
               , getHyperbolicFilterDownsampleFactor = 1
-              , getHyperbolicFilterScale = hyperbolicFilterFilterScale params
+              , getHyperbolicFilterScale =
+                L.map (/ (2 ^ i)) $ hyperbolicFilterFilterScale params
               , getHyperbolicFilterFreq = hyperbolicFilterFilterFreq params
               , getHyperbolicFilterAngle = [0,hfAngle .. 90 - hfAngle]
               }
