@@ -21,37 +21,45 @@ import           Data.Word
 import           System.Environment
 import           System.IO
 
-main = do
-  (path:filterParamsPath:gmmFile:modelName:cStr:numThreadStr:numBatchSizeStr:_) <-
-    getArgs
-  v4QuardTreeFilterParams <- fmap read . readFile $ filterParamsPath
-  let parallelParams =
-        ParallelParams
-        { numThread = read numThreadStr :: Int
-        , batchSize = read numBatchSizeStr :: Int
-        }
-      filterVecsList = generateV4FilterQuardTreeFilter v4QuardTreeFilterParams
-  gmms <- readGMM gmmFile
-  labelFeaturePtr <-
-    runResourceT $
-    CB.sourceFile path $$ sparseOfflineCharacterConduit =$=
-    applyV4QuardTreeFilterConduit parallelParams filterVecsList =$=
-    fisherVectorMultilayerConduit parallelParams gmms =$=
-    featurePtrConduitP parallelParams =$=
-    CL.consume
-  let (labels, xs) = L.unzip labelFeaturePtr
-      trainParams =
-        TrainParams
-        { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = read cStr :: Double
-        , trainNumExamples = L.length xs
-        , trainFeatureIndexMax =
-          L.sum $
-          L.zipWith
-            (\a b -> a * b * 2)
-            (L.map numModel gmms)
-            (L.map (\x' -> 2 * (L.length . L.head $ x')) filterVecsList)
-        , trainModel = modelName
-        }
-  print trainParams
-  train trainParams labels xs
+main =
+  do (path:filterParamsPath:gmmFile:modelName:cStr:numThreadStr:numBatchSizeStr:_) <-
+       getArgs
+     v4QuardTreeFilterParams <- fmap read . readFile $ filterParamsPath
+     let parallelParams =
+           ParallelParams {numThread = read numThreadStr :: Int
+                          ,batchSize = read numBatchSizeStr :: Int}
+         filterVecsList =
+           generateV4FilterQuardTreeFilter v4QuardTreeFilterParams
+     gmms <- readGMM gmmFile
+     ys <-
+       runResourceT $
+       CB.sourceFile path $$ sparseOfflineCharacterConduit =$=
+       applyV4QuardTreeFilterConduit parallelParams filterVecsList =$=
+       fisherVectorMultilayerConduit parallelParams gmms =$=
+       CL.take 1
+     print . VU.length . snd . L.head $ ys
+     print $
+       L.sum $
+       L.zipWith (\a b -> a * b * 2)
+                 (L.map numModel gmms)
+                 (L.map (\x' -> 2 * (L.length . L.head $ x')) filterVecsList)
+     labelFeaturePtr <-
+       runResourceT $
+       CB.sourceFile path $$ sparseOfflineCharacterConduit =$=
+       applyV4QuardTreeFilterConduit parallelParams filterVecsList =$=
+       fisherVectorMultilayerConduit parallelParams gmms =$=
+       featurePtrConduitP parallelParams =$=
+       CL.consume
+     let (labels,xs) = L.unzip labelFeaturePtr
+         trainParams =
+           TrainParams {trainSolver = L2R_L2LOSS_SVC_DUAL
+                       ,trainC = read cStr :: Double
+                       ,trainNumExamples = L.length xs
+                       ,trainFeatureIndexMax =
+                          L.sum $
+                          L.zipWith (\a b -> a * b * 2)
+                                    (L.map numModel gmms)
+                                    (L.map (\x' -> 2 * (L.length . L.head $ x')) filterVecsList)
+                       ,trainModel = modelName}
+     print trainParams
+     train trainParams labels xs

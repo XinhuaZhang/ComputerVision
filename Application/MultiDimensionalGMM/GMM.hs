@@ -98,6 +98,8 @@ getAssignment (MixtureModel _n models) x'
                 models
         !s = L.sum ys
 
+{-# INLINE getAssignmentVec #-}
+
 getAssignmentVec
   :: GMM -> [VU.Vector Double] -> AssignmentVec
 getAssignmentVec gmm = L.map (getAssignment gmm)
@@ -114,6 +116,8 @@ getAssignmentVecP parallelParams gmm =
 getNks :: AssignmentVec -> [Double]
 getNks = L.foldl1' (L.zipWith (+))
 
+{-# INLINE updateMu #-}
+
 updateMu :: AssignmentVec
          -> [Double]
          -> [VU.Vector Double]
@@ -122,6 +126,8 @@ updateMu assignmentVec nks =
   L.zipWith (\nk x' -> VU.map (/ nk) x') nks .
   L.foldl1' (L.zipWith (VU.zipWith (+))) .
   L.zipWith (\assignment x' -> L.map (\y' -> VU.map (* y') x') assignment) assignmentVec
+
+{-# INLINE updateSigma #-}
 
 updateSigma :: AssignmentVec
             -> [Double]
@@ -141,9 +147,13 @@ updateSigma assignmentVec nks newMu =
                          newMu)
             assignmentVec
 
+{-# INLINE updateW #-}
+
 updateW :: Int -> [Double] -> [Double]
 updateW n w = L.map (/ L.sum vec) vec
   where !vec = L.map (/ fromIntegral n) w
+
+{-# INLINE updateGMM #-}
 
 updateGMM
   :: GMM -> AssignmentVec -> [VU.Vector Double] -> GMM
@@ -158,6 +168,8 @@ updateGMM oldGMM oldAssignmentVec xs =
         !newMu = updateMu oldAssignmentVec nks xs
         !newSigma = updateSigma oldAssignmentVec nks newMu xs
         !newW = updateW (L.length xs) nks
+
+{-# INLINE getAvgLikelihood #-}
 
 getAvgLikelihood
   :: ParallelParams -> GMM -> [VU.Vector Double] -> Double
@@ -283,6 +295,7 @@ hGMMSink1
   -> Sink [VU.Vector Double] (ResourceT IO) ()
 hGMMSink1 parallelParams handle numM threshold numTrain =
   do xs' <- CL.take numTrain
+     liftIO . print . VU.length . L.head . L.head $ xs'
      let !ys = L.concat xs'
          !bound = getFeatureBound parallelParams ys
      gmm <- liftIO $ initializeGMM numM bound

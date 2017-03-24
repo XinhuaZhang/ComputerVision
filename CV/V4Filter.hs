@@ -99,7 +99,7 @@ generateV4FilterQuardTreeFilter params =
               getFilterVectors
                 (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
         in L.zipWith3 (\a b c -> L.concat [a, b, c]) psf cgf hf)
-    [quardTreeLayer params - 1 .. 0]
+    [0..quardTreeLayer params - 1]
     (polarSeparableFilterRadialFreq params)
     (polarSeparableFilterAngularFreq params)
     

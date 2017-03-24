@@ -22,7 +22,7 @@ import           System.Environment
 import           System.IO
 
 main = do
-  (path:filterParamsPath:numLayerStr:gmmFile:modelName:numThreadStr:numBatchSizeStr:_) <-
+  (path:filterParamsPath:gmmFile:modelName:numThreadStr:numBatchSizeStr:_) <-
     getArgs
   v4QuardTreeFilterParams <- fmap read . readFile $ filterParamsPath
   let parallelParams =

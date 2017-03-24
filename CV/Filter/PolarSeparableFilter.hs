@@ -51,10 +51,10 @@ data PolarSeparableFilterParams = PolarSeparableFilterParams
 
 
 data PolarSeparableFilterParamsGrid = PolarSeparableFilterParamsGrid
-  { getPolarSeparableFilterRows             :: !Int
-  , getPolarSeparableFilterCols             :: !Int
-  , getPolarSeparableFilterGridRows         :: !Int
+  { getPolarSeparableFilterGridRows         :: !Int
   , getPolarSeparableFilterGridCols         :: !Int
+  , getPolarSeparableFilterRows             :: !Int
+  , getPolarSeparableFilterCols             :: !Int
   , getPolarSeparableFilterDownsampleFactor :: !Int
   , getPolarSeparableFilterScale            :: ![Double]
   , getPolarSeparableFilterRadialFreq       :: ![Int]
@@ -371,48 +371,42 @@ instance FilterExpansion PolarSeparableFilterExpansion where
   {-# INLINE makeFilter #-}
   makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsGrid gRows gCols rows cols downSampleFactor scaleSet rfSet afSet filterName) _) =
     PolarSeparableFilter params .
-    L.map
-      (\(centerR, centerC) ->
-          L.map
-            (\(scale, rf, af) ->
-                VU.fromListN
-                  (newCols * newRows)
-                  [ getFilterByName
-                     filterName
-                     scale
-                     rf
-                     af
-                     (c - centerC)
-                     (r - centerR)
-                  | r <- [0 .. newRows - 1]
-                  , c <- [0 .. newCols - 1] ])
-            [ (scale, rf, af)
-            | scale <- scaleSet
-            , rf <- rfSet
-            , af <- afSet ]) $
-    grid2D (newRows, newCols) (gRows, gCols)
-    where
-      newCols = div cols downSampleFactor
-      newRows = div rows downSampleFactor
+    L.map (\(centerR,centerC) ->
+             [VU.fromListN
+                (newCols * newRows)
+                [getFilterByName filterName
+                                 scale
+                                 rf
+                                 af
+                                 (c - centerC)
+                                 (r - centerR)
+                |r <- [0 .. newRows - 1]
+                ,c <- [0 .. newCols - 1]]
+             |scale <- scaleSet
+             ,rf <- rfSet
+             ,af <- afSet]) $
+    grid2D (newRows,newCols)
+           (gRows,gCols)
+    where newCols = div cols downSampleFactor
+          newRows = div rows downSampleFactor
   getFilterSize (PolarSeparableFilter params _) =
-    getFilterNumList params * getPolarSeparableFilterRows params *
-    getPolarSeparableFilterCols params
+    getFilterNumList params * getPolarSeparableFilterGridRows params *
+    getPolarSeparableFilterGridCols params
   getFilterParameter (PolarSeparableFilter params _) = params
   {-# INLINE getFilterVectors #-}
   getFilterVectors (PolarSeparableFilter _ vecs) = vecs
   {-# INLINE changeSizeParameter #-}
   changeSizeParameter rows cols (PolarSeparableFilter (PolarSeparableFilterParamsGrid gRows gCols _ _ downsampleFactor scaleSet rfSet afSet name) vecs) =
     PolarSeparableFilter
-      (PolarSeparableFilterParamsGrid
-         gRows
-         gCols
-         rows
-         cols
-         downsampleFactor
-         scaleSet
-         rfSet
-         afSet
-         name)
+      (PolarSeparableFilterParamsGrid gRows
+                                      gCols
+                                      rows
+                                      cols
+                                      downsampleFactor
+                                      scaleSet
+                                      rfSet
+                                      afSet
+                                      name)
       vecs
 
 {-# INLINE getFilterByName #-}
