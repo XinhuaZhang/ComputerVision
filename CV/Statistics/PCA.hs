@@ -4,19 +4,21 @@ module CV.Statistics.PCA where
 
 import           CV.Utility.Parallel
 import           Data.Array.Repa       as R
-import           Data.Array.Unboxed    as AU
+import           Data.Array            as Arr
 import           Data.Binary
 import           Data.List             as L
 import           Data.Vector           as V
 import           Data.Vector.Unboxed   as VU
 import           Numeric.LinearAlgebra as LA
+import Foreign.Storable
 
-data PCAMatrix = PCAMatrix
-  { pcaMean   :: !(VU.Vector Double)
-  , pcaMatrix :: !(V.Vector (VU.Vector Double)) 
-  }
+data PCAMatrix a = PCAMatrix 
+  { pcaMean   :: !(VU.Vector a)
+  , pcaMatrix :: !(V.Vector (VU.Vector a)) 
+  } deriving Show
 
-instance Binary PCAMatrix where
+instance (Binary a, Unbox a) =>
+         Binary (PCAMatrix a) where
   put (PCAMatrix m mat) = do
     put . VU.toList $ m
     put . V.toList . V.map VU.toList $ mat
@@ -27,9 +29,9 @@ instance Binary PCAMatrix where
 
 {-# INLINE computeRemoveMean #-}
 
-computeRemoveMean :: ParallelParams
-                  -> [VU.Vector Double]
-                  -> (VU.Vector Double, [VU.Vector Double])
+computeRemoveMean
+  :: (Num e, Unbox e, NFData e, Fractional e)
+  => ParallelParams -> [VU.Vector e] -> (VU.Vector e, [VU.Vector e])
 computeRemoveMean parallelParams xs =
   (mean, parMapChunk parallelParams rdeepseq (removeMean mean) xs)
   where
@@ -39,124 +41,129 @@ computeRemoveMean parallelParams xs =
   
 {-# INLINE removeMean #-}
 
-removeMean :: VU.Vector Double -> VU.Vector Double -> VU.Vector Double
+removeMean
+  :: (Num e, Unbox e)
+  => VU.Vector e -> VU.Vector e -> VU.Vector e
 removeMean mean xs = VU.zipWith (-) xs mean
 
 -- xs are mean-removed
 {-# INLINE covarianceMatrix #-}
 
-covarianceMatrix :: ParallelParams -> [VU.Vector Double] -> Matrix Double
-covarianceMatrix parallelParams xs = matrix len . R.toList $ rArr
+covarianceMatrix
+  :: (Unbox e, NFData e, Fractional e, Storable e)
+  => ParallelParams -> [VU.Vector e] -> Matrix e
+covarianceMatrix parallelParams xs = (len >< len) . R.toList $ rArr
   where
     ys =
       parMapChunk
         parallelParams
         rdeepseq
         (\(i, j) ->
-            ( (i, j)
-            , (L.sum . L.map (\vec -> (vec VU.! i) * (vec VU.! j)) $ xs) /
-              fromIntegral (L.length xs))) .
-      L.filter (\(i, j) -> j >= i) $
-      [ (i, j)
-      | i <- [0 .. len - 1]
-      , j <- [0 .. len - 1] ]
+           ( (i, j)
+           , (L.sum . L.map (\vec -> (vec VU.! i) * (vec VU.! j)) $ xs) /
+             fromIntegral (L.length xs))) -- .
+      -- L.filter (\(i, j) -> j >= i) $
+      [(i, j) | i <- [0 .. len - 1], j <- [0 .. len - 1]]
     len = VU.length . L.head $ xs
-    arr = array ((0, 0), (len - 1, len - 1)) ys :: UArray (Int, Int) Double
+    arr = array ((0, 0), (len - 1, len - 1)) ys 
     rArr =
       fromFunction
         (Z :. len :. len)
         (\(Z :. i :. j) ->
-            if i <= j
-              then arr AU.! (i, j)
-              else arr AU.! (j, i))
+           if i <= j
+             then arr Arr.! (i, j)
+             else arr Arr.! (j, i))
 
 -- xs are mean-removed
 {-# INLINE covarianceMatrixP #-}
 
-covarianceMatrixP :: ParallelParams -> [VU.Vector Double] -> IO (Matrix Double)
+covarianceMatrixP
+  :: (Unbox e, NFData e, Fractional e, Storable e)
+  => ParallelParams -> [VU.Vector e] -> IO (Matrix e)
 covarianceMatrixP parallelParams xs = do
   zs <- computeUnboxedP rArr
-  return $! matrix len . R.toList $ zs
+  return $! (len >< len) . R.toList $ zs
   where
     !ys =
-      parMapChunk
-        parallelParams
-        rdeepseq
+      L.map
         (\(i, j) ->
             ( (i, j)
             , (L.sum . L.map (\vec -> (vec VU.! i) * (vec VU.! j)) $ xs) /
-              fromIntegral (L.length xs))) .
-      L.filter (\(i, j) -> j >= i) $
+              (fromIntegral (L.length xs)))) -- .
+      -- L.filter (\(i, j) -> j >= i) $
       [ (i, j)
       | i <- [0 .. len - 1]
       , j <- [0 .. len - 1] ]
     len = VU.length . L.head $ xs
-    !arr = array ((0, 0), (len - 1, len - 1)) ys :: UArray (Int, Int) Double
+    !arr = array ((0, 0), (len - 1, len - 1)) ys -- :: AU.Array (Int, Int) (Complex Double)
     rArr =
       fromFunction
         (Z :. len :. len)
         (\(Z :. i :. j) ->
             if i <= j
-              then arr AU.! (i, j)
-              else arr AU.! (j, i))
+              then arr Arr.! (i, j)
+              else arr Arr.! (j, i))
 
 -- compute PCAMatrix and using it to reduce the dimensions of input data
 pcaCovariance
-  :: ParallelParams
+  :: (Unbox e, NFData e, Fractional e, Storable e, Field e)
+  => ParallelParams
   -> Int
-  -> [VU.Vector Double]
-  -> IO (PCAMatrix, [VU.Vector Double])
+  -> [VU.Vector e]
+  -> IO (PCAMatrix e, VU.Vector Double, [VU.Vector e])
 pcaCovariance parallelParams n xs = do
   let (mean, meanRemovedVecs) = computeRemoveMean parallelParams xs
   covMat <- covarianceMatrixP parallelParams meanRemovedVecs
   let (val', vec') = eigSH $ trustSym covMat
       val = LA.toList val'
       vec = L.map (VU.fromList . LA.toList) . toColumns $ vec'
-      mat =
-        V.fromList . L.take n . snd . L.unzip . L.reverse . L.sortOn fst $
-        L.zip val vec
+      pairs = L.unzip . L.take n . L.reverse . L.sortOn fst $ L.zip val vec
+      mat = V.fromList . snd $ pairs
+      eigenValVec = VU.fromList . fst $ pairs
       pcaMat = PCAMatrix mean mat
       reducedVecs =
         parMapChunk
           parallelParams
           rdeepseq
-          (\x -> V.convert . V.map (VU.sum . VU.zipWith (*) x) $ mat)
+          (pcaReduction pcaMat)
           meanRemovedVecs
-  return (pcaMat, reducedVecs)
-  
+  return (pcaMat, eigenValVec, reducedVecs)
+
 pcaSVD
-  :: ParallelParams
+  :: (Num e, Unbox e, NFData e, Fractional e, Field e)
+  => ParallelParams
   -> Int
-  -> [VU.Vector Double]
-  -> (PCAMatrix, [VU.Vector Double])
-pcaSVD parallelParams n xs = (pcaMat, reducedVecs)
+  -> [VU.Vector e]
+  -> (PCAMatrix e, VU.Vector Double, [VU.Vector e])
+pcaSVD parallelParams n xs = (pcaMat, eigenValVec, reducedVecs)
   where
     (mean, meanRemovedVecs) = computeRemoveMean parallelParams xs
     d'' = fromRows . L.map (LA.fromList . VU.toList) $ meanRemovedVecs
     (_, vec', uni') = thinSVD d''
-    vec = LA.toList vec'
+    vec = L.map abs . LA.toList $  vec'
     uni = L.map (VU.fromList . LA.toList) . toColumns $ uni'
-    v = L.take n . snd . L.unzip . L.reverse $ sortOn fst $ L.zip vec uni
-    mat = V.fromList v
+    pairs = L.unzip . L.take n . L.reverse $ sortOn fst $ L.zip vec uni
+    mat = V.fromList . snd $ pairs
+    eigenValVec = VU.fromList . fst $ pairs
     pcaMat = PCAMatrix mean mat
     reducedVecs =
-      parMapChunk
-        parallelParams
-        rdeepseq
-        (\x -> V.convert . V.map (VU.sum . VU.zipWith (*) x) $ mat)
-        meanRemovedVecs
+      parMapChunk parallelParams rdeepseq (pcaReduction pcaMat) meanRemovedVecs
 
 
 -- perform pcaReduction on uncentered data
-pcaReduction :: ParallelParams
-             -> PCAMatrix
-             -> [VU.Vector Double]
-             -> [VU.Vector Double]
-pcaReduction parallelParams (PCAMatrix mean mat) =
-  parMapChunk
-    parallelParams
-    rdeepseq
-    (\x ->
-        let y = removeMean mean x
-            z = V.map (VU.sum . VU.zipWith (*) y) mat
-        in V.convert z)
+{-# INLINE pcaReduction #-}
+
+pcaReduction
+  :: (Num e, Unbox e)
+  => PCAMatrix e -> VU.Vector e -> VU.Vector e
+pcaReduction (PCAMatrix mean mat) x =
+  -- VU.zipWith (+) mean .
+  V.convert . V.map (VU.sum . VU.zipWith (*) y) $ mat
+  where
+    y = removeMean mean x
+
+pcaReductionP
+  :: (NFData e,Num e, Unbox e)
+  => ParallelParams -> PCAMatrix e -> [VU.Vector e] -> [VU.Vector e]
+pcaReductionP parallelParams pcaMat =
+  parMapChunk parallelParams rdeepseq (pcaReduction pcaMat)

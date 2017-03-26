@@ -83,9 +83,6 @@ fisherVectorConduit parallelParams gmm = do
         sourceList ys
         fisherVectorConduit parallelParams gmm)
 
-
-
-
 fisherVectorMultilayerConduit
   :: ParallelParams
   -> [GMM]
@@ -99,25 +96,25 @@ fisherVectorMultilayerConduit parallelParams gmms = do
                 parallelParams
                 rdeepseq
                 (\(label, zs) ->
-                    let !vecMus = L.zipWith fisherVectorMu gmms zs
-                        !vecSigmas = L.zipWith fisherVectorSigma gmms zs
-                        !vecs = L.zipWith (VU.++) vecMus vecSigmas
-                        !powerVecs =
-                          L.map (VU.map (\x' -> signum x' * sqrt (abs x'))) vecs
-                        !l2Norms =
-                          L.map
-                            (sqrt . VU.foldl' (\a b -> a + b ^ (2 :: Int)) 0)
-                            powerVecs
-                        !result =
-                          VU.concat $
-                          L.zipWith
-                            (\l2Norm powerVec ->
-                                if l2Norm == 0
-                                  then VU.replicate (VU.length powerVec) 0
-                                  else VU.map (/ l2Norm) powerVec)
-                            l2Norms
-                            powerVecs
-                    in (label, result))
+                   let !vecMus = L.zipWith fisherVectorMu gmms zs
+                       !vecSigmas = L.zipWith fisherVectorSigma gmms zs
+                       !vecs = L.zipWith (VU.++) vecMus vecSigmas
+                       !powerVecs =
+                         L.map (VU.map (\x' -> signum x' * sqrt (abs x'))) $
+                         vecs
+                       !l2Norms =
+                         L.map (sqrt . VU.foldl' (\a b -> a + b ^ (2 :: Int)) 0) $
+                         powerVecs
+                       !result =
+                         VU.concat $
+                         L.zipWith
+                           (\l2Norm powerVec ->
+                              if l2Norm == 0
+                                then VU.replicate (VU.length powerVec) 0
+                                else VU.map (/ l2Norm) powerVec)
+                           l2Norms
+                           powerVecs
+                   in (label, result))
                 xs
         sourceList ys
         fisherVectorMultilayerConduit parallelParams gmms)

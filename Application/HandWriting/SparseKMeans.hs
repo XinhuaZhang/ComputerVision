@@ -2,10 +2,15 @@ import           Application.HandWriting.Conduit
 import           Application.HandWriting.IO
 import           Classifier.LibLinear
 import           Control.Arrow
+import           Control.Monad                   as M
 import           Control.Monad.Trans.Resource
+import           CV.Statistics.KMeans
+import           CV.Statistics.PCA
 import           CV.Utility.Parallel
 import           CV.V4Filter                     hiding
-                                                  (applyFilterVariedSizeConduit,applyV4QuardTreeFilterConduit)
+                                                  (applyFilterVariedSizeConduit,
+                                                  applyV4QuardTreeFilterConduit)
+import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.Binary             as CB
 import           Data.Conduit.List               as CL
@@ -15,13 +20,19 @@ import           Data.Set                        as S
 import           Data.Vector.Unboxed             as VU
 import           Data.Word
 import           System.Environment
+import           System.IO
 
 main = do
-  (path:modelName:gridSizeStr:_) <- getArgs
-  let parallelParams = ParallelParams {numThread = 12, batchSize = 4800}
+  (path:numLayerStr:imageSizeStr:kmeansFile:numCenterStr:numTrainStr:filterParamsPath:numThreadStr:numBatchSizeStr:_) <-
+    getArgs
+  let parallelParams =
+        ParallelParams
+        { numThread = read numThreadStr :: Int
+        , batchSize = read numBatchSizeStr :: Int
+        }
       v4QuardTreeFilterParams =
         V4FilterQuardTreeFilterParams
-        { quardTreeLayer = 2
+        { quardTreeLayer = read numLayerStr :: Int
         , rows = n
         , cols = n
         , polarSeparableFilterScale = [16]
@@ -36,12 +47,16 @@ main = do
         , hyperbolicFilterFilterAngle = 10
         }
       filterVecsList = generateV4FilterQuardTreeFilter v4QuardTreeFilterParams
-      n = 128
-      downsampleFactor = 1
-      gridSize = read gridSizeStr :: (Int, Int)
-  runResourceT $
+      n = read imageSizeStr :: Int
+  writeFile filterParamsPath . show $ v4QuardTreeFilterParams
+  labelFeature <-
+    runResourceT $
     CB.sourceFile path $$ sparseOfflineCharacterConduit =$=
     applyV4QuardTreeFilterConduit parallelParams filterVecsList =$=
-    CL.map (second $ VU.concat . L.map VU.concat) =$=
-    featureConduitP parallelParams =$=
-    predict modelName (modelName L.++ ".out")
+    CL.consume
+  let features = L.transpose . snd . L.unzip $ labelFeature
+  kmeansModels <-
+    M.mapM
+      (kmeans parallelParams (read numCenterStr :: Int) . L.concat)
+      features
+  encodeFile kmeansFile kmeansModels

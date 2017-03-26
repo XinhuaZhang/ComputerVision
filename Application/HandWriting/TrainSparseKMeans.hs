@@ -1,13 +1,10 @@
 import           Application.HandWriting.Conduit
 import           Application.HandWriting.IO
-import           Application.MultiDimensionalGMM.FisherKernel
-import           Application.MultiDimensionalGMM.GMM
-import           Application.MultiDimensionalGMM.MixtureModel
+import           CV.Statistics.KMeans
 import           Classifier.LibLinear
 import           Control.Arrow
 import           Control.Monad                                as M
 import           Control.Monad.Trans.Resource
-import           CV.Statistics.PCA
 import           CV.Utility.Parallel
 import           CV.V4Filter                                  hiding (applyFilterVariedSizeConduit,
                                                                applyV4QuardTreeFilterConduit)
@@ -25,7 +22,7 @@ import           System.Environment
 import           System.IO
 
 main = do
-  (path:filterParamsPath:gmmFile:pcaFile:modelName:cStr:numThreadStr:numBatchSizeStr:_) <-
+  (path:filterParamsPath:kmeansFile:modelName:cStr:numThreadStr:numBatchSizeStr:_) <-
     getArgs
   v4QuardTreeFilterParams <- fmap read . readFile $ filterParamsPath
   let parallelParams =
@@ -34,16 +31,13 @@ main = do
         , batchSize = read numBatchSizeStr :: Int
         }
       filterVecsList = generateV4FilterQuardTreeFilter v4QuardTreeFilterParams
-  gmms <- readGMM gmmFile
-  pcaMat <- decodeFile pcaFile 
+  kmeansModel <- decodeFile kmeansFile :: IO [KMeansModel]
   labelFeaturePtr <-
     runResourceT $
     CB.sourceFile path $$ sparseOfflineCharacterConduit =$=
-    applyV4QuardTreeFilterComplexConduit parallelParams filterVecsList =$=
-    pcaConduit parallelParams pcaMat =$=
-    CL.map (second $ L.map (L.map (normalizeVec . complexVec2RealVec))) =$=
+    applyV4QuardTreeFilterConduit parallelParams filterVecsList =$=
+    kmeansConduit parallelParams kmeansModel =$=
     CL.map (second $ normalizeVec . VU.concat . L.map VU.concat) =$=
-    -- fisherVectorMultilayerConduit parallelParams gmms =$=
     featurePtrConduitP parallelParams =$=
     CL.consume
   let (labels, xs) = L.unzip labelFeaturePtr
@@ -55,13 +49,9 @@ main = do
         , trainFeatureIndexMax =
             L.sum $
             L.zipWith
-              (\a b -> a * b * 2)
-              -- (L.map (L.length . L.head) filterVecsList)
-              (L.map (V.length . pcaMatrix) pcaMat)
+              (\a b -> a * b)
+              (L.map (V.length . center) kmeansModel)
               (L.map L.length $ filterVecsList) 
-              -- (\a b -> a * b * 2 * 2)
-              -- (L.map numModel gmms)
-              -- (L.map (V.length . pcaMatrix) pcaMat)
         , trainModel = modelName
         }
   print trainParams

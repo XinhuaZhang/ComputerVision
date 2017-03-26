@@ -9,10 +9,13 @@ import           Control.Monad                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Parallel       as MP
 import           Control.Monad.Trans.Resource
+import           CV.Statistics.PCA
+import           CV.Statistics.KMeans
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           CV.V4Filter                  hiding
-                                               (applyFilterVariedSizeConduit,applyV4QuardTreeFilterConduit)
+                                               (applyFilterVariedSizeConduit,
+                                               applyV4QuardTreeFilterConduit)
 import           Data.Array.Repa              as R
 import           Data.Binary
 import           Data.ByteString              as BS
@@ -24,6 +27,7 @@ import           Data.List                    as L
 import           Data.Vector.Unboxed          as VU
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
+import           Numeric.LinearAlgebra        as LA
 
 plotCharacter
   :: FilePath -> OfflineCharacter -> IO ()
@@ -37,7 +41,7 @@ plotCharacter filePath (OfflineCharacter _ w h c) =
         arr' =
           R.fromUnboxed (Z :. h' :. w')
                         c
-                        
+
 plotSparseCharacter
   :: FilePath -> SparseOfflineCharacter -> IO ()
 plotSparseCharacter filePath (SparseOfflineCharacter _ w h c) =
@@ -95,7 +99,7 @@ applyFilterVariedSizeConduit parallelParams polarFilterParams cartesianGratingFi
           polarFilterParams
           cartesianGratingFilterParams
           hyperbolicFilterParams)
-                                             
+
 applyFilterVariedSizeGridConduit
   :: ParallelParams
   -> PolarSeparableFilterParamsGrid
@@ -162,7 +166,7 @@ applyFilterfixedSizeSparseConduit parallelParams filterVecsList =
                         xs
                 sourceList ys
                 applyFilterfixedSizeSparseConduit parallelParams filterVecsList)
-                
+
 
 applyV4QuardTreeFilterConduit
   :: ParallelParams
@@ -188,6 +192,30 @@ applyV4QuardTreeFilterConduit parallelParams filters = do
         sourceList ys
         applyV4QuardTreeFilterConduit parallelParams filters)
 
+applyV4QuardTreeFilterComplexConduit
+  :: ParallelParams
+  -> V4QuardTreeFilter
+  -> Conduit SparseOfflineCharacter (ResourceT IO) (Double, [[VU.Vector (Complex Double)]])
+applyV4QuardTreeFilterComplexConduit parallelParams filters = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(SparseOfflineCharacter t _ _ c) ->
+                    ( fromIntegral t
+                    , L.map
+                        (applyFilterSparseComplex
+                           (VU.map
+                              (\(i, v) -> (fromIntegral i, fromIntegral v :+ 0))
+                              c))
+                        filters))
+                xs
+        sourceList ys
+        applyV4QuardTreeFilterComplexConduit parallelParams filters)
+
 {-# INLINE applyFilter #-}
 
 applyFilter :: VU.Vector (Complex Double)
@@ -209,14 +237,26 @@ applyFilterSparse imgVec =
      VU.fromList .
      complexList2RealList .
      L.map
-       (\filterVec -> VU.sum . VU.map (\(i, v) -> (filterVec VU.! i) * v) $ imgVec)) 
+       (\filterVec -> VU.sum . VU.map (\(i, v) -> (filterVec VU.! i) * v) $ imgVec))
+
+
+{-# INLINE applyFilterSparseComplex #-}
+
+applyFilterSparseComplex :: VU.Vector (Int, Complex Double)
+                         -> [[VU.Vector (Complex Double)]]
+                         -> [VU.Vector (Complex Double)]
+applyFilterSparseComplex imgVec =
+  L.map
+    (VU.fromList .
+     L.map
+       (\filterVec ->
+          VU.sum . VU.map (\(i, v) -> (filterVec VU.! i) * v) $ imgVec))
 
 {-# INLINE normalizeVec #-}
 
 normalizeVec :: VU.Vector Double -> VU.Vector Double
 normalizeVec vec = VU.map (/ s) vec
-  where
-    s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+  where s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
 
 {-# INLINE complexVec2RealVec #-}
 
@@ -224,7 +264,7 @@ complexVec2RealVec :: VU.Vector (Complex Double) -> VU.Vector Double
 complexVec2RealVec vec = a VU.++ b
   where
     (a, b) = VU.unzip . VU.map polar $ vec
-    
+
 
 {-# INLINE complexList2RealList #-}
 
@@ -273,7 +313,7 @@ extractRangeConduit (labelMin, labelMax) =
         when
           (fromIntegral t >= labelMin && fromIntegral t <= labelMax)
           (yield c))
-          
+
 extractRangeSparseConduit
   :: (Int,Int)
   -> Conduit SparseOfflineCharacter (ResourceT IO) SparseOfflineCharacter
@@ -324,3 +364,45 @@ rescaleConduit parallelParams newSize = do
                 xs
         sourceList ys
         rescaleConduit parallelParams newSize)
+
+pcaConduit
+  :: (Field e, NFData e, Num e, Unbox e)
+  => ParallelParams
+  -> [PCAMatrix e]
+  -> Conduit (Double, [[VU.Vector e]]) (ResourceT IO) (Double, [[VU.Vector e]])
+pcaConduit parallelParams pcaMats = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (second $
+                 L.zipWith
+                   (\pcaMat xs -> L.map (pcaReduction pcaMat) xs)
+                   pcaMats)
+                xs
+        sourceList ys
+        pcaConduit parallelParams pcaMats)
+
+kmeansConduit
+  :: ParallelParams
+  -> [KMeansModel]
+  -> Conduit (Double, [[VU.Vector Double]]) (ResourceT IO) (Double, [[VU.Vector Double]])
+kmeansConduit parallelParams kmeansModels = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (second $
+                 L.zipWith
+                   (\kmeansModel ->
+                      L.map (computeSoftAssignment (center kmeansModel)))
+                   kmeansModels)
+                xs
+        sourceList ys
+        kmeansConduit parallelParams kmeansModels)

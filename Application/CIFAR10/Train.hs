@@ -17,7 +17,7 @@ main = do
   (imageListPath:labelListPath:isColorStr:gridSizeStr:_) <- getArgs
   let parallelParams =
         ParallelParams
-        { numThread = 16
+        { numThread = 32
         , batchSize = 3200
         }
       polarSeparableFilterParams =
@@ -39,7 +39,7 @@ main = do
         , getCartesianGratingFilterRows = n
         , getCartesianGratingFilterCols = n
         , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [16]
+        , getCartesianGratingFilterScale = [8]
         , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5, 1]
         , getCartesianGratingFilterAngle = [0,10 .. 180 - 10] -- [0, 45, 90, 135]
         }
@@ -50,8 +50,8 @@ main = do
         , getHyperbolicFilterRows = n
         , getHyperbolicFilterCols = n
         , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [16]
-        , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1, 1.5]
+        , getHyperbolicFilterScale = [8]
+        , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1]
         , getHyperbolicFilterAngle = [0,10 .. 90 - 10] --[0, 45, 90]
         }
       polarSeparableFilter =
@@ -85,7 +85,7 @@ main = do
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 32
+        , trainC = 128
         , trainNumExamples = L.length featurePtr
         , trainFeatureIndexMax =
           (getFilterSize

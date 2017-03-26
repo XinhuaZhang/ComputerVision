@@ -57,7 +57,7 @@ generateV4FilterQuardTreeFilter params =
               , getPolarSeparableFilterCols = cols params
               , getPolarSeparableFilterDownsampleFactor = 1
               , getPolarSeparableFilterScale =
-                L.map (/ (2 ^ i)) $ polarSeparableFilterScale params
+                L.map (/ (1.5 ^ i)) $ polarSeparableFilterScale params
               , getPolarSeparableFilterRadialFreq = [0 .. psfRadialFreq - 1]
               , getPolarSeparableFilterAngularFreq = [0 .. psfAngleFreq - 1]
               , getPolarSeparableFilterName = polarSeparableFilterName params
@@ -71,7 +71,7 @@ generateV4FilterQuardTreeFilter params =
               , getCartesianGratingFilterCols = cols params
               , getCartesianGratingFilterDownsampleFactor = 1
               , getCartesianGratingFilterScale =
-                L.map (/ (2 ^ i)) $ cartesianGratingFilterScale params
+                L.map (/ (1.5 ^ i)) $ cartesianGratingFilterScale params
               , getCartesianGratingFilterFreq = cartesianGratingFilterFreq params
               , getCartesianGratingFilterAngle = [0,cgfAngle .. 180 - cgfAngle]
               }
@@ -84,7 +84,7 @@ generateV4FilterQuardTreeFilter params =
               , getHyperbolicFilterCols = cols params
               , getHyperbolicFilterDownsampleFactor = 1
               , getHyperbolicFilterScale =
-                L.map (/ (2 ^ i)) $ hyperbolicFilterFilterScale params
+                L.map (/ (1.5 ^ i)) $ hyperbolicFilterFilterScale params
               , getHyperbolicFilterFreq = hyperbolicFilterFilterFreq params
               , getHyperbolicFilterAngle = [0,hfAngle .. 90 - hfAngle]
               }

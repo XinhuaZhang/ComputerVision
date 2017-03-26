@@ -296,12 +296,32 @@ hGMMSink1
 hGMMSink1 parallelParams handle numM threshold numTrain =
   do xs' <- CL.take numTrain
      liftIO . print . VU.length . L.head . L.head $ xs'
+     
      let !ys = L.concat xs'
          !bound = getFeatureBound parallelParams ys
+     liftIO . print . L.length $ ys
      gmm <- liftIO $ initializeGMM numM bound
      newGMM <-
        liftIO $
        em parallelParams threshold (fromIntegral (minBound :: Int)) 0 gmm gmm bound ys
+     liftIO $ hPutGMM handle newGMM
+     liftIO . putStrLn $ "One layer is finished."
+     
+hGMMSink2
+  :: ParallelParams
+  -> Handle
+  -> Int
+  -> Double
+  -> Int
+  -> Sink (VU.Vector Double) (ResourceT IO) ()
+hGMMSink2 parallelParams handle numM threshold numTrain =
+  do xs' <- CL.take numTrain
+     let !bound = getFeatureBound parallelParams xs'
+     liftIO . print . L.length $ xs'
+     gmm <- liftIO $ initializeGMM numM bound
+     newGMM <-
+       liftIO $
+       em parallelParams threshold (fromIntegral (minBound :: Int)) 0 gmm gmm bound xs'
      liftIO $ hPutGMM handle newGMM
      liftIO . putStrLn $ "One layer is finished."
 
