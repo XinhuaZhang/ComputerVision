@@ -25,12 +25,35 @@ data HyperbolicFilterParams = HyperbolicFilterParams
 instance NFData HyperbolicFilterParams where
   rnf !_ = ()
 
+data HyperbolicSeparableFilterParams = HyperbolicSeparableFilterParams
+  { getHyperbolicSeparableFilterGridRows         :: !Int
+  , getHyperbolicSeparableFilterGridCols         :: !Int
+  , getHyperbolicSeparableFilterRows             :: !Int
+  , getHyperbolicSeparableFilterCols             :: !Int
+  , getHyperbolicSeparableFilterDownsampleFactor :: !Int
+  , getHyperbolicSeparableFilterScale            :: ![Double]
+  , getHyperbolicSeparableFilterUFreq            :: ![Double]
+  , getHyperbolicSeparableFilterVFreq            :: ![Double]
+  , getHyperbolicSeparableFilterAngle            :: ![Double]
+  } deriving (Show)
+
+instance NFData HyperbolicSeparableFilterParams where
+  rnf !_ = ()
+
 data HyperbolicFilter = HyperbolicFilter
   { getHyperbolicFilterParams :: HyperbolicFilterParams
   , getHyperbolicFilter       :: [[VU.Vector (Complex Double)]]
   }
 
 instance NFData HyperbolicFilter where
+  rnf !_ = ()
+
+data HyperbolicSeparableFilter = HyperbolicSeparableFilter
+  { getHyperbolicSeparableFilterParams :: HyperbolicSeparableFilterParams
+  , getHyperbolicSeparableFilter       :: [[VU.Vector (Complex Double)]]
+  }
+
+instance NFData HyperbolicSeparableFilter where
   rnf !_ = ()
 
 instance FilterExpansion HyperbolicFilter where
@@ -74,3 +97,92 @@ hyperbolic scale theta freq x y =
     s = sin theta
     u = fromIntegral x * c - fromIntegral y * s
     v = fromIntegral x * s + fromIntegral y * c
+    
+
+
+instance FilterExpansion HyperbolicSeparableFilter where
+  type FilterParameter HyperbolicSeparableFilter = HyperbolicSeparableFilterParams
+  {-# INLINE makeFilter #-}
+  makeFilter (HyperbolicSeparableFilter params@(HyperbolicSeparableFilterParams gRows gCols rows cols downsampleFactor scales uFreqs vFreqs angles) _) =
+    HyperbolicSeparableFilter params .
+    L.map
+      (\(centerR, centerC) ->
+          [ VU.fromListN
+             (newCols * newRows)
+             [ hyperbolicSeparable
+                scale
+                angle
+                uFreq
+                vFreq
+                (x - centerC)
+                (y - centerR)
+             | y <- [0 .. newRows - 1]
+             , x <- [0 .. newCols - 1] ]
+          | angle <- radAngles
+          , scale <- scales
+          , uFreq <- uFreqs
+          , vFreq <- vFreqs ] L.++
+          [ let (uFreq', vFreq') =
+                  if uFreq' /= 0 && vFreq' /= 0
+                    then (-uFreq, vFreq)
+                    else (-uFreq, -vFreq)
+            in VU.fromListN
+                 (newCols * newRows)
+                 [ hyperbolicSeparable
+                    scale
+                    angle
+                    uFreq'
+                    vFreq'
+                    (x - centerC)
+                    (y - centerR)
+                 | y <- [0 .. newRows - 1]
+                 , x <- [0 .. newCols - 1] ]
+          | angle <- radAngles
+          , scale <- scales
+          , uFreq <- uFreqs
+          , vFreq <- vFreqs ]) $
+    grid2D (newRows, newCols) (gRows, gCols)
+    where
+      newCols = div cols downsampleFactor
+      newRows = div rows downsampleFactor
+      radAngles = L.map deg2Rad angles
+  getFilterSize (HyperbolicSeparableFilter (HyperbolicSeparableFilterParams gRows gCols _ _ _ scales ufs vfs as) _) =
+    gRows * gCols * (L.product . L.map L.length $ [scales, ufs, vfs, as])
+  getFilterParameter = getHyperbolicSeparableFilterParams
+  {-# INLINE getFilterVectors #-}
+  getFilterVectors (HyperbolicSeparableFilter _ vecs) = vecs
+  {-# INLINE changeSizeParameter #-}
+  changeSizeParameter rows cols (HyperbolicSeparableFilter (HyperbolicSeparableFilterParams gRows gCols _ _ df scale uFreq vFreq angle) vecs) =
+    HyperbolicSeparableFilter
+      (HyperbolicSeparableFilterParams
+         gRows
+         gCols
+         rows
+         cols
+         df
+         scale
+         uFreq
+         vFreq
+         angle)
+      vecs
+
+{-# INLINE hyperbolicSeparable #-}
+
+hyperbolicSeparable :: Double
+                    -> Double
+                    -> Double
+                    -> Double
+                    -> Int
+                    -> Int
+                    -> Complex Double
+hyperbolicSeparable scale theta uFreq vFreq x y
+  | x' == 0 || y' == 0 = 1
+  | otherwise =
+    (0 :+ gaussian2D scale x y) * exp (0 :+ uFreq * u) * exp (0 :+ vFreq * v)
+  where
+    c = cos theta
+    s = sin theta
+    x' = fromIntegral x * c - fromIntegral y * s
+    y' = fromIntegral x * s + fromIntegral y * c
+    u = log . sqrt . abs $ x' / y'
+    v = sqrt . abs $ x' * y'

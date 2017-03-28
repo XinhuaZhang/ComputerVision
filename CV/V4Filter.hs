@@ -3,8 +3,10 @@
 module CV.V4Filter
   ( module V4
   , V4QuadTreeFilterParams(..)
+  , V4QuadTreeSeparableFilterParams(..)
   , V4QuadTreeFilter
   , generateV4FilterQuadTreeFilter
+  , generateV4SeparableFilterQuadTreeFilter
   , applyV4QuadTreeFilterConduit
   , applyFilterVariedSizeConduit
   , applyFilterFixedSizeConduit
@@ -14,9 +16,11 @@ module CV.V4Filter
 import           Control.Monad                    as M
 import           Control.Monad.Trans.Resource
 import           CV.Filter.CartesianGratingFilter as V4
+import           CV.Filter.GaussianFilter
 import           CV.Filter.HyperbolicFilter       as V4
 import           CV.Filter.PolarSeparableFilter   as V4 hiding (makeFilter)
 import           CV.FilterExpansion               as V4
+import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           Data.Array.Repa                  as R
@@ -25,11 +29,9 @@ import           Data.Conduit
 import           Data.Conduit.List                as CL
 import           Data.List                        as L
 import           Data.Vector.Unboxed              as VU
-import           CV.Utility.Coordinates
-import           CV.Filter.GaussianFilter
 
 data V4QuadTreeFilterParams = V4QuadTreeFilterParams
-  { quadTreeLayer                  :: !Int
+  { quadTreeLayer                   :: !Int
   , rows                            :: !Int
   , cols                            :: !Int
   , polarSeparableFilterScale       :: ![Double]
@@ -43,6 +45,24 @@ data V4QuadTreeFilterParams = V4QuadTreeFilterParams
   , hyperbolicFilterFilterFreq      :: ![Double]
   , hyperbolicFilterFilterAngle     :: !Double
   } deriving (Show,Read)
+
+
+data V4QuadTreeSeparableFilterParams = V4QuadTreeSeparableFilterParams
+  { separableFilterQuadTreeLayer :: !Int
+  , separableFilterRows          :: !Int
+  , separableFilterCols          :: !Int
+  , polarSeparableScale          :: ![Double]
+  , polarSeparableRadialFreq     :: ![Int]
+  , polarSeparableAngularFreq    :: ![Int]
+  , polarSeparableName           :: PolarSeparableFilterName
+  , cartesianSeparableScale      :: ![Double]
+  , cartesianSeparableXFreq      :: ![Double]
+  , cartesianSeparableYFreq      :: ![Double]
+  , hyperbolicSeparableScale     :: ![Double]
+  , hyperbolicSeparableUFreq     :: ![Double]
+  , hyperbolicSeparableVFreq     :: ![Double]
+  , hyperbolicSeparableAngle     :: !Double
+  } deriving (Show, Read)
 
 type V4QuadTreeFilter = [[[VU.Vector (Complex Double)]]]
 
@@ -109,6 +129,68 @@ generateV4FilterQuadTreeFilter params =
     (polarSeparableFilterRadialFreq params)
     (polarSeparableFilterAngularFreq params)
     
+
+generateV4SeparableFilterQuadTreeFilter :: V4QuadTreeSeparableFilterParams -> V4QuadTreeFilter
+generateV4SeparableFilterQuadTreeFilter params =
+  L.zipWith3
+    (\i psfRadialFreq psfAngleFreq ->
+        let gridRows = 2 ^ i
+            gridCols = gridRows
+            polarSeparableFilterParams =
+              PolarSeparableFilterParamsGrid
+              { getPolarSeparableFilterGridRows = gridRows
+              , getPolarSeparableFilterGridCols = gridCols
+              , getPolarSeparableFilterRows = separableFilterRows params
+              , getPolarSeparableFilterCols = separableFilterCols params
+              , getPolarSeparableFilterDownsampleFactor = 1
+              , getPolarSeparableFilterScale =
+                L.map (/ (sqrt 2 ^ i)) $ polarSeparableScale params
+              , getPolarSeparableFilterRadialFreq = [0 .. psfRadialFreq - 1]
+              , getPolarSeparableFilterAngularFreq = [0 .. psfAngleFreq - 1]
+              , getPolarSeparableFilterName = polarSeparableName params
+              }
+            cartesianSeparableFilterParams =
+              CartesianSeparableFilterParams
+              { getCartesianSeparableFilterGridRows = gridRows
+              , getCartesianSeparableFilterGridCols = gridCols
+              , getCartesianSeparableFilterRows = separableFilterRows params
+              , getCartesianSeparableFilterCols = separableFilterCols params
+              , getCartesianSeparableFilterDownsampleFactor = 1
+              , getCartesianSeparableFilterScale =
+                L.map (/ (sqrt 2 ^ i)) $ cartesianSeparableScale params
+              , getCartesianSeparableFilterXFreq = cartesianSeparableXFreq params
+              , getCartesianSeparableFilterYFreq = cartesianSeparableYFreq params
+              }
+            hfAngle = hyperbolicSeparableAngle params
+            hyperbolicSeparableFilterParams =
+              HyperbolicSeparableFilterParams
+              { getHyperbolicSeparableFilterGridRows = gridRows
+              , getHyperbolicSeparableFilterGridCols = gridCols
+              , getHyperbolicSeparableFilterRows = separableFilterRows params
+              , getHyperbolicSeparableFilterCols = separableFilterCols params
+              , getHyperbolicSeparableFilterDownsampleFactor = 1
+              , getHyperbolicSeparableFilterScale =
+                L.map (/ (sqrt 2 ^ i)) $ hyperbolicSeparableScale params
+              , getHyperbolicSeparableFilterUFreq = hyperbolicSeparableUFreq params
+              , getHyperbolicSeparableFilterVFreq = hyperbolicSeparableVFreq params
+              , getHyperbolicSeparableFilterAngle = [0,hfAngle .. 90 - hfAngle]
+              }
+            psf =
+              getFilterVectors
+                (makeFilter $ PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion)
+            cgf =
+              getFilterVectors
+                (makeFilter $
+                 CartesianSeparableFilter cartesianSeparableFilterParams [] :: CartesianSeparableFilter)
+            hf =
+              getFilterVectors
+                (makeFilter $
+                 HyperbolicSeparableFilter hyperbolicSeparableFilterParams [] :: HyperbolicSeparableFilter)
+        in L.zipWith3 (\a b c -> L.concat [a, b, c]) psf cgf hf)
+    [0 .. separableFilterQuadTreeLayer params - 1]
+    (polarSeparableRadialFreq params)
+    (polarSeparableAngularFreq params)
+
 
 applyV4QuadTreeFilterConduit
   :: (R.Source s Double)
