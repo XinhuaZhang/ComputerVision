@@ -2,12 +2,13 @@
 
 module CV.V4Filter
   ( module V4
-  , V4QuardTreeFilterParams(..)
-  , V4QuardTreeFilter
-  , generateV4FilterQuardTreeFilter
-  , applyV4QuardTreeFilterConduit
+  , V4QuadTreeFilterParams(..)
+  , V4QuadTreeFilter
+  , generateV4FilterQuadTreeFilter
+  , applyV4QuadTreeFilterConduit
   , applyFilterVariedSizeConduit
   , applyFilterFixedSizeConduit
+  , makeV4Filter
   ) where
 
 import           Control.Monad                    as M
@@ -24,9 +25,11 @@ import           Data.Conduit
 import           Data.Conduit.List                as CL
 import           Data.List                        as L
 import           Data.Vector.Unboxed              as VU
+import           CV.Utility.Coordinates
+import           CV.Filter.GaussianFilter
 
-data V4QuardTreeFilterParams = V4FilterQuardTreeFilterParams
-  { quardTreeLayer                  :: !Int
+data V4QuadTreeFilterParams = V4QuadTreeFilterParams
+  { quadTreeLayer                  :: !Int
   , rows                            :: !Int
   , cols                            :: !Int
   , polarSeparableFilterScale       :: ![Double]
@@ -41,14 +44,17 @@ data V4QuardTreeFilterParams = V4FilterQuardTreeFilterParams
   , hyperbolicFilterFilterAngle     :: !Double
   } deriving (Show,Read)
 
-type V4QuardTreeFilter = [[[VU.Vector (Complex Double)]]]
+type V4QuadTreeFilter = [[[VU.Vector (Complex Double)]]]
 
-generateV4FilterQuardTreeFilter :: V4QuardTreeFilterParams -> V4QuardTreeFilter
-generateV4FilterQuardTreeFilter params =
+generateV4FilterQuadTreeFilter :: V4QuadTreeFilterParams -> V4QuadTreeFilter
+generateV4FilterQuadTreeFilter params =
   L.zipWith3
     (\i psfRadialFreq psfAngleFreq ->
         let gridRows = 2 ^ i
             gridCols = gridRows
+            j = if i > i
+                   then 2
+                   else i
             polarSeparableFilterParams =
               PolarSeparableFilterParamsGrid
               { getPolarSeparableFilterGridRows = gridRows
@@ -57,7 +63,7 @@ generateV4FilterQuardTreeFilter params =
               , getPolarSeparableFilterCols = cols params
               , getPolarSeparableFilterDownsampleFactor = 1
               , getPolarSeparableFilterScale =
-                L.map (/ (1.5 ^ i)) $ polarSeparableFilterScale params
+                L.map (/ ((sqrt 2) ^ j)) $ polarSeparableFilterScale params
               , getPolarSeparableFilterRadialFreq = [0 .. psfRadialFreq - 1]
               , getPolarSeparableFilterAngularFreq = [0 .. psfAngleFreq - 1]
               , getPolarSeparableFilterName = polarSeparableFilterName params
@@ -71,7 +77,7 @@ generateV4FilterQuardTreeFilter params =
               , getCartesianGratingFilterCols = cols params
               , getCartesianGratingFilterDownsampleFactor = 1
               , getCartesianGratingFilterScale =
-                L.map (/ (1.5 ^ i)) $ cartesianGratingFilterScale params
+                L.map (/ ((sqrt 2) ^ j)) $ cartesianGratingFilterScale params
               , getCartesianGratingFilterFreq = cartesianGratingFilterFreq params
               , getCartesianGratingFilterAngle = [0,cgfAngle .. 180 - cgfAngle]
               }
@@ -84,7 +90,7 @@ generateV4FilterQuardTreeFilter params =
               , getHyperbolicFilterCols = cols params
               , getHyperbolicFilterDownsampleFactor = 1
               , getHyperbolicFilterScale =
-                L.map (/ (1.5 ^ i)) $ hyperbolicFilterFilterScale params
+                L.map (/ ((sqrt 2) ^ j)) $ hyperbolicFilterFilterScale params
               , getHyperbolicFilterFreq = hyperbolicFilterFilterFreq params
               , getHyperbolicFilterAngle = [0,hfAngle .. 90 - hfAngle]
               }
@@ -99,17 +105,17 @@ generateV4FilterQuardTreeFilter params =
               getFilterVectors
                 (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
         in L.zipWith3 (\a b c -> L.concat [a, b, c]) psf cgf hf)
-    [0..quardTreeLayer params - 1]
+    [0..quadTreeLayer params - 1]
     (polarSeparableFilterRadialFreq params)
     (polarSeparableFilterAngularFreq params)
     
 
-applyV4QuardTreeFilterConduit
+applyV4QuadTreeFilterConduit
   :: (R.Source s Double)
   => ParallelParams
-  -> V4QuardTreeFilter
+  -> V4QuadTreeFilter
   -> Conduit (R.Array s DIM3 Double) (ResourceT IO) [[VU.Vector Double]]
-applyV4QuardTreeFilterConduit parallelParams filters = do
+applyV4QuadTreeFilterConduit parallelParams filters = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -128,7 +134,7 @@ applyV4QuardTreeFilterConduit parallelParams filters = do
                     in L.map (applyFilter imgVecs) filters)
                 xs
         sourceList ys
-        applyV4QuardTreeFilterConduit parallelParams filters)
+        applyV4QuadTreeFilterConduit parallelParams filters)
 
 applyFilterVariedSizeConduit
   :: (R.Source s Double)
@@ -241,3 +247,72 @@ applyFilter imgVecs =
         L.concatMap
           (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
         imgVecs)
+
+
+makeV4Filter
+  :: V4QuadTreeFilterParams
+  -> V4QuadTreeFilter
+makeV4Filter (V4QuadTreeFilterParams numLayer r c polarScale prFreq paFreq _ _ cgFreq cgAngle _ hbFreq hbAngle) =
+  L.zipWith3
+    (\i psfRadialFreq psfAngleFreq ->
+       let gridRows = 2 ^ i
+           gridCols = gridRows
+       in L.map
+            (\(centerR, centerC) ->
+               [ VU.fromListN
+                 (r * c)
+                 [ v4Function
+                   s
+                   angleFreq
+                   radialFreq
+                   hbTheta
+                   hbf
+                   cgTheta
+                   cgf
+                   (x - centerR)
+                   (y - centerC)
+                 | y <- [0 .. r - 1]
+                 , x <- [0 .. c - 1]
+                 ]
+               | s <- polarScale
+               , angleFreq <- [0 .. psfAngleFreq - 1]
+               , radialFreq <- [0 .. psfRadialFreq - 1]
+               , hbTheta <- hbRadAngle
+               , hbf <- hbFreq
+               , cgTheta <- cgRadAngle
+               , cgf <- cgFreq
+               ]) $
+          grid2D (r, c) (gridRows, gridCols))
+    [0 .. numLayer - 1]
+    prFreq
+    paFreq
+  where
+    hbRadAngle = L.map deg2Rad [0,hbAngle .. 90 - hbAngle]
+    cgRadAngle = L.map deg2Rad [0,cgAngle .. 180 - cgAngle]
+
+{-# INLINE v4Function #-}               
+
+v4Function
+  :: Double
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> Double
+  -> Int
+  -> Int
+  -> Complex Double
+v4Function scale angleFreq radialFreq hbTheta hbFreq cgTheta cgFreq x y =
+  real2Complex (gaussian2D' angleFreq radialFreq scale x y) *
+  ejx (fromIntegral angleFreq * polarTheta) *
+  ejx (fromIntegral radialFreq * polarR * (2 * pi) / (4 * scale)) *
+  ejx (hbFreq * (sqrt . abs $! (u * v))) *
+  ejx (cgFreq * u)
+  where
+    polarTheta = angleFunctionRad (fromIntegral x) (fromIntegral y)
+    polarR = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    c = cos hbTheta
+    s = sin hbTheta
+    u = fromIntegral x * c - fromIntegral y * s
+    v = fromIntegral x * s + fromIntegral y * c

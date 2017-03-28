@@ -15,7 +15,7 @@ import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           CV.V4Filter                  hiding
                                                (applyFilterVariedSizeConduit,
-                                               applyV4QuardTreeFilterConduit)
+                                               applyV4QuadTreeFilterConduit)
 import           Data.Array.Repa              as R
 import           Data.Binary
 import           Data.ByteString              as BS
@@ -168,11 +168,11 @@ applyFilterfixedSizeSparseConduit parallelParams filterVecsList =
                 applyFilterfixedSizeSparseConduit parallelParams filterVecsList)
 
 
-applyV4QuardTreeFilterConduit
+applyV4QuadTreeFilterConduit
   :: ParallelParams
-  -> V4QuardTreeFilter
+  -> V4QuadTreeFilter
   -> Conduit SparseOfflineCharacter (ResourceT IO) (Double, [[VU.Vector Double]])
-applyV4QuardTreeFilterConduit parallelParams filters = do
+applyV4QuadTreeFilterConduit parallelParams filters = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -190,13 +190,13 @@ applyV4QuardTreeFilterConduit parallelParams filters = do
                         filters))
                 xs
         sourceList ys
-        applyV4QuardTreeFilterConduit parallelParams filters)
+        applyV4QuadTreeFilterConduit parallelParams filters)
 
-applyV4QuardTreeFilterComplexConduit
+applyV4QuadTreeFilterComplexConduit
   :: ParallelParams
-  -> V4QuardTreeFilter
+  -> V4QuadTreeFilter
   -> Conduit SparseOfflineCharacter (ResourceT IO) (Double, [[VU.Vector (Complex Double)]])
-applyV4QuardTreeFilterComplexConduit parallelParams filters = do
+applyV4QuadTreeFilterComplexConduit parallelParams filters = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -214,7 +214,7 @@ applyV4QuardTreeFilterComplexConduit parallelParams filters = do
                         filters))
                 xs
         sourceList ys
-        applyV4QuardTreeFilterComplexConduit parallelParams filters)
+        applyV4QuadTreeFilterComplexConduit parallelParams filters)
 
 {-# INLINE applyFilter #-}
 

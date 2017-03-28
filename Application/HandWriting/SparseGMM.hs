@@ -8,7 +8,7 @@ import           Control.Monad.Trans.Resource
 import           CV.Statistics.PCA
 import           CV.Utility.Parallel
 import           CV.V4Filter                         hiding (applyFilterVariedSizeConduit,
-                                                      applyV4QuardTreeFilterConduit)
+                                                      applyV4QuadTreeFilterConduit)
 import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.Binary                 as CB
@@ -20,6 +20,8 @@ import           Data.Vector.Unboxed                 as VU
 import           Data.Word
 import           System.Environment
 import           System.IO
+import           Graphics.Rendering.Chart.Backend.Cairo
+import           Graphics.Rendering.Chart.Easy
 
 main = do
   (path:numLayerStr:imageSizeStr:gmmFile:numGaussianStr:thresholdStr:pcaFile:numPrincipalStr:numTrainStr:filterParamsPath:numThreadStr:numBatchSizeStr:_) <-
@@ -29,9 +31,9 @@ main = do
         { numThread = read numThreadStr :: Int
         , batchSize = read numBatchSizeStr :: Int
         }
-      v4QuardTreeFilterParams =
-        V4FilterQuardTreeFilterParams
-        { quardTreeLayer = read numLayerStr :: Int
+      v4QuadTreeFilterParams =
+        V4QuadTreeFilterParams
+        { quadTreeLayer = read numLayerStr :: Int
         , rows = n
         , cols = n
         , polarSeparableFilterScale = [16]
@@ -45,27 +47,31 @@ main = do
         , hyperbolicFilterFilterFreq = [0.125, 0.25, 0.5, 1]
         , hyperbolicFilterFilterAngle = 10
         }
-      filterVecsList = generateV4FilterQuardTreeFilter v4QuardTreeFilterParams
+      filterVecsList = generateV4FilterQuadTreeFilter v4QuadTreeFilterParams
       n = read imageSizeStr :: Int
-  writeFile filterParamsPath . show $ v4QuardTreeFilterParams
+  writeFile filterParamsPath . show $ v4QuadTreeFilterParams
   labelFeature <-
     runResourceT $
     CB.sourceFile path $$ sparseOfflineCharacterConduit =$=
-    applyV4QuardTreeFilterComplexConduit parallelParams filterVecsList =$=
+    applyV4QuadTreeFilterComplexConduit parallelParams filterVecsList =$=
     CL.consume
   let features = L.transpose . snd . L.unzip $ labelFeature
-      (pcaMat, _, xs) =
+      (pcaMat, eigenVal, xs) =
         L.unzip3 .
         L.map
           (pcaSVD parallelParams (read numPrincipalStr :: Int) .
            L.take (read numTrainStr :: Int) . L.concat) $
         features
+      eigenPairs = VU.toList . VU.imap (\i v -> (i, v)) . L.head $ eigenVal
   -- (pcaMat, _, xs) <-
   --   fmap L.unzip3 .
   --   M.mapM
   --     (pcaCovariance parallelParams (read numPrincipalStr :: Int) .
   --      L.take (read numTrainStr :: Int) . L.concat) $
   --   features
+  toFile def "EigenValue.png" $ do
+    layout_title .= "Eigenvalue"
+    plot (line "" [eigenPairs])
   encodeFile pcaFile pcaMat
   -- withBinaryFile gmmFile WriteMode $ \h ->
   --   M.mapM_

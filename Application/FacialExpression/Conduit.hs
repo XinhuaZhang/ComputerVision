@@ -201,3 +201,43 @@ normalizeVec vec = VU.map (/s) vec
 
 
 
+
+applyFilterFixedSizeComplexConduit
+  :: (R.Source s Double)
+  => ParallelParams
+  -> [[VU.Vector (Complex Double)]]
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) [VU.Vector (Complex Double)]
+applyFilterFixedSizeComplexConduit parallelParams  filterVecsList = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\x ->
+                    let (Z :. channels :. _ :. _) = extent x
+                        imgVecs =
+                          L.map
+                            (\i ->
+                                VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                                (Z :. i :. All :. All))
+                            [0 .. channels - 1]
+                    in applyFilterComplex imgVecs filterVecsList)
+                xs
+        sourceList ys
+        applyFilterFixedSizeComplexConduit parallelParams  filterVecsList)
+
+
+{-# INLINE applyFilterComplex #-}
+
+applyFilterComplex :: [VU.Vector (Complex Double)]
+                   -> [[VU.Vector (Complex Double)]]
+                   -> [VU.Vector (Complex Double)]
+applyFilterComplex imgVecs =
+  L.map
+    (\filterVecs ->
+        VU.fromList .
+        L.concatMap
+          (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
+        imgVecs)
