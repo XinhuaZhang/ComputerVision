@@ -39,8 +39,8 @@ data CartesianSeparableFilterParams = CartesianSeparableFilterParams
   , getCartesianSeparableFilterCols             :: !Int
   , getCartesianSeparableFilterDownsampleFactor :: !Int
   , getCartesianSeparableFilterScale            :: ![Double]
-  , getCartesianSeparableFilterXFreq            :: ![Double]
-  , getCartesianSeparableFilterYFreq            :: ![Double]
+  , getCartesianSeparableFilterXFreq            :: ![Int]
+  , getCartesianSeparableFilterYFreq            :: ![Int]
   } deriving (Show)
 
 instance NFData CartesianSeparableFilterParams where
@@ -89,7 +89,8 @@ instance FilterExpansion CartesianGratingFilter where
 
 cartesianGrating :: Double -> Double -> Double -> Int -> Int -> Complex Double
 cartesianGrating scale theta freq x y =
-  (0 :+ gaussian2D scale x y) * exp (0 :+ freq * u)
+  (gaussian2D scale x y :+ 0) * exp (0 :+ pi * freq * u / scale) /
+  (scale ^ (2 :: Int) :+ 0)
   where
     c = cos theta
     s = sin theta
@@ -132,7 +133,7 @@ instance FilterExpansion CartesianSeparableFilter where
       newCols = div cols downsampleFactor
       newRows = div rows downsampleFactor
   getFilterSize (CartesianSeparableFilter (CartesianSeparableFilterParams gRows gCols _ _ _ scales xfs yfs) _) =
-    (L.product . L.map L.length $ [scales, xfs, yfs]) * gRows * gCols
+    (L.product [L.length scales, L.length xfs, L.length yfs]) * gRows * gCols
   getFilterParameter = getCartesianSeparableFilterParams
   {-# INLINE getFilterVectors #-}
   getFilterVectors (CartesianSeparableFilter _ vecs) = vecs
@@ -144,7 +145,8 @@ instance FilterExpansion CartesianSeparableFilter where
 
 {-# INLINE cartesianSeparable #-}
 
-cartesianSeparable :: Double -> Double -> Double -> Int -> Int -> Complex Double
+cartesianSeparable :: Double -> Int -> Int -> Int -> Int -> Complex Double
 cartesianSeparable scale xFreq yFreq x y =
-  (gaussian2D scale x y :+ 0) * exp (0 :+ xFreq * fromIntegral x) *
-  exp (0 :+ yFreq * fromIntegral y)
+  (gaussian2D scale x y :+ 0) * exp (0 :+ pi * fromIntegral xFreq * fromIntegral x / scale) *
+  exp (0 :+ pi * fromIntegral yFreq * fromIntegral y / scale) /
+  (scale ^ (2 :: Int) :+ 0)

@@ -116,20 +116,16 @@ angularFunc :: Int -> (Int -> Int -> Complex Double)
 angularFunc freq x y =
   ejx
     (P.fromIntegral freq *
-     angleFunctionRad (P.fromIntegral x) (P.fromIntegral y))
+     angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)) / pi
 
 {-# INLINE radialFunc #-}
 
 radialFunc :: Double -> Int -> (Int -> Int -> Complex Double)
 radialFunc scale freq x y =
-  ejx
-    ((sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * fromIntegral freq *
-     (2 * pi) /
-     (4 * scale))
--- ejx
---   ((1 - exp (-1 * P.fromIntegral freq / 8)) *
---    (sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) *
---    pi)
+  ejx ((2 * pi) * fromIntegral freq * r / (2 * scale)) / (scale :+ 0)
+  where
+    r = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+
 
 {-# INLINE fans #-}
 

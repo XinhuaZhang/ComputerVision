@@ -58,11 +58,11 @@ data V4QuadTreeSeparableFilterParams = V4QuadTreeSeparableFilterParams
   , polarSeparableAngularFreq    :: ![Int]
   , polarSeparableName           :: PolarSeparableFilterName
   , cartesianSeparableScale      :: ![Double]
-  , cartesianSeparableXFreq      :: ![Double]
-  , cartesianSeparableYFreq      :: ![Double]
+  , cartesianSeparableXFreq      :: ![Int]
+  , cartesianSeparableYFreq      :: ![Int]
   , hyperbolicSeparableScale     :: ![Double]
-  , hyperbolicSeparableUFreq     :: ![Double]
-  , hyperbolicSeparableVFreq     :: ![Double]
+  , hyperbolicSeparableUFreq     :: ![Int]
+  , hyperbolicSeparableVFreq     :: ![Int]
   , hyperbolicSeparableAngle     :: !Double
   } deriving (Show, Read)
 

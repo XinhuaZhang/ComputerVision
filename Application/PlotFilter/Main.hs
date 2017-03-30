@@ -9,12 +9,12 @@ import           Data.Set                       as S
 
 
 main = do
-  let (ny, nx) = (32, 32)
+  let (ny, nx) = (48, 48)
       filterParamsSet =
         PolarSeparableFilterParamsSet
         { getSizeSet = (ny, nx)
         , getDownsampleFactorSet = 1
-        , getScaleSet = S.fromDistinctAscList [4]
+        , getScaleSet = S.fromDistinctAscList [8]
         , getRadialFreqSet = S.fromDistinctAscList [0 .. (6 - 1)]
         , getAngularFreqSet = S.fromDistinctAscList [0 .. (6 - 1)]
         , getNameSet = Pinwheels

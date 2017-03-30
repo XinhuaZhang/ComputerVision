@@ -32,8 +32,8 @@ data HyperbolicSeparableFilterParams = HyperbolicSeparableFilterParams
   , getHyperbolicSeparableFilterCols             :: !Int
   , getHyperbolicSeparableFilterDownsampleFactor :: !Int
   , getHyperbolicSeparableFilterScale            :: ![Double]
-  , getHyperbolicSeparableFilterUFreq            :: ![Double]
-  , getHyperbolicSeparableFilterVFreq            :: ![Double]
+  , getHyperbolicSeparableFilterUFreq            :: ![Int]
+  , getHyperbolicSeparableFilterVFreq            :: ![Int]
   , getHyperbolicSeparableFilterAngle            :: ![Double]
   } deriving (Show)
 
@@ -91,7 +91,9 @@ instance FilterExpansion HyperbolicFilter where
 
 hyperbolic :: Double -> Double -> Double -> Int -> Int -> Complex Double
 hyperbolic scale theta freq x y =
-  (gaussian2D scale x y :+ 0) * exp (0 :+ freq * (sqrt . abs $! (x' * y')))
+  (gaussian2D scale x y :+ 0) *
+  exp (0 :+ pi * freq * (sqrt . abs $! (x' * y')) / scale) /
+  (scale :+ 0)
   where
     c = cos theta
     s = sin theta
@@ -147,7 +149,8 @@ instance FilterExpansion HyperbolicSeparableFilter where
       newRows = div rows downsampleFactor
       radAngles = L.map deg2Rad angles
   getFilterSize (HyperbolicSeparableFilter (HyperbolicSeparableFilterParams gRows gCols _ _ _ scales ufs vfs as) _) =
-    gRows * gCols * (L.product . L.map L.length $ [scales, ufs, vfs, as])
+    gRows * gCols *
+    (L.product [L.length scales, L.length ufs, L.length vfs, L.length as])
   getFilterParameter = getHyperbolicSeparableFilterParams
   {-# INLINE getFilterVectors #-}
   getFilterVectors (HyperbolicSeparableFilter _ vecs) = vecs
@@ -170,15 +173,22 @@ instance FilterExpansion HyperbolicSeparableFilter where
 
 hyperbolicSeparable :: Double
                     -> Double
-                    -> Double
-                    -> Double
+                    -> Int
+                    -> Int
                     -> Int
                     -> Int
                     -> Complex Double
 hyperbolicSeparable scale theta uFreq vFreq x y
-  | x' == 0 || y' == 0 = gaussian2DDouble scale x' y' :+ 0
+  | x' == 0 || y' == 0 =
+    (gaussian2DDouble scale x' y' :+ 0) * 2 / (scale :+ 0) /
+    ((log . sqrt $ 2 * scale) :+ 0)
   | otherwise =
-    (gaussian2DDouble scale x' y' :+ 0) * exp (0 :+ vFreq * v) * exp (0 :+ uFreq * u)
+    (gaussian2DDouble scale x' y' :+ 0) *
+    exp (0 :+ pi * fromIntegral vFreq * v / scale) *
+    exp (0 :+ pi * fromIntegral uFreq * u / scale) *
+    2 /
+    (scale :+ 0) /
+    ((log . sqrt $ 2 * scale) :+ 0)
   where
     c = cos theta
     s = sin theta
