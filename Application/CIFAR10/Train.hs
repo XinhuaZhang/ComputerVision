@@ -15,61 +15,27 @@ import           System.Environment
 
 main = do
   (imageListPath:labelListPath:isColorStr:gridSizeStr:_) <- getArgs
-  let parallelParams =
-        ParallelParams
-        { numThread = 32
-        , batchSize = 3200
+  let parallelParams = ParallelParams {numThread = 12, batchSize = 1200}
+      v4QuardTreeFilterParams =
+        V4QuadTreeSeparableFilterParams
+        { separableFilterQuadTreeLayer = 2
+        , separableFilterRows = n
+        , separableFilterCols = n
+        , polarSeparableScale = [16]
+        , polarSeparableRadialFreq = [16, 8]
+        , polarSeparableAngularFreq = [16, 8]
+        , polarSeparableName = Pinwheels
+        , cartesianSeparableScale = [28]
+        , cartesianSeparableXFreq = [0,0.05 .. 1]
+        , cartesianSeparableYFreq = [0,0.05 .. 1]
+        , hyperbolicSeparableScale = [28]
+        , hyperbolicSeparableUFreq = [0,0.5 .. 4]
+        , hyperbolicSeparableVFreq = [0,0.1 .. 1]
+        , hyperbolicSeparableAngle = 15
         }
-      polarSeparableFilterParams =
-        PolarSeparableFilterParamsGrid
-        { getPolarSeparableFilterGridRows = fst gridSize
-        , getPolarSeparableFilterGridCols = snd gridSize
-        , getPolarSeparableFilterRows = n
-        , getPolarSeparableFilterCols = n
-        , getPolarSeparableFilterDownsampleFactor = downsampleFactor
-        , getPolarSeparableFilterScale = [8]
-        , getPolarSeparableFilterRadialFreq = [0 .. (8 - 1)]
-        , getPolarSeparableFilterAngularFreq = [0 .. (8 - 1)]
-        , getPolarSeparableFilterName = Pinwheels
-        }
-      cartesianGratingFilterParams =
-        CartesianGratingFilterParams
-        { getCartesianGratingFilterGridRows = fst gridSize
-        , getCartesianGratingFilterGridCols = snd gridSize
-        , getCartesianGratingFilterRows = n
-        , getCartesianGratingFilterCols = n
-        , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [8]
-        , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5, 1]
-        , getCartesianGratingFilterAngle = [0,10 .. 180 - 10] -- [0, 45, 90, 135]
-        }
-      hyperbolicFilterParams =
-        HyperbolicFilterParams
-        { getHyperbolicFilterGridRows = fst gridSize
-        , getHyperbolicFilterGridCols = snd gridSize
-        , getHyperbolicFilterRows = n
-        , getHyperbolicFilterCols = n
-        , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [8]
-        , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1]
-        , getHyperbolicFilterAngle = [0,10 .. 90 - 10] --[0, 45, 90]
-        }
-      polarSeparableFilter =
-        getFilterVectors
-          (makeFilter $ PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion)
-      cartesianGratingFilter =
-        getFilterVectors
-          (makeFilter $ CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter)
-      hyperbolicFilter =
-        getFilterVectors
-          (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
-      filters =
-        L.zipWith3
-          (\a b c -> a L.++ b L.++ c)
-          polarSeparableFilter
-          cartesianGratingFilter
-          hyperbolicFilter
-      n = 64
+      filterVecsList =
+        generateV4SeparableFilterQuadTreeFilter v4QuardTreeFilterParams
+      n = 128
       downsampleFactor = 1
       isColor = read isColorStr :: Bool
       gridSize = read gridSizeStr :: (Int, Int)
@@ -78,25 +44,21 @@ main = do
     runResourceT $
     imagePathSource imageListPath $$ readImageConduit isColor =$=
     resizeImageConduit parallelParams n =$=
-    applyFilterFixedSizeConduit parallelParams downsampleFactor filters =$=
-    CL.map VU.concat =$=
+    applyV4QuadTreeFilterConduit parallelParams filterVecsList =$=
+    CL.map (normalizeVec . VU.concat . L.map VU.concat) =$=
     featurePtrConduitP parallelParams =$=
     CL.consume
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 128
+        , trainC = 1
         , trainNumExamples = L.length featurePtr
         , trainFeatureIndexMax =
-          (getFilterSize
-             (PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion) +
-           getFilterSize
-             (CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter) +
-           getFilterSize
-             (HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)) *
-          if isColor
-            then 6
-            else 2
+            (L.sum . L.map (\ys -> (L.length . L.head $ ys) * L.length ys) $
+             filterVecsList) *
+            if isColor
+              then 6
+              else 2
         , trainModel = "SVM_model"
         }
   print trainParams

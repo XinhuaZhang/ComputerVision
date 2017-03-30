@@ -68,23 +68,33 @@ crossValidationPCA :: ParallelParams
                    -> [(Double,VU.Vector Double)]
                    -> IO ()
 crossValidationPCA parallelParams (TrainParams solver c _ maxIndex' _modelName) nFold numPrincipal trainLabelFeature = do
-  let labelFeatureList = splitList (div (L.length trainLabelFeature) nFold) trainLabelFeature
+  let labelFeatureList =
+        splitList (div (L.length trainLabelFeature) nFold) trainLabelFeature
   percent <-
     M.mapM
       (\i ->
-          let (as, bs) = L.splitAt i labelFeatureList
-              trainInstances = L.concat $! as L.++ L.tail bs
-              testInstances = L.head bs
-              (pcaMatrix, reducedTrainInstances) = pcaSVD parallelParams numPrincipal . snd . L.unzip $ trainInstances
-              reducedTestInstances = pcaReduction parallelParams pcaMatrix . snd . L.unzip $ testInstances
-          in trainNPredict
-               (TrainParams solver c (L.length trainInstances) maxIndex' _modelName)
-               (L.zip (fst . L.unzip $ trainInstances) .
-                L.map (getFeature . Dense . VU.toList) $
-                reducedTrainInstances)
-               (L.zip (fst . L.unzip $ testInstances) .
-                L.map (getFeature . Dense . VU.toList) $
-                reducedTestInstances))
+         let (as, bs) = L.splitAt i labelFeatureList
+             trainInstances = L.concat $! as L.++ L.tail bs
+             testInstances = L.head bs
+             (pcaMatrix, _, reducedTrainInstances) =
+               pcaSVD parallelParams numPrincipal . snd . L.unzip $
+               trainInstances
+             reducedTestInstances =
+               pcaReductionP parallelParams pcaMatrix . snd . L.unzip $
+               testInstances
+         in trainNPredict
+              (TrainParams
+                 solver
+                 c
+                 (L.length trainInstances)
+                 maxIndex'
+                 _modelName)
+              (L.zip (fst . L.unzip $ trainInstances) .
+               L.map (getFeature . Dense . VU.toList) $
+               reducedTrainInstances)
+              (L.zip (fst . L.unzip $ testInstances) .
+               L.map (getFeature . Dense . VU.toList) $
+               reducedTestInstances))
       [0 .. nFold - 1]
   putStrLn $ show (L.sum percent / fromIntegral nFold * 100) L.++ "%"
   where

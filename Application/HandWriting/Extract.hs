@@ -15,7 +15,7 @@ main = do
   labelMapStr <- readFile labelMapPath
   let parallelParams =
         ParallelParams
-        { numThread = 12
+        { numThread = 4
         , batchSize = 4800
         }
       labelMap = read labelMapStr :: IntMap Word16

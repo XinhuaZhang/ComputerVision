@@ -7,6 +7,7 @@ module CV.V4Filter
   , V4QuadTreeFilter
   , generateV4FilterQuadTreeFilter
   , generateV4SeparableFilterQuadTreeFilter
+  , applyV4QuadTreeFilterLabeledArrayConduit
   , applyV4QuadTreeFilterConduit
   , applyFilterVariedSizeConduit
   , applyFilterFixedSizeConduit
@@ -15,6 +16,7 @@ module CV.V4Filter
 
 import           Control.Monad                    as M
 import           Control.Monad.Trans.Resource
+import           CV.Array.LabeledArray
 import           CV.Filter.CartesianGratingFilter as V4
 import           CV.Filter.GaussianFilter
 import           CV.Filter.HyperbolicFilter       as V4
@@ -128,7 +130,7 @@ generateV4FilterQuadTreeFilter params =
     [0..quadTreeLayer params - 1]
     (polarSeparableFilterRadialFreq params)
     (polarSeparableFilterAngularFreq params)
-    
+
 
 generateV4SeparableFilterQuadTreeFilter :: V4QuadTreeSeparableFilterParams -> V4QuadTreeFilter
 generateV4SeparableFilterQuadTreeFilter params =
@@ -186,7 +188,7 @@ generateV4SeparableFilterQuadTreeFilter params =
               getFilterVectors
                 (makeFilter $
                  HyperbolicSeparableFilter hyperbolicSeparableFilterParams [] :: HyperbolicSeparableFilter)
-        in L.zipWith3 (\a b c -> L.concat [a, b, c]) psf cgf hf)
+        in L.zipWith3 (\a b c -> L.concat [a,b,c]) psf cgf hf)
     [0 .. separableFilterQuadTreeLayer params - 1]
     (polarSeparableRadialFreq params)
     (polarSeparableAngularFreq params)
@@ -217,6 +219,32 @@ applyV4QuadTreeFilterConduit parallelParams filters = do
                 xs
         sourceList ys
         applyV4QuadTreeFilterConduit parallelParams filters)
+        
+
+applyV4QuadTreeFilterLabeledArrayConduit
+  :: ParallelParams
+  -> V4QuadTreeFilter
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [[VU.Vector Double]])
+applyV4QuadTreeFilterLabeledArrayConduit parallelParams filters = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray l x) ->
+                   let (Z :. channels :. _ :. _) = extent x
+                       imgVecs =
+                         L.map
+                           (\i ->
+                              VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                              (Z :. i :. All :. All))
+                           [0 .. channels - 1]
+                   in (fromIntegral l, L.map (applyFilter imgVecs) filters))
+                xs
+        sourceList ys
+        applyV4QuadTreeFilterLabeledArrayConduit parallelParams filters)
 
 applyFilterVariedSizeConduit
   :: (R.Source s Double)
@@ -304,9 +332,11 @@ applyFilterFixedSizeConduit parallelParams downSampleFactor filterVecsList = do
 {-# INLINE normalizeVec #-}
 
 normalizeVec :: VU.Vector Double -> VU.Vector Double
-normalizeVec vec = VU.map (/ s) vec
+normalizeVec vec
+  | s == 0 = VU.replicate (VU.length vec) 0
+  | otherwise = VU.map (/ s) vec
   where
-    s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+    s = sqrt . VU.sum . VU.map (^ 2) $ vec
 
 {-# INLINE complexVec2RealVec #-}
 

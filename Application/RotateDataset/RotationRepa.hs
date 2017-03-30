@@ -283,7 +283,7 @@ rotateLabeledImageConduit parallelParams deg = do
 resizeLabeledImageConduit
   :: ParallelParams
   -> Int
-  -> Conduit (LabeledArray DIM3 Double) IO (LabeledArray DIM3 Double)
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
 resizeLabeledImageConduit parallelParams n = do
   xs <- CL.take (batchSize parallelParams)
   unless

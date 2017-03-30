@@ -146,5 +146,5 @@ instance FilterExpansion CartesianSeparableFilter where
 
 cartesianSeparable :: Double -> Double -> Double -> Int -> Int -> Complex Double
 cartesianSeparable scale xFreq yFreq x y =
-  (0 :+ gaussian2D scale x y) * exp (0 :+ xFreq * fromIntegral x) *
+  (gaussian2D scale x y :+ 0) * exp (0 :+ xFreq * fromIntegral x) *
   exp (0 :+ yFreq * fromIntegral y)

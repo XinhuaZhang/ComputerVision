@@ -373,41 +373,36 @@ instance FilterExpansion PolarSeparableFilterExpansion where
     PolarSeparableFilter params .
     L.map
       (\(centerR, centerC) ->
-          [ VU.fromListN
-             (newCols * newRows)
-             [ getFilterByName
-                filterName
-                scale
-                rf
-                af
-                (c - centerC)
-                (r - centerR)
-             | r <- [0 .. newRows - 1]
-             , c <- [0 .. newCols - 1] ]
-          | scale <- scaleSet
-          , rf <- rfSet
-          , af <- afSet ] L.++
-          L.map
-            ((\(scale, rf, af) ->
-                 VU.fromListN
-                   (newCols * newRows)
-                   [ getFilterByName
-                      filterName
-                      scale
-                      rf
-                      af
-                      (c - centerC)
-                      (r - centerR)
-                   | r <- [0 .. newRows - 1]
-                   , c <- [0 .. newCols - 1] ]) .
-             (\(scale, rf, af) ->
+         [ VU.fromListN
+           (newCols * newRows)
+           [ getFilterByName filterName scale rf af (c - centerC) (r - centerR)
+           | r <- [0 .. newRows - 1]
+           , c <- [0 .. newCols - 1]
+           ]
+         | scale <- scaleSet
+         , rf <- rfSet
+         , af <- afSet
+         ] L.++
+         [ let (rf', af') =
                  if rf /= 0 && af /= 0
-                   then (scale, rf, -af)
-                   else (scale, -rf, -af)))
-            [ (scale, rf, af)
-            | scale <- scaleSet
-            , rf <- rfSet
-            , af <- afSet ]) $
+                   then (rf, -af)
+                   else (-rf, -af)
+           in VU.fromListN
+                (newCols * newRows)
+                [ getFilterByName
+                  filterName
+                  scale
+                  rf'
+                  af'
+                  (c - centerC)
+                  (r - centerR)
+                | r <- [0 .. newRows - 1]
+                , c <- [0 .. newCols - 1]
+                ]
+         | scale <- scaleSet
+         , rf <- rfSet
+         , af <- afSet
+         ]) $
     grid2D (newRows, newCols) (gRows, gCols)
     where
       newCols = div cols downSampleFactor

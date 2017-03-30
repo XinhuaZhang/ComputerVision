@@ -91,13 +91,13 @@ instance FilterExpansion HyperbolicFilter where
 
 hyperbolic :: Double -> Double -> Double -> Int -> Int -> Complex Double
 hyperbolic scale theta freq x y =
-  (0 :+ gaussian2D scale x y) * exp (0 :+ freq * (sqrt . abs $! (u * v)))
+  (gaussian2D scale x y :+ 0) * exp (0 :+ freq * (sqrt . abs $! (x' * y')))
   where
     c = cos theta
     s = sin theta
-    u = fromIntegral x * c - fromIntegral y * s
-    v = fromIntegral x * s + fromIntegral y * c
-    
+    x' = fromIntegral x * c - fromIntegral y * s
+    y' = fromIntegral x * s + fromIntegral y * c
+
 
 
 instance FilterExpansion HyperbolicSeparableFilter where
@@ -123,7 +123,7 @@ instance FilterExpansion HyperbolicSeparableFilter where
           , uFreq <- uFreqs
           , vFreq <- vFreqs ] L.++
           [ let (uFreq', vFreq') =
-                  if uFreq' /= 0 && vFreq' /= 0
+                  if uFreq /= 0 && vFreq /= 0
                     then (-uFreq, vFreq)
                     else (-uFreq, -vFreq)
             in VU.fromListN
@@ -176,13 +176,13 @@ hyperbolicSeparable :: Double
                     -> Int
                     -> Complex Double
 hyperbolicSeparable scale theta uFreq vFreq x y
-  | x' == 0 || y' == 0 = 1
+  | x' == 0 || y' == 0 = gaussian2DDouble scale x' y' :+ 0
   | otherwise =
-    (0 :+ gaussian2D scale x y) * exp (0 :+ uFreq * u) * exp (0 :+ vFreq * v)
+    (gaussian2DDouble scale x' y' :+ 0) * exp (0 :+ vFreq * v) * exp (0 :+ uFreq * u)
   where
     c = cos theta
     s = sin theta
     x' = fromIntegral x * c - fromIntegral y * s
     y' = fromIntegral x * s + fromIntegral y * c
-    u = log . sqrt . abs $ x' / y'
-    v = sqrt . abs $ x' * y'
+    u = log . sqrt . abs $! x' / y'
+    v = sqrt . abs $! x' * y'

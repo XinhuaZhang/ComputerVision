@@ -688,7 +688,7 @@ static void solve_l2r_l1l2_svc(const problem *prob, double *w, double eps,
   int i, s, iter = 0;
   double C, d, G;
   double *QD = new double[l];
-  int max_iter = 1000;
+  int max_iter = 10000;
   int *index = new int[l];
   double *alpha = new double[l];
   schar *y = new schar[l];
@@ -865,7 +865,7 @@ static void solve_l2r_l1l2_svr(const problem *prob, double *w,
   int w_size = prob->n;
   double eps = param->eps;
   int i, s, iter = 0;
-  int max_iter = 1000;
+  int max_iter = 10000;
   int active_size = l;
   int *index = new int[l];
 
@@ -1048,7 +1048,7 @@ void solve_l2r_lr_dual(const problem *prob, double *w, double eps, double Cp,
   int w_size = prob->n;
   int i, s, iter = 0;
   double *xTx = new double[l];
-  int max_iter = 1000;
+  int max_iter = 10000;
   int *index = new int[l];
   double *alpha = new double[2 * l];  // store alpha and C - alpha
   schar *y = new schar[l];
@@ -1190,7 +1190,7 @@ static void solve_l1r_l2_svc(problem *prob_col, double *w, double eps,
   int l = prob_col->l;
   int w_size = prob_col->n;
   int j, s, iter = 0;
-  int max_iter = 1000;
+  int max_iter = 10000;
   int active_size = w_size;
   int max_num_linesearch = 20;
 
@@ -1434,7 +1434,7 @@ static void solve_l1r_lr(const problem *prob_col, double *w, double eps,
   int w_size = prob_col->n;
   int j, s, newton_iter = 0, iter = 0;
   int max_newton_iter = 100;
-  int max_iter = 1000;
+  int max_iter = 10000;
   int max_num_linesearch = 20;
   int active_size;
   int QP_active_size;
