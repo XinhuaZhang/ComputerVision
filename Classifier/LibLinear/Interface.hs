@@ -123,7 +123,7 @@ findParameterC (TrainParams solver c numExample maxIndex modelName) label featur
                                                      param'
                                                      5
                                                      (realToFrac c)
-                                                     1024
+                                                     4096
                                                      bestC'
                                                      bestRate'
                                   bestC <- F.peek bestC'

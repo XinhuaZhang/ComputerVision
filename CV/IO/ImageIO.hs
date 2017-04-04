@@ -169,8 +169,8 @@ readImageConduit isColor =
 {-# INLINE rgb2Gray #-}
 rgb2Gray :: Double -> Double -> Double -> Double -> Double
 rgb2Gray bound r g b
-  | yLinear <= 0.0031308 = 12.92 * yLinear
-  | otherwise = 1.055 * (yLinear ** (1 / 2.4)) - 0.055
+  | yLinear <= 0.0031308 = 12.92 * yLinear * bound
+  | otherwise = (1.055 * (yLinear ** (1 / 2.4)) - 0.055) * bound
   where
     !yLinear =
       0.2126 * func bound r + 0.7152 * func bound g + 0.0722 * func bound b

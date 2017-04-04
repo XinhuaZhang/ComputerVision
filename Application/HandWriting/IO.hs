@@ -45,7 +45,8 @@ getOfflineCharacter intMap = do
   let label' = intMap IM.! fromIntegral t
   return $!
     OfflineCharacter label' w h .
-    VU.map (\x -> 255 - x) . VU.fromListN (fromIntegral $ w * h) $
+    VU.map (\x -> 255 - x) .
+    VU.fromListN (fromIntegral $ w * h) $
     bm
 
 hwdbSource :: FilePath -> Source (ResourceT IO) BS.ByteString

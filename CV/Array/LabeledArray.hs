@@ -17,6 +17,9 @@ import           Data.Vector.Unboxed          as VU
 import           GHC.Generics
 import           Prelude                      as P
 import           System.IO
+import Data.List as L
+import           CV.Utility.Parallel
+import           CV.Utility.RepaArrayUtility  as RAU
 
 data LabeledArray sh e =
   LabeledArray !Int
@@ -35,7 +38,7 @@ instance (Binary e, Unbox e, Shape sh) =>
     elemList <- get
     return $!
       LabeledArray label' (fromListUnboxed (shapeOfList shList) elemList)
-      
+
 readLabeledImagebinary :: FilePath -> IO [LabeledArray DIM3 Double]
 readLabeledImagebinary filePath =
   withBinaryFile
@@ -123,17 +126,11 @@ readLabeledImageBinary filePath num =
 
 writeLabeledImageBinarySink :: FilePath
                             -> Int
-                            -> Sink (LabeledArray DIM3 Double) IO ()
+                            -> Sink (LabeledArray DIM3 Double) (ResourceT IO) ()
 writeLabeledImageBinarySink filePath len = do
   h <- liftIO $ openBinaryFile filePath WriteMode
   liftIO $ BL.hPut h (encode (fromIntegral len :: Word32))
-  CL.foldMapM
-    (\x ->
-        let encodedX = encodeLabeledImg x
-            len' = fromIntegral . BL.length $ encodedX :: Word32
-        in do BL.hPut h . encode $ len'
-              BL.hPut h encodedX)
-  liftIO $ hClose h
+  go h
   where
     encodeLabeledImg (LabeledArray label arr) =
       encode .
@@ -142,6 +139,17 @@ writeLabeledImageBinarySink filePath len = do
       R.map (\x -> round x :: Word8) .
       normalizeImage (fromIntegral (maxBound :: Word8)) $
       arr
+    go handle = do
+      x' <- await
+      case x' of
+        Nothing -> liftIO $ hClose handle
+        Just x ->
+          let encodedX = encodeLabeledImg x
+              len' = fromIntegral . BL.length $ encodedX :: Word32
+          in do liftIO . BL.hPut handle . encode $ len'
+                liftIO $ BL.hPut handle encodedX
+                go handle
+
 
 getArrayNumFile :: FilePath -> IO Int
 getArrayNumFile filePath =
@@ -152,3 +160,103 @@ getArrayNumFile filePath =
        lenBS <- liftIO $ BL.hGet h 4
        let len = fromIntegral (decode lenBS :: Word32) :: Int
        return len)
+
+
+-- Set the maximum value of the maximum size, the ratio is intact.
+resizeLabeledArrayConduit
+  :: ParallelParams
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+resizeLabeledArrayConduit parallelParams n = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray l x) ->
+                   let (Z :. nf' :. _ :. _) = extent x
+                       (Z :. ny' :. nx') = extent . L.head $ zs
+                       zs =
+                         L.map
+                           (\i ->
+                              resize2DImageS n . R.slice x $
+                              (Z :. i :. All :. All))
+                           [0 .. nf' - 1]
+                       arr =
+                         fromUnboxed (Z :. nf' :. ny' :. nx') .
+                         VU.concat . L.map toUnboxed $
+                         zs
+                   in (LabeledArray l (deepSeqArray arr arr)))
+                xs
+        sourceList ys
+        resizeLabeledArrayConduit parallelParams n)
+
+
+cropResizeLabeledArrayConduit
+  :: ParallelParams
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+cropResizeLabeledArrayConduit parallelParams n = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray l x) ->
+                   let (Z :. nf' :. ny' :. nx') = extent x
+                       diff = div (abs $ ny' - nx') 2
+                       y =
+                         if ny' == nx'
+                           then delay x
+                           else if ny' > nx'
+                                  then RAU.crop [0, diff, 0] [nx', nx', nf'] x
+                                  else RAU.crop [diff, 0, 0] [ny', ny', nf'] x
+                       zs =
+                         L.map
+                           (\i ->
+                              resize2DImageS n . R.slice y $
+                              (Z :. i :. All :. All))
+                           [0 .. nf' - 1]
+                       arr =
+                         fromUnboxed (Z :. nf' :. n :. n) .
+                         VU.concat . L.map toUnboxed $
+                         zs
+                   in (LabeledArray l (deepSeqArray arr arr)))
+                xs
+        sourceList ys
+        cropResizeLabeledArrayConduit parallelParams n)
+
+padResizeLabeledArrayConduit
+  :: ParallelParams
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+padResizeLabeledArrayConduit parallelParams n = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray l x) ->
+                   let (Z :. nf' :. ny' :. nx') = extent x
+                       maxSize = max ny' nx'
+                       y = RAU.pad [maxSize, maxSize, nf'] x
+                       zs =
+                         L.map
+                           (\i ->
+                              resize2DImageS n . R.slice y $
+                              (Z :. i :. All :. All))
+                           [0 .. nf' - 1]
+                       arr =
+                         fromUnboxed (Z :. nf' :. n :. n) .
+                         VU.concat . L.map toUnboxed $
+                         zs
+                   in (LabeledArray l (deepSeqArray arr arr)))
+                xs
+        sourceList ys
+        padResizeLabeledArrayConduit parallelParams n)

@@ -31,11 +31,11 @@ main =
      -- -- runResourceT $
      -- --   hwdbSource path $$ offlineCharacterConduit labelMap =$= extractRangeConduit (1,1) =$= testSink
      -- imgs <-
-     --   runResourceT $ hwdbSource path $$ offlineCharacterConduit labelMap =$= extractRangeConduit (2,2) =$= CL.take 1
+     --   runResourceT $ hwdbSource path $$ offlineCharacterConduit labelMap =$= extractRangeConduit (1,1) =$= CL.take 1
      -- plotCharacter "test.png" . L.head $ imgs
      imgs <-
        runResourceT $
-       CB.sourceFile path $$ sparseOfflineCharacterConduit =$= extractRangeSparseConduit (2,2) =$= CL.take 1
+       CB.sourceFile path $$ sparseOfflineCharacterConduit =$= extractRangeSparseConduit (3,3) =$= CL.take 1
      print . L.length $ imgs
      plotSparseCharacter "test.png" . L.last $ imgs
      -- (s,ss) <-

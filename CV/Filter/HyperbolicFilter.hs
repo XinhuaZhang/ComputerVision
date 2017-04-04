@@ -92,8 +92,8 @@ instance FilterExpansion HyperbolicFilter where
 hyperbolic :: Double -> Double -> Double -> Int -> Int -> Complex Double
 hyperbolic scale theta freq x y =
   (gaussian2D scale x y :+ 0) *
-  exp (0 :+ pi * freq * (sqrt . abs $! (x' * y')) / scale) /
-  (scale :+ 0)
+  exp (0 :+ pi * freq * (sqrt . abs $! (x' * y')) / scale) -- /
+  -- (scale :+ 0)
   where
     c = cos theta
     s = sin theta
@@ -180,15 +180,15 @@ hyperbolicSeparable :: Double
                     -> Complex Double
 hyperbolicSeparable scale theta uFreq vFreq x y
   | x' == 0 || y' == 0 =
-    (gaussian2DDouble scale x' y' :+ 0) * 2 / (scale :+ 0) /
-    ((log . sqrt $ 2 * scale) :+ 0)
+    (gaussian2DDouble scale x' y' :+ 0) -- * 2 / (scale :+ 0) /
+    -- ((abs . log . sqrt $ 2 * scale) :+ 0)
   | otherwise =
     (gaussian2DDouble scale x' y' :+ 0) *
     exp (0 :+ pi * fromIntegral vFreq * v / scale) *
-    exp (0 :+ pi * fromIntegral uFreq * u / scale) *
-    2 /
-    (scale :+ 0) /
-    ((log . sqrt $ 2 * scale) :+ 0)
+    exp (0 :+ 2 *  pi * fromIntegral uFreq * u / (abs . log . sqrt $ 2 * scale) ) -- *
+    -- 2 /
+    -- (scale :+ 0) /
+    -- ((abs . log . sqrt $ 2 * scale) :+ 0)
   where
     c = cos theta
     s = sin theta

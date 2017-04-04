@@ -89,8 +89,8 @@ instance FilterExpansion CartesianGratingFilter where
 
 cartesianGrating :: Double -> Double -> Double -> Int -> Int -> Complex Double
 cartesianGrating scale theta freq x y =
-  (gaussian2D scale x y :+ 0) * exp (0 :+ pi * freq * u / scale) /
-  (scale ^ (2 :: Int) :+ 0)
+  (gaussian2D scale x y :+ 0) * exp (0 :+ pi * freq * u / scale) -- /
+  -- (scale ^ (2 :: Int) :+ 0)
   where
     c = cos theta
     s = sin theta
@@ -147,6 +147,6 @@ instance FilterExpansion CartesianSeparableFilter where
 
 cartesianSeparable :: Double -> Int -> Int -> Int -> Int -> Complex Double
 cartesianSeparable scale xFreq yFreq x y =
-  (gaussian2D scale x y :+ 0) * exp (0 :+ pi * fromIntegral xFreq * fromIntegral x / scale) *
-  exp (0 :+ pi * fromIntegral yFreq * fromIntegral y / scale) /
-  (scale ^ (2 :: Int) :+ 0)
+  (gaussian2D scale x y :+ 0) * exp (0 :+ pi * fromIntegral xFreq * fromIntegral x / (2 * scale)) *
+  exp (0 :+ pi * fromIntegral yFreq * fromIntegral y / (2 * scale))--  /
+  -- (4 * scale ^ (2 :: Int) :+ 0)

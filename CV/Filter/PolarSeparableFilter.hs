@@ -116,15 +116,18 @@ angularFunc :: Int -> (Int -> Int -> Complex Double)
 angularFunc freq x y =
   ejx
     (P.fromIntegral freq *
-     angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)) / pi
+     angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)) -- / pi
 
 {-# INLINE radialFunc #-}
 
-radialFunc :: Double -> Int -> (Int -> Int -> Complex Double)
-radialFunc scale freq x y =
-  ejx ((2 * pi) * fromIntegral freq * r / (2 * scale)) / (scale :+ 0)
+radialFunc :: Double -> Int -> Int -> (Int -> Int -> Complex Double)
+radialFunc scale af rFreq x y =
+  ejx ((2 * pi) * fromIntegral rFreq * r / (3 * scale + r0)) -- /
+  -- ((2 * scale + r0) :+ 0) *
+  -- 2
   where
     r = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    r0 = 0 --((1 - exp (-0.01 * fromIntegral (abs af))) * 75 * scale) / pi
 
 
 {-# INLINE fans #-}
@@ -137,17 +140,18 @@ fans scale _rf af x y
 {-# INLINE bullseye #-}
 
 bullseye :: Double -> Int -> Int -> (Int -> Int -> Complex Double)
-bullseye scale rf _af x y
-  | scale == 0 = radialFunc scale rf x y
-  | otherwise = radialFunc scale rf x y * real2Complex (gaussian2D scale x y)
+bullseye scale rf af x y
+  | scale == 0 = radialFunc scale af rf x y
+  | otherwise = radialFunc scale af rf x y * real2Complex (gaussian2D scale x y)
 
 {-# INLINE pinwheels #-}
 
 pinwheels :: Double -> Int -> Int -> (Int -> Int -> Complex Double)
 pinwheels scale rf af x y
-  | scale == 0 = angularFunc af x y * radialFunc scale  rf x y
+  | scale == 0 = angularFunc af x y * radialFunc scale af rf x y
   | otherwise =
-    real2Complex (gaussian2D' af rf scale x y) * angularFunc af x y * radialFunc scale rf x y
+    real2Complex (gaussian2D' af rf scale x y) * angularFunc af x y * radialFunc scale af rf x y
+    -- real2Complex (gaussian2D scale x y) * angularFunc af x y * radialFunc scale af rf x y
 
 {-# INLINE getFilterFunc #-}
 

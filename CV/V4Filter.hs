@@ -3,6 +3,7 @@
 module CV.V4Filter
   ( module V4
   , V4QuadTreeFilterParams(..)
+  , SeparableFilterParams(..)
   , V4QuadTreeSeparableFilterParams(..)
   , V4QuadTreeFilter
   , generateV4FilterQuadTreeFilter
@@ -48,6 +49,15 @@ data V4QuadTreeFilterParams = V4QuadTreeFilterParams
   , hyperbolicFilterFilterAngle     :: !Double
   } deriving (Show,Read)
 
+data SeparableFilterParams
+  = P
+  | C
+  | H
+  | PC
+  | PH
+  | CH
+  | PCH
+  deriving (Show, Read)
 
 data V4QuadTreeSeparableFilterParams = V4QuadTreeSeparableFilterParams
   { separableFilterQuadTreeLayer :: !Int
@@ -64,6 +74,7 @@ data V4QuadTreeSeparableFilterParams = V4QuadTreeSeparableFilterParams
   , hyperbolicSeparableUFreq     :: ![Int]
   , hyperbolicSeparableVFreq     :: ![Int]
   , hyperbolicSeparableAngle     :: !Double
+  , separableFilterParams        :: !SeparableFilterParams
   } deriving (Show, Read)
 
 type V4QuadTreeFilter = [[[VU.Vector (Complex Double)]]]
@@ -74,9 +85,7 @@ generateV4FilterQuadTreeFilter params =
     (\i psfRadialFreq psfAngleFreq ->
         let gridRows = 2 ^ i
             gridCols = gridRows
-            j = if i > i
-                   then 2
-                   else i
+            j = i
             polarSeparableFilterParams =
               PolarSeparableFilterParamsGrid
               { getPolarSeparableFilterGridRows = gridRows
@@ -136,59 +145,68 @@ generateV4SeparableFilterQuadTreeFilter :: V4QuadTreeSeparableFilterParams -> V4
 generateV4SeparableFilterQuadTreeFilter params =
   L.zipWith3
     (\i psfRadialFreq psfAngleFreq ->
-        let gridRows = 2 ^ i
-            gridCols = gridRows
-            polarSeparableFilterParams =
-              PolarSeparableFilterParamsGrid
-              { getPolarSeparableFilterGridRows = gridRows
-              , getPolarSeparableFilterGridCols = gridCols
-              , getPolarSeparableFilterRows = separableFilterRows params
-              , getPolarSeparableFilterCols = separableFilterCols params
-              , getPolarSeparableFilterDownsampleFactor = 1
-              , getPolarSeparableFilterScale =
-                L.map (/ (sqrt 2 ^ i)) $ polarSeparableScale params
-              , getPolarSeparableFilterRadialFreq = [0 .. psfRadialFreq - 1]
-              , getPolarSeparableFilterAngularFreq = [0 .. psfAngleFreq - 1]
-              , getPolarSeparableFilterName = polarSeparableName params
-              }
-            cartesianSeparableFilterParams =
-              CartesianSeparableFilterParams
-              { getCartesianSeparableFilterGridRows = gridRows
-              , getCartesianSeparableFilterGridCols = gridCols
-              , getCartesianSeparableFilterRows = separableFilterRows params
-              , getCartesianSeparableFilterCols = separableFilterCols params
-              , getCartesianSeparableFilterDownsampleFactor = 1
-              , getCartesianSeparableFilterScale =
-                L.map (/ (sqrt 2 ^ i)) $ cartesianSeparableScale params
-              , getCartesianSeparableFilterXFreq = cartesianSeparableXFreq params
-              , getCartesianSeparableFilterYFreq = cartesianSeparableYFreq params
-              }
-            hfAngle = hyperbolicSeparableAngle params
-            hyperbolicSeparableFilterParams =
-              HyperbolicSeparableFilterParams
-              { getHyperbolicSeparableFilterGridRows = gridRows
-              , getHyperbolicSeparableFilterGridCols = gridCols
-              , getHyperbolicSeparableFilterRows = separableFilterRows params
-              , getHyperbolicSeparableFilterCols = separableFilterCols params
-              , getHyperbolicSeparableFilterDownsampleFactor = 1
-              , getHyperbolicSeparableFilterScale =
-                L.map (/ (sqrt 2 ^ i)) $ hyperbolicSeparableScale params
-              , getHyperbolicSeparableFilterUFreq = hyperbolicSeparableUFreq params
-              , getHyperbolicSeparableFilterVFreq = hyperbolicSeparableVFreq params
-              , getHyperbolicSeparableFilterAngle = [0,hfAngle .. 90 - hfAngle]
-              }
-            psf =
-              getFilterVectors
-                (makeFilter $ PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion)
-            cgf =
-              getFilterVectors
-                (makeFilter $
-                 CartesianSeparableFilter cartesianSeparableFilterParams [] :: CartesianSeparableFilter)
-            hf =
-              getFilterVectors
-                (makeFilter $
-                 HyperbolicSeparableFilter hyperbolicSeparableFilterParams [] :: HyperbolicSeparableFilter)
-        in L.zipWith3 (\a b c -> L.concat [a,b,c]) psf cgf hf)
+       let gridRows = 2 ^ i
+           gridCols = gridRows
+           polarSeparableFilterParams =
+             PolarSeparableFilterParamsGrid
+             { getPolarSeparableFilterGridRows = gridRows
+             , getPolarSeparableFilterGridCols = gridCols
+             , getPolarSeparableFilterRows = separableFilterRows params
+             , getPolarSeparableFilterCols = separableFilterCols params
+             , getPolarSeparableFilterDownsampleFactor = 1
+             , getPolarSeparableFilterScale =
+                 L.map (/ (sqrt 2 ^ i)) $ polarSeparableScale params
+             , getPolarSeparableFilterRadialFreq = [0 .. psfRadialFreq - 1]
+             , getPolarSeparableFilterAngularFreq = [0 .. psfAngleFreq - 1]
+             , getPolarSeparableFilterName = polarSeparableName params
+             }
+           cartesianSeparableFilterParams =
+             CartesianSeparableFilterParams
+             { getCartesianSeparableFilterGridRows = gridRows
+             , getCartesianSeparableFilterGridCols = gridCols
+             , getCartesianSeparableFilterRows = separableFilterRows params
+             , getCartesianSeparableFilterCols = separableFilterCols params
+             , getCartesianSeparableFilterDownsampleFactor = 1
+             , getCartesianSeparableFilterScale =
+                 L.map (/ (sqrt 2 ^ i)) $ cartesianSeparableScale params
+             , getCartesianSeparableFilterXFreq = cartesianSeparableXFreq params
+             , getCartesianSeparableFilterYFreq = cartesianSeparableYFreq params
+             }
+           hfAngle = hyperbolicSeparableAngle params
+           hyperbolicSeparableFilterParams =
+             HyperbolicSeparableFilterParams
+             { getHyperbolicSeparableFilterGridRows = gridRows
+             , getHyperbolicSeparableFilterGridCols = gridCols
+             , getHyperbolicSeparableFilterRows = separableFilterRows params
+             , getHyperbolicSeparableFilterCols = separableFilterCols params
+             , getHyperbolicSeparableFilterDownsampleFactor = 1
+             , getHyperbolicSeparableFilterScale =
+                 L.map (/ (sqrt 2 ^ i)) $ hyperbolicSeparableScale params
+             , getHyperbolicSeparableFilterUFreq =
+                 hyperbolicSeparableUFreq params
+             , getHyperbolicSeparableFilterVFreq =
+                 hyperbolicSeparableVFreq params
+             , getHyperbolicSeparableFilterAngle = [0,hfAngle .. 90 - hfAngle]
+             }
+           psf =
+             getFilterVectors
+               (makeFilter $ PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion)
+           cgf =
+             getFilterVectors
+               (makeFilter $
+                CartesianSeparableFilter cartesianSeparableFilterParams [] :: CartesianSeparableFilter)
+           hf =
+             getFilterVectors
+               (makeFilter $
+                HyperbolicSeparableFilter hyperbolicSeparableFilterParams [] :: HyperbolicSeparableFilter)
+       in case separableFilterParams params of
+            P -> psf
+            C -> cgf
+            H -> hf
+            PC -> L.zipWith (\a b -> L.concat [a, b]) psf cgf
+            PH -> L.zipWith (\a b -> L.concat [a, b]) psf hf
+            CH -> L.zipWith (\a b -> L.concat [a, b]) cgf hf
+            PCH -> L.zipWith3 (\a b c -> L.concat [a, b, c]) psf cgf hf)
     [0 .. separableFilterQuadTreeLayer params - 1]
     (polarSeparableRadialFreq params)
     (polarSeparableAngularFreq params)

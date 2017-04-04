@@ -51,7 +51,7 @@ plotSparseCharacter filePath (SparseOfflineCharacter _ w h c) =
     w' = fromIntegral w
     arr' =
       R.fromUnboxed (Z :. h' :. w') .
-      VU.accumulate (+) (VU.replicate (fromIntegral $ w * h) 0) . VU.map (second $ const (255::Word8)) .
+      VU.accumulate (+) (VU.replicate (fromIntegral $ w * h) 0) . -- VU.map (second $ const (255::Word8)) .
       VU.map (first fromIntegral) $
       c
 
@@ -234,6 +234,7 @@ applyFilterSparse :: VU.Vector (Int, Complex Double)
 applyFilterSparse imgVec =
   L.map
     (normalizeVec .
+     -- complexVec2RealVec .
      VU.fromList .
      complexList2RealList .
      L.map

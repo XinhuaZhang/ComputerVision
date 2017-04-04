@@ -72,22 +72,32 @@ pad :: (Real e
        ,Shape sh)
     => [Int] -> Array s sh e -> Array D sh e
 pad newDims arr =
-  fromFunction
-    (shapeOfList dimList)
+  backpermuteDft
+    (fromFunction (shapeOfList dimList) (\_ -> 0))
     (\sh' ->
        let idx = L.zipWith (-) (listOfShape sh') diff
-       in if L.or (L.zipWith (\i j -> i < 0 || i >= j) idx oldDimList)
+       in if L.or (L.zipWith (\i j -> i < 0 || (i >= j)) idx oldDimList)
+            then Nothing
+            else Just $ shapeOfList idx)
+    arr
+  -- fromFunction
+  --   (shapeOfList dimList)
+  --   (\sh' ->
+  --      let idx = L.zipWith (-) (listOfShape sh') diff
+  --      in if L.or (L.zipWith (\i j -> i < 0 || (i >= j)) idx oldDimList)
+  --            then 0
+  --            else arr R.! shapeOfList idx)
+  where
+    oldDimList = listOfShape . extent $ arr
+    dimList = L.zipWith max newDims oldDimList
+    diff =
+      L.zipWith
+        (\a b ->
+           if a - b <= 0
              then 0
-             else arr R.! shapeOfList idx)
-  where oldDimList = listOfShape . extent $ arr
-        dimList = L.zipWith max newDims oldDimList
-        diff =
-          L.zipWith (\a b ->
-                       if a - b <= 0
-                          then 0
-                          else div (a - b) 2)
-                    newDims
-                    oldDimList
+             else div (a - b) 2)
+        newDims
+        oldDimList
 
 
 computeDerivativeP

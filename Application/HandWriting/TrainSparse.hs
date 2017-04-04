@@ -18,63 +18,31 @@ import           Data.Word
 import           System.Environment
 
 main = do
-  (path:modelName:cStr:_) <- getArgs
-  let parallelParams = ParallelParams {numThread = 32, batchSize = 3200}
+  (path:modelName:cStr:paramsFilePath:patchSizeStr:_) <- getArgs
+  let parallelParams = ParallelParams {numThread = 16, batchSize = 1600}
       v4QuardTreeFilterParams =
         V4QuadTreeSeparableFilterParams
-        { separableFilterQuadTreeLayer = 2
+        { separableFilterQuadTreeLayer = 1
         , separableFilterRows = n
         , separableFilterCols = n
-        , polarSeparableScale = [16]
-        , polarSeparableRadialFreq = [16, 10, 8]
-        , polarSeparableAngularFreq = [16, 10, 8]
+        , polarSeparableScale = [32]
+        , polarSeparableRadialFreq = [8, 8, 8]
+        , polarSeparableAngularFreq = [8, 8, 8]
         , polarSeparableName = Pinwheels
-        , cartesianSeparableScale = [28]
-        , cartesianSeparableXFreq = [0,0.05 .. 1]
-        , cartesianSeparableYFreq = [0,0.05 .. 1]
-        , hyperbolicSeparableScale = [28]
-        , hyperbolicSeparableUFreq = [0,0.5 .. 4]
-        , hyperbolicSeparableVFreq = [0,0.1 .. 1]
+        , cartesianSeparableScale = [36]
+        , cartesianSeparableXFreq = [0..7]
+        , cartesianSeparableYFreq = [0..7]
+        , hyperbolicSeparableScale = [32]
+        , hyperbolicSeparableUFreq = [0..3]
+        , hyperbolicSeparableVFreq = [0..7]
         , hyperbolicSeparableAngle = 15
+        , separableFilterParams = PCH
         }
       filterVecsList =
         generateV4SeparableFilterQuadTreeFilter v4QuardTreeFilterParams
-      -- v4QuadTreeFilterParams =
-      --   V4QuadTreeFilterParams
-      --   { quadTreeLayer = 4
-      --   , rows = n
-      --   , cols = n
-      --   , polarSeparableFilterScale = [16]
-      --   , polarSeparableFilterRadialFreq = [16,10,8,6,4]
-      --   , polarSeparableFilterAngularFreq = [8,8,8,6,4]
-      --   , polarSeparableFilterName = Pinwheels
-      --   , cartesianGratingFilterScale = [24]
-      --   , cartesianGratingFilterFreq = [0.125, 0.25, 0.5, 1]
-      --   , cartesianGratingFilterAngle = 10
-      --   , hyperbolicFilterFilterScale = [24]
-      --   , hyperbolicFilterFilterFreq = [0.125,0.25, 0.5, 1]
-      --   , hyperbolicFilterFilterAngle = 10
-      --   }
-      -- filterVecsList = generateV4FilterQuadTreeFilter v4QuadTreeFilterParams
-      -- v4QuadTreeFilterParams =
-      --   V4QuadTreeFilterParams
-      --   { quadTreeLayer = 1
-      --   , rows = n
-      --   , cols = n
-      --   , polarSeparableFilterScale = [16]
-      --   , polarSeparableFilterRadialFreq = [8]
-      --   , polarSeparableFilterAngularFreq = [8]
-      --   , polarSeparableFilterName = Pinwheels
-      --   , cartesianGratingFilterScale = [24]
-      --   , cartesianGratingFilterFreq = [0, 0.125, 0.5, 1]
-      --   , cartesianGratingFilterAngle = 45
-      --   , hyperbolicFilterFilterScale = [24]
-      --   , hyperbolicFilterFilterFreq = [0, 0.125, 0.5, 1]
-      --   , hyperbolicFilterFilterAngle = 45
-      --   }
-      -- filterVecsList = makeV4Filter v4QuadTreeFilterParams
-      n = 128
+      n = read patchSizeStr :: Int
       downsampleFactor = 1
+  writeFile paramsFilePath . show $ v4QuardTreeFilterParams
   labelFeaturePtr <-
     runResourceT $
     CB.sourceFile path $$ sparseOfflineCharacterConduit =$=
