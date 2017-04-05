@@ -6,13 +6,13 @@ import           Data.Complex
 import           Data.List           as L
 import           Data.Vector.Unboxed
 
-class FilterExpansion a where
+class FilterExpansion a  where
   type FilterParameter a :: *
+  type FilterVectors a :: *
   makeFilter :: a -> a
   getFilterSize :: a -> Int
   getFilterParameter :: a -> FilterParameter a
-  getFilterVectors :: a
-                   -> [[([[Vector (Complex Double)]], [[Vector (Complex Double)]])]]
+  getFilterVectors :: a -> FilterVectors a
   changeSizeParameter :: Int -> Int -> a -> a
 
 

@@ -50,7 +50,7 @@ instance NFData HyperbolicFilter where
 
 data HyperbolicSeparableFilter = HyperbolicSeparableFilter
   { getHyperbolicSeparableFilterParams :: HyperbolicSeparableFilterParams
-  , getHyperbolicSeparableFilter       :: [[VU.Vector (Complex Double)]]
+  , getHyperbolicSeparableFilter       :: [[([[VU.Vector (Complex Double)]],[[VU.Vector (Complex Double)]])]]
   }
 
 instance NFData HyperbolicSeparableFilter where
@@ -58,6 +58,7 @@ instance NFData HyperbolicSeparableFilter where
 
 instance FilterExpansion HyperbolicFilter where
   type FilterParameter HyperbolicFilter = HyperbolicFilterParams
+  type FilterVectors HyperbolicFilter = [[VU.Vector (Complex Double)]]
   {-# INLINE makeFilter #-}
   makeFilter (HyperbolicFilter params@(HyperbolicFilterParams gRows gCols rows cols downsampleFactor scales freqs angles) _) =
     HyperbolicFilter params .
@@ -104,45 +105,41 @@ hyperbolic scale theta freq x y =
 
 instance FilterExpansion HyperbolicSeparableFilter where
   type FilterParameter HyperbolicSeparableFilter = HyperbolicSeparableFilterParams
+  type FilterVectors HyperbolicSeparableFilter = [[([[VU.Vector (Complex Double)]], [[VU.Vector (Complex Double)]])]]
   {-# INLINE makeFilter #-}
   makeFilter (HyperbolicSeparableFilter params@(HyperbolicSeparableFilterParams gRows gCols rows cols downsampleFactor scales uFreqs vFreqs angles) _) =
     HyperbolicSeparableFilter params .
     L.map
       (\(centerR, centerC) ->
-          [ VU.fromListN
-             (newCols * newRows)
-             [ hyperbolicSeparable
-                scale
-                angle
-                uFreq
-                vFreq
-                (x - centerC)
-                (y - centerR)
-             | y <- [0 .. newRows - 1]
-             , x <- [0 .. newCols - 1] ]
-          | angle <- radAngles
-          , scale <- scales
-          , uFreq <- uFreqs
-          , vFreq <- vFreqs ] L.++
-          [ let (uFreq', vFreq') =
-                  if uFreq /= 0 && vFreq /= 0
-                    then (-uFreq, vFreq)
-                    else (-uFreq, -vFreq)
-            in VU.fromListN
-                 (newCols * newRows)
-                 [ hyperbolicSeparable
-                    scale
-                    angle
-                    uFreq'
-                    vFreq'
-                    (x - centerC)
-                    (y - centerR)
-                 | y <- [0 .. newRows - 1]
-                 , x <- [0 .. newCols - 1] ]
-          | angle <- radAngles
-          , scale <- scales
-          , uFreq <- uFreqs
-          , vFreq <- vFreqs ]) $
+          [ ( [ [ VU.fromListN
+                   (newCols * newRows)
+                   [ hyperbolicSeparable
+                      scale
+                      angle
+                      uFreq
+                      vFreq
+                      (x - centerC)
+                      (y - centerR)
+                   | y <- [0 .. newRows - 1]
+                   , x <- [0 .. newCols - 1] ]
+                | uFreq <- uFreqs ]
+              | vFreq <- vFreqs ]
+            , [ [ VU.fromListN
+                   (newCols * newRows)
+                   [ conjugate $
+                    hyperbolicSeparable
+                      scale
+                      angle
+                      uFreq
+                      vFreq
+                      (x - centerC)
+                      (y - centerR)
+                   | y <- [0 .. newRows - 1]
+                   , x <- [0 .. newCols - 1] ]
+                | uFreq <- uFreqs ]
+              | vFreq <- vFreqs ])
+          | scale <- scales
+          , angle <- radAngles ]) $
     grid2D (newRows, newCols) (gRows, gCols)
     where
       newCols = div cols downsampleFactor

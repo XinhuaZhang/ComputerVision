@@ -62,7 +62,7 @@ data PolarSeparableFilterParamsGrid = PolarSeparableFilterParamsGrid
   , getPolarSeparableFilterName             :: !PolarSeparableFilterName
   } deriving (Show)
 
-type PolarSeparableFilterExpansion = PolarSeparableFilter PolarSeparableFilterParamsGrid [[VU.Vector (Complex Double)]]
+type PolarSeparableFilterExpansion = PolarSeparableFilter PolarSeparableFilterParamsGrid [[([[VU.Vector (Complex Double)]], [[VU.Vector (Complex Double)]])]]
 
 -- this function is to make sure that the params sequence is correct
 {-# INLINE generateParamsSet #-}  
@@ -368,41 +368,40 @@ makeFilterList ny nx f =
 
 instance FilterExpansion PolarSeparableFilterExpansion where
   type FilterParameter PolarSeparableFilterExpansion = PolarSeparableFilterParamsGrid
+  type FilterVectors PolarSeparableFilterExpansion = [[([[VU.Vector (Complex Double)]], [[VU.Vector (Complex Double)]])]]
   {-# INLINE makeFilter #-}
   makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsGrid gRows gCols rows cols downSampleFactor scaleSet rfSet afSet filterName) _) =
     PolarSeparableFilter params .
     L.map
       (\(centerR, centerC) ->
-         [ VU.fromListN
-           (newCols * newRows)
-           [ getFilterByName filterName scale rf af (c - centerC) (r - centerR)
-           | r <- [0 .. newRows - 1]
-           , c <- [0 .. newCols - 1]
-           ]
-         | scale <- scaleSet
-         , rf <- rfSet
-         , af <- afSet
-         ] L.++
-         [ let (rf', af') =
-                 if rf /= 0 && af /= 0
-                   then (rf, -af)
-                   else (-rf, -af)
-           in VU.fromListN
-                (newCols * newRows)
-                [ getFilterByName
-                  filterName
-                  scale
-                  rf'
-                  af'
-                  (c - centerC)
-                  (r - centerR)
-                | r <- [0 .. newRows - 1]
-                , c <- [0 .. newCols - 1]
-                ]
-         | scale <- scaleSet
-         , rf <- rfSet
-         , af <- afSet
-         ]) $
+          [ ( [ [ VU.fromListN
+                   (newCols * newRows)
+                   [ getFilterByName
+                      filterName
+                      scale
+                      rf
+                      af
+                      (c - centerC)
+                      (r - centerR)
+                   | r <- [0 .. newRows - 1]
+                   , c <- [0 .. newCols - 1] ]
+                | af <- afSet ]
+              | rf <- rfSet ]
+            , [ [ VU.fromListN
+                   (newCols * newRows)
+                   [ conjugate $
+                    getFilterByName
+                      filterName
+                      scale
+                      rf
+                      af
+                      (c - centerC)
+                      (r - centerR)
+                   | r <- [0 .. newRows - 1]
+                   , c <- [0 .. newCols - 1] ]
+                | af <- afSet ]
+              | rf <- rfSet ])
+          | scale <- scaleSet ]) $
     grid2D (newRows, newCols) (gRows, gCols)
     where
       newCols = div cols downSampleFactor

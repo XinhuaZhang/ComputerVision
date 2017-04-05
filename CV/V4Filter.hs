@@ -78,6 +78,7 @@ data V4QuadTreeSeparableFilterParams = V4QuadTreeSeparableFilterParams
   } deriving (Show, Read)
 
 type V4QuadTreeFilter = [[[VU.Vector (Complex Double)]]]
+type V4QuadTreeSeparableFilter = [[[([[VU.Vector (Complex Double)]], [[VU.Vector (Complex Double)]])]]]
 
 generateV4FilterQuadTreeFilter :: V4QuadTreeFilterParams -> V4QuadTreeFilter
 generateV4FilterQuadTreeFilter params =
