@@ -74,6 +74,36 @@ plotImage filePath img = do
             show nfp' P.++
             " channels."
   savePngImage filePath w
+  
+
+rgb2ColorOpponency
+  :: (R.Source s Double)
+  => Array s DIM3 Double -> Array D DIM3 Double
+rgb2ColorOpponency arr
+  | nc == 3 =
+    fromFunction
+      (extent arr)
+      (\(Z :. k :. j :. i) ->
+         let r = arr R.! (Z :. 0 :. j :. i)
+             g = arr R.! (Z :. 1 :. j :. i)
+             b = arr R.! (Z :. 2 :. j :. i)
+             y = (r + g) / 2
+         in case k of
+              0 ->
+                if r + g == 0
+                  then 0
+                  else (r - g) / (r + g)
+              1 ->
+                if b + y == 0
+                  then 0
+                  else (b - y) / (b + y)
+              2 -> r + g + b
+              _ -> error "rgb2ColorOpponency: image channel error.")
+  | otherwise =
+    error $
+    "rgb2ColorOpponency: the number of channels is not 3 but " L.++ show nc
+  where
+    (Z :. nc :. _ :. _) = extent arr
 
 -- Set the maximum value of the maximum size, the ratio is intact.
 {-# INLINE resize2DImageS #-}   
@@ -179,8 +209,9 @@ padResizeImageConduit
   :: (R.Source s Double)
   => ParallelParams
   -> Int
+  -> Double
   -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
-padResizeImageConduit parallelParams n = do
+padResizeImageConduit parallelParams n padVal = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -191,7 +222,7 @@ padResizeImageConduit parallelParams n = do
                 (\x ->
                    let (Z :. nf' :. ny' :. nx') = extent x
                        maxSize = max ny' nx'
-                       y = RAU.pad [maxSize, maxSize, nf'] x
+                       y = RAU.pad [maxSize, maxSize, nf'] padVal x
                        zs =
                          L.map
                            (\i ->
@@ -205,4 +236,4 @@ padResizeImageConduit parallelParams n = do
                    in deepSeqArray arr arr)
                 xs
         sourceList ys
-        padResizeImageConduit parallelParams n)
+        padResizeImageConduit parallelParams n padVal)

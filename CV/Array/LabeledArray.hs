@@ -233,8 +233,9 @@ cropResizeLabeledArrayConduit parallelParams n = do
 padResizeLabeledArrayConduit
   :: ParallelParams
   -> Int
+  -> Double
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
-padResizeLabeledArrayConduit parallelParams n = do
+padResizeLabeledArrayConduit parallelParams n padVal = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -245,7 +246,7 @@ padResizeLabeledArrayConduit parallelParams n = do
                 (\(LabeledArray l x) ->
                    let (Z :. nf' :. ny' :. nx') = extent x
                        maxSize = max ny' nx'
-                       y = RAU.pad [maxSize, maxSize, nf'] x
+                       y = RAU.pad [maxSize, maxSize, nf'] padVal x
                        zs =
                          L.map
                            (\i ->
@@ -259,4 +260,4 @@ padResizeLabeledArrayConduit parallelParams n = do
                    in (LabeledArray l (deepSeqArray arr arr)))
                 xs
         sourceList ys
-        padResizeLabeledArrayConduit parallelParams n)
+        padResizeLabeledArrayConduit parallelParams n padVal)
