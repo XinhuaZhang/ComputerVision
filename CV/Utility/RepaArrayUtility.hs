@@ -70,10 +70,10 @@ cropUnsafe start len =
 pad :: (Real e
        ,Source s e
        ,Shape sh)
-    => [Int] -> Array s sh e -> Array D sh e
-pad newDims arr =
+    => [Int] -> e -> Array s sh e -> Array D sh e
+pad newDims padVal arr =
   backpermuteDft
-    (fromFunction (shapeOfList dimList) (\_ -> 0))
+    (fromFunction (shapeOfList dimList) (\_ -> padVal))
     (\sh' ->
        let idx = L.zipWith (-) (listOfShape sh') diff
        in if L.or (L.zipWith (\i j -> i < 0 || (i >= j)) idx oldDimList)
