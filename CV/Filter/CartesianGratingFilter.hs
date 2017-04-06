@@ -26,7 +26,7 @@ instance NFData CartesianGratingFilterParams where
 
 data CartesianGratingFilter = CartesianGratingFilter
   { getCartesianGratingFilterParams :: CartesianGratingFilterParams
-  , getCartesianGratingFilter       :: [[VU.Vector (Complex Double)]]
+  , getCartesianGratingFilter :: [[VU.Vector (Complex Double)]]
   }
 
 instance NFData CartesianGratingFilter where
@@ -48,7 +48,7 @@ instance NFData CartesianSeparableFilterParams where
 
 data CartesianSeparableFilter = CartesianSeparableFilter
   { getCartesianSeparableFilterParams :: CartesianSeparableFilterParams
-  , getCartesianSeparableFilter       :: [[VU.Vector (Complex Double)]]
+  , getCartesianSeparableFilter       :: [[([[VU.Vector (Complex Double)]], [[VU.Vector (Complex Double)]])]]
   }
 
 instance NFData CartesianSeparableFilter where
@@ -56,6 +56,7 @@ instance NFData CartesianSeparableFilter where
 
 instance FilterExpansion CartesianGratingFilter where
   type FilterParameter CartesianGratingFilter = CartesianGratingFilterParams
+  type FilterVectors CartesianGratingFilter = [[VU.Vector (Complex Double)]]
   {-# INLINE makeFilter #-}
   makeFilter (CartesianGratingFilter params@(CartesianGratingFilterParams gRows gCols rows cols downsampleFactor scales freqs angles) _) =
     CartesianGratingFilter params .
@@ -98,36 +99,38 @@ cartesianGrating scale theta freq x y =
 
 instance FilterExpansion CartesianSeparableFilter where
   type FilterParameter CartesianSeparableFilter = CartesianSeparableFilterParams
+  type FilterVectors CartesianSeparableFilter = [[([[VU.Vector (Complex Double)]], [[VU.Vector (Complex Double)]])]]
   {-# INLINE makeFilter #-}
   makeFilter (CartesianSeparableFilter params@(CartesianSeparableFilterParams gRows gCols rows cols downsampleFactor scales xFreqs yFreqs) _) =
     CartesianSeparableFilter params .
     L.map
       (\(centerR, centerC) ->
-          [ VU.fromListN
-             (newCols * newRows)
-             [ cartesianSeparable scale xFreq yFreq (x - centerC) (y - centerR)
-             | y <- [0 .. newRows - 1]
-             , x <- [0 .. newCols - 1] ]
-          | scale <- scales
-          , xFreq <- xFreqs
-          , yFreq <- yFreqs ] L.++
-          [ let (xFreq', yFreq') =
-                  if xFreq /= 0 && yFreq /= 0
-                    then (-xFreq, yFreq)
-                    else (-xFreq, -yFreq)
-            in VU.fromListN
-                 (newCols * newRows)
-                 [ cartesianSeparable
-                    scale
-                    xFreq'
-                    yFreq'
-                    (x - centerC)
-                    (y - centerR)
-                 | y <- [0 .. newRows - 1]
-                 , x <- [0 .. newCols - 1] ]
-          | scale <- scales
-          , xFreq <- xFreqs
-          , yFreq <- yFreqs ]) $
+          [ ( [ [ VU.fromListN
+                   (newCols * newRows)
+                   [ cartesianSeparable
+                      scale
+                      xFreq
+                      yFreq
+                      (x - centerC)
+                      (y - centerR)
+                   | y <- [0 .. newRows - 1]
+                   , x <- [0 .. newCols - 1] ]
+                | xFreq <- xFreqs ]
+              | yFreq <- yFreqs ]
+            , [ [ VU.fromListN
+                   (newCols * newRows)
+                   [ conjugate $
+                    cartesianSeparable
+                      scale
+                      xFreq
+                      yFreq
+                      (x - centerC)
+                      (y - centerR)
+                   | y <- [0 .. newRows - 1]
+                   , x <- [0 .. newCols - 1] ]
+                | xFreq <- xFreqs ]
+              | yFreq <- yFreqs ])
+          | scale <- scales ]) $
     grid2D (newRows, newCols) (gRows, gCols)
     where
       newCols = div cols downsampleFactor
