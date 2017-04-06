@@ -25,18 +25,18 @@ main = do
         { separableFilterQuadTreeLayer = 1
         , separableFilterRows = n
         , separableFilterCols = n
-        , polarSeparableScale = [32]
+        , polarSeparableScale = [24] -- L.map (\i -> 8 * (2 ** (i/2))) [4..5-1]
         , polarSeparableRadialFreq = [8, 8, 8]
         , polarSeparableAngularFreq = [8, 8, 8]
         , polarSeparableName = Pinwheels
-        , cartesianSeparableScale = [36]
+        , cartesianSeparableScale = L.map (\i -> 8 * (2 ** (i/2))) [4..5-1]
         , cartesianSeparableXFreq = [0..7]
         , cartesianSeparableYFreq = [0..7]
-        , hyperbolicSeparableScale = [32]
+        , hyperbolicSeparableScale = L.map (\i -> 8 * (2 ** (i/2))) [4..5-1]
         , hyperbolicSeparableUFreq = [0..3]
         , hyperbolicSeparableVFreq = [0..7]
-        , hyperbolicSeparableAngle = 15
-        , separableFilterParams = PCH
+        , hyperbolicSeparableAngle = 90
+        , separableFilterParams = PC
         }
       filterVecsList =
         generateV4SeparableFilterQuadTreeFilter v4QuardTreeFilterParams

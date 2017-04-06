@@ -344,7 +344,7 @@ rescaleConduit parallelParams newSize = do
                           VU.map fromIntegral $
                           c
                         maxSize = fromIntegral $ max h w
-                        paddedArr = pad [maxSize, maxSize] arr'
+                        paddedArr = pad [maxSize, maxSize] 0 arr'
                         rescaledArr = rescale2D (newSize, newSize) (0, 255) paddedArr
                         sparseVec =
                           VU.filter (\x' -> snd x' /= 0) .

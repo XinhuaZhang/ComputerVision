@@ -121,8 +121,10 @@ angularFunc freq x y =
 {-# INLINE radialFunc #-}
 
 radialFunc :: Double -> Int -> Int -> (Int -> Int -> Complex Double)
-radialFunc scale af rFreq x y =
-  ejx ((2 * pi) * fromIntegral rFreq * r / (3 * scale + r0)) -- /
+radialFunc scale af rFreq x y 
+  | r == 0 = 1
+  | otherwise = ejx (pi * fromIntegral rFreq * (log r) / scale)
+  -- ejx ((2 * pi) * fromIntegral rFreq * r / (3 * scale + r0)) -- /
   -- ((2 * scale + r0) :+ 0) *
   -- 2
   where

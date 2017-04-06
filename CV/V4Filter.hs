@@ -156,7 +156,7 @@ generateV4SeparableFilterQuadTreeFilter params =
              , getPolarSeparableFilterDownsampleFactor = 1
              , getPolarSeparableFilterScale =
                  L.map (/ (sqrt 2 ^ i)) $ polarSeparableScale params
-             , getPolarSeparableFilterRadialFreq = [0 .. psfRadialFreq - 1]
+             , getPolarSeparableFilterRadialFreq =  L.take psfRadialFreq [0,4..]  --[0,4 .. psfRadialFreq - 0]
              , getPolarSeparableFilterAngularFreq = [0 .. psfAngleFreq - 1]
              , getPolarSeparableFilterName = polarSeparableName params
              }
@@ -371,12 +371,12 @@ applyFilter :: [VU.Vector (Complex Double)]
 applyFilter imgVecs =
   L.map
     (\filterVecs ->
-        normalizeVec .
-        complexVec2RealVec .
-        VU.fromList .
-        L.concatMap
-          (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
-        imgVecs)
+       normalizeVec .
+       complexVec2RealVec . VU.fromList .
+       -- VU.concat .
+       -- L.map (normalizeVec . complexVec2RealVec . VU.fromList) .
+       L.concatMap (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
+       imgVecs)
 
 
 makeV4Filter

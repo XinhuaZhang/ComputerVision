@@ -16,75 +16,29 @@ import           System.Environment
 
 main = do
   (path:_) <- getArgs
-  let parallelParams =
-        ParallelParams
-        { numThread = 12
-        , batchSize = 480
+  let parallelParams = ParallelParams {numThread = 12, batchSize = 480}
+      v4QuardTreeFilterParams =
+        V4QuadTreeSeparableFilterParams
+        { separableFilterQuadTreeLayer = 1
+        , separableFilterRows = n
+        , separableFilterCols = n
+        , polarSeparableScale = L.map (\i -> 8 * (2 ** (i / 2))) [4 .. 5 - 1]
+        , polarSeparableRadialFreq = [8, 8, 8]
+        , polarSeparableAngularFreq = [8, 8, 8]
+        , polarSeparableName = Pinwheels
+        , cartesianSeparableScale =
+            L.map (\i -> 8 * (2 ** (i / 2))) [4 .. 5 - 1]
+        , cartesianSeparableXFreq = [0 .. 7]
+        , cartesianSeparableYFreq = [0 .. 7]
+        , hyperbolicSeparableScale =
+            L.map (\i -> 8 * (2 ** (i / 2))) [4 .. 5 - 1]
+        , hyperbolicSeparableUFreq = [0 .. 3]
+        , hyperbolicSeparableVFreq = [0 .. 7]
+        , hyperbolicSeparableAngle = 90
+        , separableFilterParams = PCH
         }
-      polarSeparableFilterParams =
-        PolarSeparableFilterParamsGrid
-        { getPolarSeparableFilterGridRows = fst gridSize
-        , getPolarSeparableFilterGridCols = snd gridSize
-        , getPolarSeparableFilterRows = n
-        , getPolarSeparableFilterCols = n
-        , getPolarSeparableFilterDownsampleFactor = downsampleFactor
-        , getPolarSeparableFilterScale = [16]
-        , getPolarSeparableFilterRadialFreq = [0 .. (16 - 1)]
-        , getPolarSeparableFilterAngularFreq = [0 .. (8 - 1)]
-        , getPolarSeparableFilterName = Pinwheels
-        }
-      polarSeparableFilterParams1 =
-        PolarSeparableFilterParamsGrid
-        { getPolarSeparableFilterGridRows = fst gridSize
-        , getPolarSeparableFilterGridCols = snd gridSize
-        , getPolarSeparableFilterRows = n
-        , getPolarSeparableFilterCols = n
-        , getPolarSeparableFilterDownsampleFactor = downsampleFactor
-        , getPolarSeparableFilterScale = [8, 12]
-        , getPolarSeparableFilterRadialFreq = [0 .. (8 - 1)]
-        , getPolarSeparableFilterAngularFreq = [0 .. (8 - 1)]
-        , getPolarSeparableFilterName = Pinwheels
-        }
-      cartesianGratingFilterParams =
-        CartesianGratingFilterParams
-        { getCartesianGratingFilterGridRows = fst gridSize
-        , getCartesianGratingFilterGridCols = snd gridSize
-        , getCartesianGratingFilterRows = n
-        , getCartesianGratingFilterCols = n
-        , getCartesianGratingFilterDownsampleFactor = downsampleFactor
-        , getCartesianGratingFilterScale = [24]
-        , getCartesianGratingFilterFreq = [0.125, 0.25, 0.5, 1]
-        , getCartesianGratingFilterAngle = [0,10 .. 180 - 10] -- [0, 45, 90, 135]
-        }
-      hyperbolicFilterParams =
-        HyperbolicFilterParams
-        { getHyperbolicFilterGridRows = fst gridSize
-        , getHyperbolicFilterGridCols = snd gridSize
-        , getHyperbolicFilterRows = n
-        , getHyperbolicFilterCols = n
-        , getHyperbolicFilterDownsampleFactor = downsampleFactor
-        , getHyperbolicFilterScale = [24]
-        , getHyperbolicFilterFreq = [0.125, 0.25, 0.5, 1]
-        , getHyperbolicFilterAngle = [0,10 .. 90 - 10] --[0, 45, 90]
-        }
-      polarSeparableFilter =
-        getFilterVectors
-          (makeFilter $ PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion)
-      polarSeparableFilter1 =
-        getFilterVectors
-          (makeFilter $ PolarSeparableFilter polarSeparableFilterParams1 [] :: PolarSeparableFilterExpansion)
-      cartesianGratingFilter =
-        getFilterVectors
-          (makeFilter $ CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter)
-      hyperbolicFilter =
-        getFilterVectors
-          (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
-      filters =
-        L.zipWith3
-          (\a b c -> a L.++ b L.++ c)
-          polarSeparableFilter
-          cartesianGratingFilter
-          hyperbolicFilter
+      filterVecsList =
+        generateV4SeparableFilterQuadTreeFilter v4QuardTreeFilterParams
       n = 128
       downsampleFactor = 1
       gridSize = (16, 16)
@@ -95,14 +49,18 @@ main = do
     filePathSource path $$ readImageConduit False =$=
     mergeSource (CL.sourceList landmarks) =$=
     cropSquareConduit parallelParams n =$=
-    applyFilterFixedSizeConduit parallelParams downsampleFactor filters =$=
+    applyV4QuadTreeFilterConduit parallelParams filterVecsList =$=
+    CL.map (VU.concat . L.map VU.concat) =$=
     CL.consume
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
         , trainC = 128
         , trainNumExamples = L.length features
-        , trainFeatureIndexMax = (L.sum . L.map L.length $ filters) * 2
+        , trainFeatureIndexMax =
+            (L.sum . L.map (\ys -> (L.length . L.head $ ys) * L.length ys) $
+             filterVecsList) *
+            2
         , trainModel = "SVM_model"
         }
   print trainParams
@@ -110,4 +68,4 @@ main = do
     parallelParams
     trainParams
     8
-    (L.zip (L.map fromIntegral labels) . L.map VU.concat $ features)
+    (L.zip (L.map fromIntegral labels)  features)
