@@ -15,6 +15,7 @@ import           Data.List                    as L
 import           Data.Vector.Unboxed          as VU
 import           Data.Word
 import           Prelude                      as P
+import           CV.Utility.Coordinates
 
 grayImage2Array
   :: GrayImage -> Array U DIM3 Double
@@ -237,3 +238,110 @@ padResizeImageConduit parallelParams n padVal = do
                 xs
         sourceList ys
         padResizeImageConduit parallelParams n padVal)
+        
+
+{-# INLINE rotatePixel #-}
+
+rotatePixel :: VU.Vector Double
+            -> (Double, Double)
+            -> (Double, Double)
+            -> (Double, Double)
+rotatePixel mat (centerY, centerX) (y, x) = (y3, x3)
+  where
+    x1 = x - centerX
+    y1 = y - centerY
+    (y2, x2) = vecMatMult (y1, x1) mat
+    x3 = x2 + centerX
+    y3 = y2 + centerY
+
+{-# INLINE vecMatMult #-}
+
+vecMatMult :: (Double, Double) -> VU.Vector Double -> (Double, Double)
+vecMatMult (x, y) vec = (a * x + c * y, b * x + d * y)
+  where
+    a = vec VU.! 0
+    b = vec VU.! 1
+    c = vec VU.! 2
+    d = vec VU.! 3
+    
+-- First pading image to be a square image then rotating it
+padResizeRotate2DImageS
+  :: (R.Source s Double)
+  => Int -> [Double] -> Array s DIM2 Double -> [Array U DIM2 Double]
+padResizeRotate2DImageS n degs arr =
+  parMap
+    rseq
+    (\deg ->
+       computeS $ --pad [n+32, n+32] $
+       fromFunction
+         (Z :. n :. n)
+         (\(Z :. j :. i) ->
+            let (j', i') =
+                  rotatePixel
+                    (VU.fromListN 4 $
+                     P.map
+                       (\f -> f (deg2Rad deg))
+                       [cos, sin, \x -> -(sin x), cos])
+                    (center, center)
+                    (fromIntegral j, fromIntegral i)
+            in if j' < 0 ||
+                  j' > (fromIntegral n - 1) ||
+                  i' < 0 || i' > (fromIntegral n - 1)
+                 then 0
+                 else bicubicInterpolation
+                        ds
+                        (minVal, maxVal)
+                        (j' * ratio, i' * ratio)))
+    degs
+  where
+    !minVal = 0 -- foldAllS min (fromIntegral (maxBound :: Word64)) arr
+    !maxVal = 255 -- foldAllS max (fromIntegral (minBound :: Int)) arr
+    !(Z :. ny :. nx) = extent arr
+    !m =
+      ceiling
+        (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
+    !paddedImg = RAU.pad [m, m] 0 arr
+    !ds = computeDerivativeS (computeUnboxedS paddedImg)
+    !center = fromIntegral (n - 1) / 2
+    !ratio = fromIntegral (m - 1) / fromIntegral (n - 1)
+
+
+
+padResizeRotateLabeledImageConduit
+  :: (R.Source s Double)
+  => ParallelParams
+  -> Int
+  -> Double
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
+padResizeRotateLabeledImageConduit parallelParams n deg = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\arr ->
+                   let (Z :. nf :. _ny :. _nx) = extent arr
+                   in L.map
+                        (\x ->
+                           let arr' =
+                                 fromUnboxed (Z :. nf :. n :. n) .
+                                 VU.concat . L.map R.toUnboxed $
+                                 x
+                           in deepSeqArray arr' arr') .
+                      L.transpose .
+                      L.map
+                        (\i ->
+                           padResizeRotate2DImageS n degs $
+                           R.slice arr (Z :. i :. All :. All)) $
+                      [0 .. nf - 1])
+                xs
+        sourceList . P.concat $ ys
+        padResizeRotateLabeledImageConduit parallelParams n deg)
+  where
+    !len =
+      if deg == 0
+        then 1
+        else round (360 / deg) :: Int
+    !degs = L.map (* deg) [0 .. fromIntegral len - 1]
