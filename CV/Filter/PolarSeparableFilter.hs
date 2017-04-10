@@ -51,18 +51,14 @@ data PolarSeparableFilterParams = PolarSeparableFilterParams
 
 
 data PolarSeparableFilterParamsGrid = PolarSeparableFilterParamsGrid
-  { getPolarSeparableFilterGridRows         :: !Int
-  , getPolarSeparableFilterGridCols         :: !Int
-  , getPolarSeparableFilterRows             :: !Int
+  { getPolarSeparableFilterRows             :: !Int
   , getPolarSeparableFilterCols             :: !Int
-  , getPolarSeparableFilterDownsampleFactor :: !Int
   , getPolarSeparableFilterScale            :: ![Double]
   , getPolarSeparableFilterRadialFreq       :: ![Int]
   , getPolarSeparableFilterAngularFreq      :: ![Int]
-  , getPolarSeparableFilterName             :: !PolarSeparableFilterName
   } deriving (Show)
 
-type PolarSeparableFilterExpansion = PolarSeparableFilter PolarSeparableFilterParamsGrid [[([[VU.Vector (Complex Double)]], [[VU.Vector (Complex Double)]])]]
+type PolarSeparableFilterExpansion = PolarSeparableFilter PolarSeparableFilterParamsGrid V4SeparableFilter
 
 -- this function is to make sure that the params sequence is correct
 {-# INLINE generateParamsSet #-}  
@@ -154,6 +150,15 @@ pinwheels scale rf af x y
   | otherwise =
     real2Complex (gaussian2D' af rf scale x y) * angularFunc af x y * radialFunc scale af rf x y
     -- real2Complex (gaussian2D scale x y) * angularFunc af x y * radialFunc scale af rf x y
+    
+{-# INLINE pinwheelsC #-}
+
+pinwheelsC :: Double -> Int -> Int -> (Int -> Int -> Complex Double)
+pinwheelsC scale rf af x y
+  | scale == 0 = conjugate (angularFunc af x y) * radialFunc scale af rf x y
+  | otherwise =
+    real2Complex (gaussian2D' af rf scale x y) * conjugate (angularFunc af x y) *
+    radialFunc scale af rf x y
 
 {-# INLINE getFilterFunc #-}
 
@@ -370,63 +375,35 @@ makeFilterList ny nx f =
 
 instance FilterExpansion PolarSeparableFilterExpansion where
   type FilterParameter PolarSeparableFilterExpansion = PolarSeparableFilterParamsGrid
-  type FilterVectors PolarSeparableFilterExpansion = [[([[VU.Vector (Complex Double)]], [[VU.Vector (Complex Double)]])]]
   {-# INLINE makeFilter #-}
-  makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsGrid gRows gCols rows cols downSampleFactor scaleSet rfSet afSet filterName) _) =
-    PolarSeparableFilter params .
-    L.map
-      (\(centerR, centerC) ->
-          [ ( [ [ VU.fromListN
-                   (newCols * newRows)
-                   [ getFilterByName
-                      filterName
-                      scale
-                      rf
-                      af
-                      (c - centerC)
-                      (r - centerR)
-                   | r <- [0 .. newRows - 1]
-                   , c <- [0 .. newCols - 1] ]
-                | af <- afSet ]
-              | rf <- rfSet ]
-            , [ [ VU.fromListN
-                   (newCols * newRows)
-                   [ conjugate $
-                    getFilterByName
-                      filterName
-                      scale
-                      rf
-                      af
-                      (c - centerC)
-                      (r - centerR)
-                   | r <- [0 .. newRows - 1]
-                   , c <- [0 .. newCols - 1] ]
-                | af <- afSet ]
-              | rf <- rfSet ])
-          | scale <- scaleSet ]) $
-    grid2D (newRows, newCols) (gRows, gCols)
+  makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsGrid rows cols scaleSet rfSet afSet) _) =
+    PolarSeparableFilter params . V4PolarSeparableFilter (L.map fromIntegral rfSet, L.map fromIntegral afSet) $
+    [ ( [ [ VU.fromListN
+             (cols * rows)
+             [ pinwheels scale rf af (c - centerC) (r - centerR)
+             | r <- [0 .. rows - 1]
+             , c <- [0 .. cols - 1] ]
+          | af <- afSet ]
+        | rf <- rfSet ]
+      , [ [ VU.fromListN
+             (cols * rows)
+             [ pinwheelsC scale rf af (c - centerC) (r - centerR)
+             | r <- [0 .. rows - 1]
+             , c <- [0 .. cols - 1] ]
+          | af <- afSet ]
+        | rf <- rfSet ])
+    | scale <- scaleSet ]
     where
-      newCols = div cols downSampleFactor
-      newRows = div rows downSampleFactor
-  getFilterSize (PolarSeparableFilter params _) =
-    getFilterNumList params * getPolarSeparableFilterGridRows params *
-    getPolarSeparableFilterGridCols params
+      centerC = div cols 2
+      centerR = div rows 2
+  getFilterSize (PolarSeparableFilter params _) = getFilterNumList params * 2
   getFilterParameter (PolarSeparableFilter params _) = params
   {-# INLINE getFilterVectors #-}
   getFilterVectors (PolarSeparableFilter _ vecs) = vecs
   {-# INLINE changeSizeParameter #-}
-  changeSizeParameter rows cols (PolarSeparableFilter (PolarSeparableFilterParamsGrid gRows gCols _ _ downsampleFactor scaleSet rfSet afSet name) vecs) =
+  changeSizeParameter rows cols (PolarSeparableFilter (PolarSeparableFilterParamsGrid _ _ scaleSet rfSet afSet) vecs) =
     PolarSeparableFilter
-      (PolarSeparableFilterParamsGrid
-         gRows
-         gCols
-         rows
-         cols
-         downsampleFactor
-         scaleSet
-         rfSet
-         afSet
-         name)
+      (PolarSeparableFilterParamsGrid rows cols scaleSet rfSet afSet)
       vecs
 
 {-# INLINE getFilterByName #-}
@@ -441,5 +418,5 @@ getFilterByName Pinwheels = pinwheels
 {-# INLINE getFilterNumList #-}
 
 getFilterNumList :: PolarSeparableFilterParamsGrid -> Int
-getFilterNumList (PolarSeparableFilterParamsGrid _ _ _ _ _ scale rs as _) =
+getFilterNumList (PolarSeparableFilterParamsGrid _ _ scale rs as) =
   (P.product . P.map L.length $ [rs, as]) * L.length scale

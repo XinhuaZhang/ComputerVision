@@ -8,12 +8,19 @@ import           Data.Vector.Unboxed
 
 class FilterExpansion a  where
   type FilterParameter a :: *
-  type FilterVectors a :: *
   makeFilter :: a -> a
   getFilterSize :: a -> Int
   getFilterParameter :: a -> FilterParameter a
-  getFilterVectors :: a -> FilterVectors a
+  getFilterVectors :: a -> V4SeparableFilter
   changeSizeParameter :: Int -> Int -> a -> a
+
+
+data V4SeparableFilter
+  = V4PolarSeparableFilter ([Double],[Double])
+                           [([[Vector (Complex Double)]], [[Vector (Complex Double)]])]
+  | V4CartesianSeparableFilter [Double]
+                               [[Vector (Complex Double)]]
+  | Null
 
 
 {-# INLINE grid1D #-}
@@ -21,7 +28,7 @@ class FilterExpansion a  where
 grid1D :: Int -> Int -> [Int]
 grid1D totalLen n = L.take n [len,2 * len .. n * len]
   where len = div totalLen (n + 1)
-  
+
 {-# INLINE grid2D #-}
 
 grid2D :: (Int,Int) -> (Int,Int) -> [(Int,Int)]
