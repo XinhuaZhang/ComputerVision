@@ -23,6 +23,7 @@ import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import           Prelude                    as P
 import           System.IO
+import           Control.Monad.Trans.Resource
 
 data Kernel
   = LINEAR
@@ -250,50 +251,55 @@ oneVsRestTrain (TrainParams svmType kernelType modelName numFeature c eps nu) la
              [(round labelMin) .. (round labelMax)]
 
 oneVsRestPredict
-  :: String -> FilePath -> (Int,Int) -> Sink (Double,Ptr C'svm_node) IO () 
-oneVsRestPredict modelName output (labelMin,labelMax) =
-  do models <-
-       liftIO $
-       P.mapM (\label ->
-                 do modelNameCS <-
-                      newCString (modelName P.++ "_" P.++ (show label))
-                    model <- c'svm_load_model modelNameCS
-                    return model)
-              [labelMin .. labelMax]
-     (correct,total) <-
-       CL.foldM (func models)
-                (0,0)
-     let percent = (fromIntegral correct) / (fromIntegral total) * 100
-         str = show percent
-     liftIO $ putStrLn str
-     liftIO $ writeFile output str
-  where func :: [Ptr C'svm_model]
-             -> (Int,Int)
-             -> (Double,Ptr C'svm_node)
-             -> IO (Int,Int)
-        func models (correct,total) (target,featurePtr) =
-          do probability <-
-               P.mapM (\model ->
-                         allocaArray
-                           2
-                           (\buf ->
-                              do c'svm_predict_probability model featurePtr buf
-                                 lPtr <- F.peek model
-                                 l <- F.peek . c'svm_model'label $ lPtr
-                                 p <- peekArray 2 buf
-                                 if l == 0
-                                    then return . realToFrac . P.last $ p
-                                    else return . realToFrac . P.head $ p))
-                      models
-             let prediction = maxIndex probability
-             putStrLn $ show (round target) P.++ " " P.++ show prediction
-             if round target == prediction
-                then return (correct + 1,total + 1)
-                else return (correct,total + 1)
-        maxIndex :: Ord a
-                 => [a] -> Int
-        maxIndex =
-          fst . L.maximumBy (comparing snd) . zip [labelMin .. labelMax]
+  :: String -> FilePath -> (Int,Int) -> Sink (Double,Ptr C'svm_node) (ResourceT IO) () 
+oneVsRestPredict modelName output (labelMin, labelMax) = do
+  models <-
+    liftIO $
+    P.mapM
+      (\label -> do
+         modelNameCS <- newCString (modelName P.++ "_" P.++ (show label))
+         model <- c'svm_load_model modelNameCS
+         return model)
+      [labelMin .. labelMax]
+  (correct, total) <- func models (0, 0)
+  let percent = (fromIntegral correct) / (fromIntegral total) * 100
+      str = show percent
+  liftIO $ putStrLn str
+  liftIO $ writeFile output str
+  where
+    func
+      :: [Ptr C'svm_model]
+      -> (Int, Int)
+      -> Sink (Double, Ptr C'svm_node) (ResourceT IO) (Int, Int)
+    func models (correct, total) = do
+      x <- await
+      case x of
+        Nothing -> return (correct, total)
+        Just (target, featurePtr) -> do
+          probability <-
+            liftIO $
+            P.mapM
+              (\model ->
+                 allocaArray
+                   2
+                   (\buf -> do
+                      c'svm_predict_probability model featurePtr buf
+                      lPtr <- F.peek model
+                      l <- F.peek . c'svm_model'label $ lPtr
+                      p <- peekArray 2 buf
+                      if l == 0
+                        then return . realToFrac . P.last $ p
+                        else return . realToFrac . P.head $ p))
+              models
+          let prediction = maxIndex probability
+          -- liftIO $ putStrLn $ show (round target) P.++ " " P.++ show prediction
+          if round target == prediction
+            then func models (correct + 1, total + 1)
+            else func models (correct, total + 1)
+    maxIndex
+      :: Ord a
+      => [a] -> Int
+    maxIndex = fst . L.maximumBy (comparing snd) . zip [labelMin .. labelMax]
 
 readLabelFile :: FilePath -> IO [Double]
 readLabelFile filePath =

@@ -20,6 +20,7 @@ data V4SeparableFilter
                            [([[Vector (Complex Double)]], [[Vector (Complex Double)]])]
   | V4CartesianSeparableFilter [Double]
                                [[Vector (Complex Double)]]
+  | V4HyperbolicSeparableFilter [Vector (Complex Double)]
   | Null
 
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs  #-}
 module CV.Array.LabeledArray where
@@ -20,6 +21,7 @@ import           System.IO
 import Data.List as L
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility  as RAU
+import           Control.DeepSeq
 
 data LabeledArray sh e =
   LabeledArray !Int
@@ -38,6 +40,10 @@ instance (Binary e, Unbox e, Shape sh) =>
     elemList <- get
     return $!
       LabeledArray label' (fromListUnboxed (shapeOfList shList) elemList)
+      
+instance (Unbox e, Shape sh) =>
+         NFData (LabeledArray sh e) where
+  rnf (LabeledArray label arr) = seq label (deepSeqArray arr ())
 
 readLabeledImagebinary :: FilePath -> IO [LabeledArray DIM3 Double]
 readLabeledImagebinary filePath =
@@ -261,3 +267,42 @@ padResizeLabeledArrayConduit parallelParams n padVal = do
                 xs
         sourceList ys
         padResizeLabeledArrayConduit parallelParams n padVal)
+
+
+padResizeRotateLabeledArrayConduit
+  :: ParallelParams
+  -> Int
+  -> Double
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+padResizeRotateLabeledArrayConduit parallelParams n deg = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label' arr) ->
+                   let (Z :. nf :. _ny :. _nx) = extent arr
+                   in L.map
+                        (\x ->
+                           let arr' =
+                                 fromUnboxed (Z :. nf :. n :. n) .
+                                 VU.concat . L.map R.toUnboxed $
+                                 x
+                           in deepSeqArray arr' (LabeledArray label' arr')) .
+                      L.transpose .
+                      L.map
+                        (\i ->
+                           padResizeRotate2DImageS n degs $
+                           R.slice arr (Z :. i :. All :. All)) $
+                      [0 .. nf - 1])
+                xs
+        sourceList . P.concat $ ys
+        padResizeRotateLabeledArrayConduit parallelParams n deg)
+  where
+    !len =
+      if deg == 0
+        then 1
+        else round (360 / deg) :: Int
+    !degs = L.map (* deg) [0 .. fromIntegral len - 1]
