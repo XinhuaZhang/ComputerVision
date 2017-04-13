@@ -53,142 +53,6 @@ data V4SeparableFilterParams = V4SeparableFilterParams
   , separableFilterParams        :: !SeparableFilterParams
   } deriving (Show, Read)
 
-<<<<<<< HEAD
-type V4QuadTreeFilter = [[[VU.Vector (Complex Double)]]]
-type V4QuadTreeSeparableFilter = [[[([[VU.Vector (Complex Double)]], [[VU.Vector (Complex Double)]])]]]
-
-generateV4FilterQuadTreeFilter :: V4QuadTreeFilterParams -> V4QuadTreeFilter
-generateV4FilterQuadTreeFilter params =
-  L.zipWith3
-    (\i psfRadialFreq psfAngleFreq ->
-        let gridRows = 2 ^ i
-            gridCols = gridRows
-            j = i
-            polarSeparableFilterParams =
-              PolarSeparableFilterParamsGrid
-              { getPolarSeparableFilterGridRows = gridRows
-              , getPolarSeparableFilterGridCols = gridCols
-              , getPolarSeparableFilterRows = rows params
-              , getPolarSeparableFilterCols = cols params
-              , getPolarSeparableFilterDownsampleFactor = 1
-              , getPolarSeparableFilterScale =
-                L.map (/ ((sqrt 2) ^ j)) $ polarSeparableFilterScale params
-              , getPolarSeparableFilterRadialFreq = [0 .. psfRadialFreq - 1]
-              , getPolarSeparableFilterAngularFreq = [0 .. psfAngleFreq - 1]
-              , getPolarSeparableFilterName = polarSeparableFilterName params
-              }
-            cgfAngle = cartesianGratingFilterAngle params
-            cartesianGratingFilterParams =
-              CartesianGratingFilterParams
-              { getCartesianGratingFilterGridRows = gridRows
-              , getCartesianGratingFilterGridCols = gridCols
-              , getCartesianGratingFilterRows = rows params
-              , getCartesianGratingFilterCols = cols params
-              , getCartesianGratingFilterDownsampleFactor = 1
-              , getCartesianGratingFilterScale =
-                L.map (/ ((sqrt 2) ^ j)) $ cartesianGratingFilterScale params
-              , getCartesianGratingFilterFreq = cartesianGratingFilterFreq params
-              , getCartesianGratingFilterAngle = [0,cgfAngle .. 180 - cgfAngle]
-              }
-            hfAngle = hyperbolicFilterFilterAngle params
-            hyperbolicFilterParams =
-              HyperbolicFilterParams
-              { getHyperbolicFilterGridRows = gridRows
-              , getHyperbolicFilterGridCols = gridCols
-              , getHyperbolicFilterRows = rows params
-              , getHyperbolicFilterCols = cols params
-              , getHyperbolicFilterDownsampleFactor = 1
-              , getHyperbolicFilterScale =
-                L.map (/ ((sqrt 2) ^ j)) $ hyperbolicFilterFilterScale params
-              , getHyperbolicFilterFreq = hyperbolicFilterFilterFreq params
-              , getHyperbolicFilterAngle = [0,hfAngle .. 90 - hfAngle]
-              }
-            psf =
-              getFilterVectors
-                (makeFilter $ PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion)
-            cgf =
-              getFilterVectors
-                (makeFilter $
-                 CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter)
-            hf =
-              getFilterVectors
-                (makeFilter $ HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter)
-        in L.zipWith3 (\a b c -> L.concat [a, b, c]) psf cgf hf)
-    [0..quadTreeLayer params - 1]
-    (polarSeparableFilterRadialFreq params)
-    (polarSeparableFilterAngularFreq params)
-
-
-generateV4SeparableFilterQuadTreeFilter :: V4QuadTreeSeparableFilterParams -> V4QuadTreeFilter
-generateV4SeparableFilterQuadTreeFilter params =
-  L.zipWith3
-    (\i psfRadialFreq psfAngleFreq ->
-       let gridRows = 2 ^ i
-           gridCols = gridRows
-           polarSeparableFilterParams =
-             PolarSeparableFilterParamsGrid
-             { getPolarSeparableFilterGridRows = gridRows
-             , getPolarSeparableFilterGridCols = gridCols
-             , getPolarSeparableFilterRows = separableFilterRows params
-             , getPolarSeparableFilterCols = separableFilterCols params
-             , getPolarSeparableFilterDownsampleFactor = 1
-             , getPolarSeparableFilterScale =
-                 L.map (/ (sqrt 2 ^ i)) $ polarSeparableScale params
-             , getPolarSeparableFilterRadialFreq =  L.take psfRadialFreq [0,4..]  --[0,4 .. psfRadialFreq - 0]
-             , getPolarSeparableFilterAngularFreq = [0 .. psfAngleFreq - 1]
-             , getPolarSeparableFilterName = polarSeparableName params
-             }
-           cartesianSeparableFilterParams =
-             CartesianSeparableFilterParams
-             { getCartesianSeparableFilterGridRows = gridRows
-             , getCartesianSeparableFilterGridCols = gridCols
-             , getCartesianSeparableFilterRows = separableFilterRows params
-             , getCartesianSeparableFilterCols = separableFilterCols params
-             , getCartesianSeparableFilterDownsampleFactor = 1
-             , getCartesianSeparableFilterScale =
-                 L.map (/ (sqrt 2 ^ i)) $ cartesianSeparableScale params
-             , getCartesianSeparableFilterXFreq = cartesianSeparableXFreq params
-             , getCartesianSeparableFilterYFreq = cartesianSeparableYFreq params
-             }
-           hfAngle = hyperbolicSeparableAngle params
-           hyperbolicSeparableFilterParams =
-             HyperbolicSeparableFilterParams
-             { getHyperbolicSeparableFilterGridRows = gridRows
-             , getHyperbolicSeparableFilterGridCols = gridCols
-             , getHyperbolicSeparableFilterRows = separableFilterRows params
-             , getHyperbolicSeparableFilterCols = separableFilterCols params
-             , getHyperbolicSeparableFilterDownsampleFactor = 1
-             , getHyperbolicSeparableFilterScale =
-                 L.map (/ (sqrt 2 ^ i)) $ hyperbolicSeparableScale params
-             , getHyperbolicSeparableFilterUFreq =
-                 hyperbolicSeparableUFreq params
-             , getHyperbolicSeparableFilterVFreq =
-                 hyperbolicSeparableVFreq params
-             , getHyperbolicSeparableFilterAngle = [0,hfAngle .. 90 - hfAngle]
-             }
-           psf =
-             getFilterVectors
-               (makeFilter $ PolarSeparableFilter polarSeparableFilterParams [] :: PolarSeparableFilterExpansion)
-           cgf =
-             getFilterVectors
-               (makeFilter $
-                CartesianSeparableFilter cartesianSeparableFilterParams [] :: CartesianSeparableFilter)
-           hf =
-             getFilterVectors
-               (makeFilter $
-                HyperbolicSeparableFilter hyperbolicSeparableFilterParams [] :: HyperbolicSeparableFilter)
-       in case separableFilterParams params of
-            P -> psf
-            C -> cgf
-            H -> hf
-            PC -> L.zipWith (\a b -> L.concat [a, b]) psf cgf
-            PH -> L.zipWith (\a b -> L.concat [a, b]) psf hf
-            CH -> L.zipWith (\a b -> L.concat [a, b]) cgf hf
-            PCH -> L.zipWith3 (\a b c -> L.concat [a, b, c]) psf cgf hf)
-    [0 .. separableFilterQuadTreeLayer params - 1]
-    (polarSeparableRadialFreq params)
-    (polarSeparableAngularFreq params)
-=======
 generateV4SeparableFilter :: V4SeparableFilterParams -> [V4SeparableFilter]
 generateV4SeparableFilter params =
   let polarSeparableFilterParams =
@@ -240,7 +104,7 @@ generateV4SeparableFilter params =
        -- PH -> [psf, hf]
        -- CH -> [cgf, hf]
        -- PCH -> [psf, cgf, hf]
->>>>>>> 4f672415c8b3fd7d3d2c865b4192deb9bc9e6cfa
+
 
 -- applyV4QuadTreeFilterConduit
 --   :: (R.Source s Double)
@@ -400,7 +264,6 @@ complexVec2RealVec vec = a VU.++ b
   where
     (a, b) = VU.unzip . VU.map polar $ vec
 
-<<<<<<< HEAD
 {-# INLINE applyFilter #-}
 
 applyFilter :: [VU.Vector (Complex Double)]
@@ -415,9 +278,6 @@ applyFilter imgVecs =
        -- L.map (normalizeVec . complexVec2RealVec . VU.fromList) .
        L.concatMap (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
        imgVecs)
-=======
--- {-# INLINE applyFilter #-}
->>>>>>> 4f672415c8b3fd7d3d2c865b4192deb9bc9e6cfa
 
 -- applyFilter :: [VU.Vector (Complex Double)]
 --             -> [[VU.Vector (Complex Double)]]
