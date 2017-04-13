@@ -103,7 +103,6 @@ generateV4SeparableFilter params =
        CH -> [cgf, hf]
        PCH -> [psf, cgf, hf]
 
-
 -- applyV4QuadTreeFilterConduit
 --   :: (R.Source s Double)
 --   => ParallelParams
@@ -262,20 +261,7 @@ complexVec2RealVec vec = a VU.++ b
   where
     (a, b) = VU.unzip . VU.map polar $ vec
 
-{-# INLINE applyFilter #-}
-
-applyFilter :: [VU.Vector (Complex Double)]
-            -> [[VU.Vector (Complex Double)]]
-            -> [VU.Vector Double]
-applyFilter imgVecs =
-  L.map
-    (\filterVecs ->
-       normalizeVec .
-       complexVec2RealVec . VU.fromList .
-       -- VU.concat .
-       -- L.map (normalizeVec . complexVec2RealVec . VU.fromList) .
-       L.concatMap (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
-       imgVecs)
+-- {-# INLINE applyFilter #-}
 
 -- applyFilter :: [VU.Vector (Complex Double)]
 --             -> [[VU.Vector (Complex Double)]]
