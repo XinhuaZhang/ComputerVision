@@ -12,13 +12,15 @@ import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
 import           Data.Complex
+import           Data.Array.CArray            as CA
+import           Foreign.Storable
 
 -- factor = 2^n, n = 0,1,..
 -- the first factor in the list corresponds to the inner-most (right-most) dimension.
 downsample
   :: (Source s e
      ,Shape sh)
-  => [Int] -> Array s sh e -> Array D sh e
+  => [Int] -> R.Array s sh e -> R.Array D sh e
 downsample factorList arr
   | L.all (== 1) factorList = delay arr
   | L.any (< 1) newDList = error "Downsample factors are too large."
@@ -32,7 +34,7 @@ downsample factorList arr
 downsampleUnsafe
   :: (Source s e
      ,Shape sh)
-  => [Int] -> Array s sh e -> Array D sh e
+  => [Int] -> R.Array s sh e -> R.Array D sh e
 downsampleUnsafe factorList arr =
   R.backpermute newSh
               (shapeOfList . L.zipWith (*) factorList . listOfShape)
@@ -43,7 +45,7 @@ downsampleUnsafe factorList arr =
 crop
   :: (Source s e
      ,Shape sh)
-  => [Int] -> [Int] -> Array s sh e -> Array D sh e
+  => [Int] -> [Int] -> R.Array s sh e -> R.Array D sh e
 crop start len arr
   | L.any (< 0) start ||
       L.or (L.zipWith3 (\x y z -> x > (z - y))
@@ -62,7 +64,7 @@ crop start len arr
 cropUnsafe
   :: (Source s e
      ,Shape sh)
-  => [Int] -> [Int] -> Array s sh e -> Array D sh e
+  => [Int] -> [Int] -> R.Array s sh e -> R.Array D sh e
 cropUnsafe start len =
   R.backpermute (shapeOfList len)
               (shapeOfList . L.zipWith (+) start . listOfShape)
@@ -70,7 +72,7 @@ cropUnsafe start len =
 pad :: (Real e
        ,Source s e
        ,Shape sh)
-    => [Int] -> e -> Array s sh e -> Array D sh e
+    => [Int] -> e -> R.Array s sh e -> R.Array D sh e
 pad newDims padVal arr =
   backpermuteDft
     (fromFunction (shapeOfList dimList) (\_ -> padVal))
@@ -101,7 +103,7 @@ pad newDims padVal arr =
 
 
 computeDerivativeP
-  :: Array U DIM2 Double -> IO [Array U DIM2 Double]
+  :: R.Array U DIM2 Double -> IO [R.Array U DIM2 Double]
 computeDerivativeP arr =
   do let xStencil =
            [stencil2| 0 0 0
@@ -122,7 +124,7 @@ computeDerivativeP arr =
      return $! (arr : ds')
 
 computeDerivativeS
-  :: Array U DIM2 Double -> [Array U DIM2 Double]
+  :: R.Array U DIM2 Double -> [R.Array U DIM2 Double]
 computeDerivativeS arr = arr : ds'
   where xStencil =
           [stencil2| 0 0 0
@@ -143,7 +145,7 @@ computeDerivativeS arr = arr : ds'
 
 {-# INLINE bicubicInterpolation #-}
 bicubicInterpolation
-  :: [Array U DIM2 Double] -> (Double,Double) ->  (Double,Double) -> Double
+  :: [R.Array U DIM2 Double] -> (Double,Double) ->  (Double,Double) -> Double
 bicubicInterpolation ds (minVal, maxVal) (y, x)
   | (x < 0) ||
       (x > (fromIntegral nx - 1)) || (y < 0) || (y > (fromIntegral ny - 1)) = 0
@@ -191,11 +193,63 @@ bicubicInterpolation ds (minVal, maxVal) (y, x)
       , [4, -4, -4, 4, 2, 2, -2, -2, 2, -2, 2, -2, 1, 1, 1, 1]
       ]
 
+{-# INLINE twoDCArray2RArray #-}
+
+twoDCArray2RArray
+  :: (Num a, Storable a)
+    => CArray (Int, Int) a -> R.Array D DIM2 a
+twoDCArray2RArray cArr =
+  fromFunction
+    (Z :. (ny' + 1) :. (nx' + 1))
+    (\(Z :. j :. i) -> cArr CA.! (j, i))
+  where
+    ((_, _), (ny', nx')) = bounds cArr
+
+{-# INLINE threeDRArray2CArray #-}
+
+threeDRArray2CArray
+  :: (Num a, Storable a, Source s a)
+    => R.Array s DIM3 a -> CArray (Int, Int, Int) a
+threeDRArray2CArray rArr =
+  listArray ((0, 0, 0), (nf - 1, ny - 1, nx - 1)) . R.toList $ rArr
+  where
+    (Z :. nf :. ny :. nx) = extent rArr
+
+{-# INLINE threeDCArray2RArray #-}
+
+threeDCArray2RArray
+  :: (Num a, Storable a)
+    => CArray (Int, Int, Int) a -> R.Array D DIM3 a
+threeDCArray2RArray cArr =
+  fromFunction
+    (Z :. (nf' + 1) :. (ny' + 1) :. (nx' + 1))
+    (\(Z :. k :. j :. i) -> cArr CA.! (k, j, i))
+  where
+    ((_, _, _), (nf', ny', nx')) = bounds cArr
+
+
+{-# INLINE makeFilterList #-}
+
+makeFilterList :: Int -> Int -> (Int -> Int -> a) -> [a]
+makeFilterList ny nx f =
+  [ let !x =
+          if r < (ny `div` 2)
+            then r
+            else r - ny
+        !y =
+          if c < (nx `div` 2)
+            then c
+            else c - nx
+    in f x y
+  | r <- [0 .. ny - 1]
+  , c <- [0 .. nx - 1]
+  ]
+
 {-# INLINE rescale2D #-}
 
 rescale2D
   :: (Source s Double)
-  => (Int, Int) -> (Double, Double) -> Array s DIM2 Double -> Array D DIM2 Double
+  => (Int, Int) -> (Double, Double) -> R.Array s DIM2 Double -> R.Array D DIM2 Double
 rescale2D (newNy, newNx) bound arr =
   fromFunction
     (Z :. newNy :. newNx)
@@ -214,7 +268,7 @@ rescale2D (newNy, newNx) bound arr =
 
 rescale25D
   :: (Source s Double)
-  => (Int, Int) -> (Double, Double) -> Array s DIM3 Double -> Array U DIM3 Double
+  => (Int, Int) -> (Double, Double) -> R.Array s DIM3 Double -> R.Array U DIM3 Double
 rescale25D newSize@(nx',ny') bound arr =
   fromUnboxed (Z :. nf' :. ny' :. nx') .
   VU.concat .

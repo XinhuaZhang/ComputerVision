@@ -307,13 +307,13 @@ padResizeRotate2DImageS n degs arr =
 
 
 
-padResizeRotateLabeledImageConduit
+padResizeRotateImageConduit
   :: (R.Source s Double)
   => ParallelParams
   -> Int
   -> Double
   -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
-padResizeRotateLabeledImageConduit parallelParams n deg = do
+padResizeRotateImageConduit parallelParams n deg = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -338,7 +338,7 @@ padResizeRotateLabeledImageConduit parallelParams n deg = do
                       [0 .. nf - 1])
                 xs
         sourceList . P.concat $ ys
-        padResizeRotateLabeledImageConduit parallelParams n deg)
+        padResizeRotateImageConduit parallelParams n deg)
   where
     !len =
       if deg == 0

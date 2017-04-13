@@ -66,3 +66,6 @@ cartesianGrating scale theta freq x y =
     c = cos theta
     s = sin theta
     u = fromIntegral x * c - fromIntegral y * s
+    -- v = if abs u < 1
+    --        then 0
+    --        else log (abs u)
