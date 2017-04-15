@@ -87,8 +87,8 @@ generateV4SeparableFilter params =
         , getHyperbolicSeparableFilterVFreq = hyperbolicSeparableVFreq params
         , getHyperbolicSeparableFilterAngle = [0,hfAngle .. 90 - hfAngle]
         }
-      rows = separableFilterRows params
-      cols = separableFilterCols params
+      rows = div (separableFilterRows params) 2
+      cols = div (separableFilterCols params) 2
       psf =
         getFilterVectors
           (makeFilter
@@ -394,7 +394,8 @@ applyV4SeparableFilter (V4PolarSeparableFilter freqs filters) imgVec =
   let (mags, normalizedXS) =
         L.unzip . L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
         filters
-  in VU.fromList $ L.concat mags -- L.++ L.concatMap (computePhaseDifference freqs) normalizedXS
+  in VU.fromList $
+     L.concat mags --L.++ L.concatMap (computePhaseDifference freqs) normalizedXS
 applyV4SeparableFilter (V4CartesianSeparableFilter freqs filters) imgVec =
   let (mags, normalizedXS) =
         L.unzip . L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
