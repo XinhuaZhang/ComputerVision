@@ -103,48 +103,39 @@ instance NFData HyperbolicSeparableFilter where
 instance FilterExpansion HyperbolicSeparableFilter where
   type FilterParameter HyperbolicSeparableFilter = HyperbolicSeparableFilterParams
   {-# INLINE makeFilter #-}
-  makeFilter (HyperbolicSeparableFilter params@(HyperbolicSeparableFilterParams rows cols scales uFreqs vFreqs angles) _) =
+  makeFilter (HyperbolicSeparableFilter params@(HyperbolicSeparableFilterParams rows cols scales uFreqs vFreqs angles) _) (centerR, centerC) =
     HyperbolicSeparableFilter params . V4HyperbolicSeparableFilter . L.concat $
     [ L.concat
-      [ [ VU.fromListN
-        (cols * rows)
-        [ hyperbolicSeparable
-          scale
-          angle
-          uFreq
-          vFreq
-          (x - centerC)
-          (y - centerR)
-        | y <- [0 .. rows - 1]
-        , x <- [0 .. cols - 1]
-        ]
-      | uFreq <- uFreqs
-      ]
-      | vFreq <- vFreqs
-      ] L.++
-    L.concat
-      [ [ VU.fromListN
-        (cols * rows)
-        [ hyperbolicSeparableC
-          scale
-          angle
-          uFreq
-          vFreq
-          (x - centerC)
-          (y - centerR)
-        | y <- [0 .. rows - 1]
-        , x <- [0 .. cols - 1]
-        ]
-      | uFreq <- uFreqs
-      ]
-      | vFreq <- vFreqs
-      ]
+       [ [ VU.fromListN
+            (cols * rows)
+            [ hyperbolicSeparable
+               scale
+               angle
+               uFreq
+               vFreq
+               (x - centerC)
+               (y - centerR)
+            | y <- [0 .. rows - 1]
+            , x <- [0 .. cols - 1] ]
+         | uFreq <- uFreqs ]
+       | vFreq <- vFreqs ] L.++
+     L.concat
+       [ [ VU.fromListN
+            (cols * rows)
+            [ hyperbolicSeparableC
+               scale
+               angle
+               uFreq
+               vFreq
+               (x - centerC)
+               (y - centerR)
+            | y <- [0 .. rows - 1]
+            , x <- [0 .. cols - 1] ]
+         | uFreq <- uFreqs ]
+       | vFreq <- vFreqs ]
     | scale <- scales
-    , angle <- radAngles
-    ]
+    , angle <- radAngles ]
     where
-      centerC = div cols 2
-      centerR = div rows 2
       radAngles = L.map deg2Rad angles
   getFilterSize (HyperbolicSeparableFilter (HyperbolicSeparableFilterParams _ _ scales ufs vfs as) _) =
     L.product [L.length scales, L.length ufs, L.length vfs, L.length as]

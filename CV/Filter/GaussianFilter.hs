@@ -150,3 +150,15 @@ gaussian2D' af rf sd i j =
   where
     r = fromIntegral (i * i + j * j)
     r0 = ((1 - exp (-0.01 * fromIntegral (abs af) )) * 75 * sd) / pi
+    
+
+{-# INLINE gaussian2D'' #-}
+gaussian2D''
+  :: (Floating a)
+    => Int -> a -> Int -> Int -> a
+gaussian2D'' freq sd i j =
+  1 / ((2 * pi) * sd * sd) *
+  exp (-(sqrt r - r') ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
+  where
+    r = fromIntegral (i * i + j * j)
+    r' = ((1 - exp (-0.015 * fromIntegral (abs freq))) * 100 * sd) / pi

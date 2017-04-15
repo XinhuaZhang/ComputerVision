@@ -8,7 +8,7 @@ import           Data.Vector.Unboxed
 
 class FilterExpansion a  where
   type FilterParameter a :: *
-  makeFilter :: a -> a
+  makeFilter :: a -> (Int, Int) -> a
   getFilterSize :: a -> Int
   getFilterParameter :: a -> FilterParameter a
   getFilterVectors :: a -> V4SeparableFilter
@@ -16,8 +16,8 @@ class FilterExpansion a  where
 
 
 data V4SeparableFilter
-  = V4PolarSeparableFilter ([Double],[Double])
-                           [([[Vector (Complex Double)]], [[Vector (Complex Double)]])]
+  = V4PolarSeparableFilter [Double]
+                           [[Vector (Complex Double)]]
   | V4CartesianSeparableFilter [Double]
                                [[Vector (Complex Double)]]
   | V4HyperbolicSeparableFilter [Vector (Complex Double)]

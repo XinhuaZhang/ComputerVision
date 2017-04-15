@@ -5,6 +5,7 @@ module CV.Array.Image where
 import           Codec.Picture
 import           Control.Monad                as M
 import           Control.Monad.Trans.Resource
+import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility  as RAU
 import           Data.Array.Repa              as R
@@ -15,7 +16,23 @@ import           Data.List                    as L
 import           Data.Vector.Unboxed          as VU
 import           Data.Word
 import           Prelude                      as P
-import           CV.Utility.Coordinates
+
+
+data ImageTransformationParams = ImageTransformationParams
+  { rotationAngleParams  :: !Double
+  , scaleFactorRange     :: !(Double, Double)
+  , contrastFactorARange :: !(Double, Double)
+  , contrastFactorBRange :: !(Double, Double)
+  } deriving (Read, Show)
+  
+
+data ImageTransformation = ImageTransformation
+  { rotationAngle   :: !Double
+  , scaleFactor     :: !Double
+  , contrastFactorA :: !Double
+  , contrastFactorB :: !Double
+  } deriving (Read, Show)
+
 
 grayImage2Array
   :: GrayImage -> Array U DIM3 Double
@@ -75,7 +92,7 @@ plotImage filePath img = do
             show nfp' P.++
             " channels."
   savePngImage filePath w
-  
+
 
 rgb2ColorOpponency
   :: (R.Source s Double)
@@ -238,7 +255,7 @@ padResizeImageConduit parallelParams n padVal = do
                 xs
         sourceList ys
         padResizeImageConduit parallelParams n padVal)
-        
+
 
 {-# INLINE rotatePixel #-}
 
@@ -263,7 +280,7 @@ vecMatMult (x, y) vec = (a * x + c * y, b * x + d * y)
     b = vec VU.! 1
     c = vec VU.! 2
     d = vec VU.! 3
-    
+
 -- First pading image to be a square image then rotating it
 padResizeRotate2DImageS
   :: (R.Source s Double)
@@ -345,3 +362,29 @@ padResizeRotateImageConduit parallelParams n deg = do
         then 1
         else round (360 / deg) :: Int
     !degs = L.map (* deg) [0 .. fromIntegral len - 1]
+
+
+-- First pading image to be a square image then doing transformation
+padTransform2DImage
+  :: (R.Source s Double)
+  => Double
+  -> [ImageTransformation]
+  -> R.Array s DIM2 Double
+  -> [R.Array s DIM2 Double]
+padTransform2DImage padVal transformationList arr =
+  L.map
+    (\(ImageTransformation angle sf a b) ->
+        let y = undefined
+        in undefined)
+    transformationList
+  where
+    minVal = 0
+    maxVal = 255
+    (Z :. ny :. nx) = extent arr
+    m =
+      ceiling
+        (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
+    paddedImg = RAU.pad [m, m] 0 arr
+    ds = computeDerivativeS (computeUnboxedS paddedImg)
+    -- !center = fromIntegral (n - 1) / 2
+    -- !ratio = fromIntegral (m - 1) / fromIntegral (n - 1)

@@ -1,34 +1,33 @@
 module Main where
 
-import           Control.Monad                  as M
-import           CV.Filter.PolarSeparableFilter
-import           Data.Array                     as Arr
+import           Control.Monad       as M
+import           CV.V4Filter         as V4
+import           Data.Array          as Arr
 import           Data.Image
-import           Data.List                      as L
-import           Data.Set                       as S
+import           Data.List           as L
+import           Data.Set            as S
+import           Data.Vector.Unboxed as VU
 
 
 main = do
-  let (ny, nx) = (48, 48)
-      filterParamsSet =
-        PolarSeparableFilterParamsSet
-        { getSizeSet = (ny, nx)
-        , getDownsampleFactorSet = 1
-        , getScaleSet = S.fromDistinctAscList [8]
-        , getRadialFreqSet = S.fromDistinctAscList [0 .. (6 - 1)]
-        , getAngularFreqSet = S.fromDistinctAscList [0 .. (6 - 1)]
-        , getNameSet = Pinwheels
+  let (ny, nx) = (128, 128)
+      deg = 30
+      filterParams =
+        PolarSeparableFilterParamsGrid
+        { getPolarSeparableFilterRows = ny
+        , getPolarSeparableFilterCols = nx
+        , getPolarSeparableFilterPolarFactor = 8
+        , getPolarSeparableFilterScale = [16]
+        , getPolarSeparableFilterFreq = [1 .. 8]
+        , getPolarSeparableFilterAngle = [0,deg..90-deg]
         }
-      filterParamsList = generatePSFParamsSet filterParamsSet
-      centerY = div ny 2
-      centerX = div nx 2
-      filterEleList =
-        L.map
-          (\params@(PolarSeparableFilterParams _ downSampleFactor scale rf af _name) ->
-              [ getFilterFunc params scale rf af (x - centerX) (y - centerY)
-              | x <- [0 .. nx - 1]
-              , y <- [0 .. ny - 1] ])
-          filterParamsList
+      filters =
+        (\(V4PolarSeparableFilter _ xs) -> L.concat xs) . getFilterVectors $
+        (V4.makeFilter
+           (PolarSeparableFilter filterParams Null)
+           (div ny 2, div nx 2) :: PolarSeparableFilterExpansion)
       imgList =
-        L.map (arrayToImage . listArray ((0, 0), (ny - 1, nx - 1))) filterEleList :: [ComplexImage]
-  zipWithM_ (\i img -> writeImage (show i L.++ ".ppm") img) [1 ..] imgList
+        L.map
+          (arrayToImage . listArray ((0, 0), (ny - 1, nx - 1)) . VU.toList)
+          filters :: [ComplexImage]
+  M.zipWithM_ (\i img -> writeImage (show i L.++ ".ppm") img) [1 ..] imgList

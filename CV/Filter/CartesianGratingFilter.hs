@@ -32,7 +32,7 @@ instance NFData CartesianGratingFilter where
 instance FilterExpansion CartesianGratingFilter where
   type FilterParameter CartesianGratingFilter = CartesianGratingFilterParams
   {-# INLINE makeFilter #-}
-  makeFilter (CartesianGratingFilter params@(CartesianGratingFilterParams rows cols scales freqs angles) _) =
+  makeFilter (CartesianGratingFilter params@(CartesianGratingFilterParams rows cols scales freqs angles) _) (centerR, centerC) =
     CartesianGratingFilter params . V4CartesianSeparableFilter freqs $
     [ [ VU.fromListN
          (cols * rows)
@@ -44,8 +44,6 @@ instance FilterExpansion CartesianGratingFilter where
     , scale <- scales ]
     where
       radAngles = L.map deg2Rad angles
-      centerC = div cols 2
-      centerR = div rows 2
   getFilterSize (CartesianGratingFilter (CartesianGratingFilterParams _ _ scales fs as) _) =
     L.product . L.map L.length $ [scales, fs, as]
   getFilterParameter = getCartesianGratingFilterParams

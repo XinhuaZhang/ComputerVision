@@ -41,7 +41,10 @@ main = do
       (L.length labels)
 
 
-revertConduit :: (R.Source s Double) => ParallelParams -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
+revertConduit
+  :: (R.Source s Double)
+  => ParallelParams
+  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
 revertConduit parallelParams = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -51,8 +54,8 @@ revertConduit parallelParams = do
                 parallelParams
                 rseq
                 (\arr ->
-                   let arr' = computeS . R.map (\x -> 255 - x) $ arr
-                   in deepSeqArray arr' arr') $
+                    let arr' = computeS . R.map (\x -> 255 - x) $ arr
+                    in deepSeqArray arr' arr') $
               xs
         sourceList ys
         revertConduit parallelParams)

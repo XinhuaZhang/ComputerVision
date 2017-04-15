@@ -21,13 +21,14 @@ import           System.Environment
 main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   let parallelParams = ParallelParams {numThread = 12, batchSize = 120}
+      deg = 15
       v4QuardTreeFilterParams =
         V4SeparableFilterParams
         { separableFilterRows = n * 2
         , separableFilterCols = n * 2
-        , polarSeparableScale = [2 ** (i / 2) | i <- [6 .. 9]]
-        , polarSeparableRadialFreq = L.take 8 [0,10 ..]
-        , polarSeparableAngularFreq = [0 .. 7]
+        , polarSeparableScale = [2 ** (i / 2) | i <- [5 .. 8]]
+        , polarSeparableFreq = [1..8]
+        , polarSeparableAngle = [0,deg..90-deg]
         , cartesianGratingScale = [2 ** (i / 2) | i <- [7 .. 10]]
         , cartesianGratingFreq = L.take 8 [1 .. 8]
         , cartesianGratingAngle = [0,15 .. 360 - 15]
