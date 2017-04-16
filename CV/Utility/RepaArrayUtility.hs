@@ -42,6 +42,8 @@ downsampleUnsafe factorList arr =
   where dList = listOfShape $ extent arr
         newSh = shapeOfList $ L.zipWith div dList factorList
 
+{-# INLINE crop #-}
+
 crop
   :: (Source s e
      ,Shape sh)
@@ -69,35 +71,32 @@ cropUnsafe start len =
   R.backpermute (shapeOfList len)
               (shapeOfList . L.zipWith (+) start . listOfShape)
 
+{-# INLINE pad #-}
+
 pad :: (Real e
        ,Source s e
        ,Shape sh)
     => [Int] -> e -> R.Array s sh e -> R.Array D sh e
-pad newDims padVal arr =
-  backpermuteDft
-    (fromFunction (shapeOfList dimList) (\_ -> padVal))
-    (\sh' ->
-       let idx = L.zipWith (-) (listOfShape sh') diff
-       in if L.or (L.zipWith (\i j -> i < 0 || (i >= j)) idx oldDimList)
-            then Nothing
-            else Just $ shapeOfList idx)
-    arr
-  -- fromFunction
-  --   (shapeOfList dimList)
-  --   (\sh' ->
-  --      let idx = L.zipWith (-) (listOfShape sh') diff
-  --      in if L.or (L.zipWith (\i j -> i < 0 || (i >= j)) idx oldDimList)
-  --            then 0
-  --            else arr R.! shapeOfList idx)
+pad newDims padVal arr
+  | L.all (== 0) diff = delay arr
+  | otherwise =
+    backpermuteDft
+      (fromFunction (shapeOfList dimList) (const padVal))
+      (\sh' ->
+          let idx = L.zipWith (-) (listOfShape sh') diff
+          in if L.or (L.zipWith (\i j -> i < 0 || (i >= j)) idx oldDimList)
+               then Nothing
+               else Just $ shapeOfList idx)
+      arr
   where
     oldDimList = listOfShape . extent $ arr
     dimList = L.zipWith max newDims oldDimList
     diff =
       L.zipWith
         (\a b ->
-           if a - b <= 0
-             then 0
-             else div (a - b) 2)
+            if a - b <= 0
+              then 0
+              else div (a - b) 2)
         newDims
         oldDimList
 
@@ -123,6 +122,9 @@ computeDerivativeP arr =
      ds' <- P.mapM computeP ds
      return $! (arr : ds')
 
+
+{-# INLINE computeDerivativeS #-}
+
 computeDerivativeS
   :: R.Array U DIM2 Double -> [R.Array U DIM2 Double]
 computeDerivativeS arr = arr : ds'
@@ -144,6 +146,7 @@ computeDerivativeS arr = arr : ds'
         ds' = L.map computeS ds
 
 {-# INLINE bicubicInterpolation #-}
+
 bicubicInterpolation
   :: [R.Array U DIM2 Double] -> (Double,Double) ->  (Double,Double) -> Double
 bicubicInterpolation ds (minVal, maxVal) (y, x)

@@ -16,22 +16,44 @@ import           Data.List                    as L
 import           Data.Vector.Unboxed          as VU
 import           Data.Word
 import           Prelude                      as P
+import           System.Random
 
 
 data ImageTransformationParams = ImageTransformationParams
-  { rotationAngleParams  :: !Double
-  , scaleFactorRange     :: !(Double, Double)
-  , contrastFactorARange :: !(Double, Double)
-  , contrastFactorBRange :: !(Double, Double)
+  { imageTransformationParamsRows :: !Int
+  , imageTransformationParamsCols :: !Int
+  , rotationAngleParams           :: !Double
+  , scaleFactorRange              :: !(Double, Double)   -- the maximum scale is 1
+  , contrastFactorARange          :: !(Double, Double)
+  , contrastFactorBRange          :: !(Double, Double)
   } deriving (Read, Show)
-  
+
 
 data ImageTransformation = ImageTransformation
-  { rotationAngle   :: !Double
-  , scaleFactor     :: !Double
-  , contrastFactorA :: !Double
-  , contrastFactorB :: !Double
+  { imageTransformationRows :: !Int
+  , imageTransformationCols :: !Int
+  , rotationAngle           :: !Double
+  , scaleFactor             :: !Double
+  , contrastFactorA         :: !Double
+  , contrastFactorB         :: !Double
   } deriving (Read, Show)
+
+
+generateImageTransformation :: ImageTransformationParams
+                            -> IO [ImageTransformation]
+generateImageTransformation (ImageTransformationParams r c deg sfRange aRange bRange) =
+  M.mapM
+    (\radDeg -> do
+       sf <- randomRIO sfRange
+       a <- randomRIO aRange
+       b <- randomRIO bRange
+       return $! ImageTransformation r c radDeg sf a b)
+    radAngle
+  where
+    radAngle =
+      if deg == 0
+        then [0]
+        else L.map deg2Rad [0,deg .. 360 - deg]
 
 
 grayImage2Array
@@ -365,17 +387,67 @@ padResizeRotateImageConduit parallelParams n deg = do
 
 
 -- First pading image to be a square image then doing transformation
-padTransform2DImage
+{-# INLINE padTransformGrayImage #-}   
+
+padTransformGrayImage
   :: (R.Source s Double)
   => Double
   -> [ImageTransformation]
   -> R.Array s DIM2 Double
-  -> [R.Array s DIM2 Double]
-padTransform2DImage padVal transformationList arr =
+  -> [R.Array U DIM2 Double]
+padTransformGrayImage padVal transformationList arr =
   L.map
-    (\(ImageTransformation angle sf a b) ->
-        let y = undefined
-        in undefined)
+    (\(ImageTransformation r c deg sf a b) ->
+        let rescaledR = round $ fromIntegral r * sf
+            rescaledC = round $ fromIntegral c * sf
+            ratioR = fromIntegral (m - 1) / fromIntegral (rescaledR - 1)
+            ratioC = fromIntegral (m - 1) / fromIntegral (rescaledC - 1)
+        in if deg == 0
+             then computeS .
+                  R.map
+                    (\x ->
+                        let y = a * x + b
+                        in if y > 255
+                             then 255
+                             else if y < 0
+                                    then 0
+                                    else y) .
+                  RAU.pad [c, r] padVal .
+                  fromFunction (Z :. rescaledR :. rescaledC) $
+                  \(Z :. j :. i) ->
+                     bicubicInterpolation
+                       ds
+                       (minVal, maxVal)
+                       (fromIntegral j * ratioR, fromIntegral i * ratioC)
+             else computeS .
+                  R.map
+                    (\x ->
+                        let y = a * x + b
+                        in if y > 255
+                             then 255
+                             else if y < 0
+                                    then 0
+                                    else y) .
+                  RAU.pad [c, r] padVal .
+                  fromFunction (Z :. rescaledR :. rescaledC) $
+                  \(Z :. j :. i) ->
+                     let (j', i') =
+                           rotatePixel
+                             (VU.fromListN 4 $
+                              P.map
+                                (\f -> f deg)
+                                [cos, sin, \x -> -(sin x), cos])
+                             ( fromIntegral $ div rescaledR 2
+                             , fromIntegral $ div rescaledC 2)
+                             (fromIntegral j, fromIntegral i)
+                     in if j' < 0 ||
+                           j' > (fromIntegral rescaledR - 1) ||
+                           i' < 0 || i' > (fromIntegral rescaledC - 1)
+                          then padVal
+                          else bicubicInterpolation
+                                 ds
+                                 (minVal, maxVal)
+                                 (j' * ratioR, i' * ratioC))
     transformationList
   where
     minVal = 0
@@ -384,7 +456,32 @@ padTransform2DImage padVal transformationList arr =
     m =
       ceiling
         (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
-    paddedImg = RAU.pad [m, m] 0 arr
+    paddedImg = RAU.pad [m, m] padVal arr
     ds = computeDerivativeS (computeUnboxedS paddedImg)
-    -- !center = fromIntegral (n - 1) / 2
-    -- !ratio = fromIntegral (m - 1) / fromIntegral (n - 1)
+
+
+{-# INLINE padTransformImage #-}   
+
+padTransformImage
+  :: (R.Source s Double)
+  => Double
+  -> [ImageTransformation]
+  -> R.Array s DIM3 Double
+  -> [R.Array U DIM3 Double]
+padTransformImage padVal transformationList arr =
+  L.zipWith
+    (\transfomation arrs ->
+        fromUnboxed
+          (Z :. nf' :. imageTransformationRows transfomation :.
+           imageTransformationCols transfomation) .
+        VU.concat . L.map toUnboxed $
+        arrs)
+    transformationList .
+  L.transpose .
+  L.map
+    (\i ->
+        padTransformGrayImage padVal transformationList . R.slice arr $
+        (Z :. i :. All :. All)) $
+  [0 .. nf' - 1]
+  where
+    (Z :. nf' :. _ :. _) = extent arr
