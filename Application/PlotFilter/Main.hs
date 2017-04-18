@@ -13,19 +13,19 @@ main = do
   let (ny, nx) = (128, 128)
       deg = 30
       filterParams =
-        PolarSeparableFilterParamsGrid
-        { getPolarSeparableFilterRows = ny
-        , getPolarSeparableFilterCols = nx
-        , getPolarSeparableFilterPolarFactor = 8
-        , getPolarSeparableFilterScale = [16]
-        , getPolarSeparableFilterFreq = [1 .. 8]
-        , getPolarSeparableFilterAngle = [0,deg..90-deg]
+        PolarSeparableFilterParamsAxis
+        { getPolarSeparableFilterAxisRows = ny
+        , getPolarSeparableFilterAxisCols = nx
+        , getPolarSeparableFilterAxisScale = [48]
+        , getPolarSeparableFilterAxisFreq = [1 .. 8]
+        , getPolarSeparableFilterAxisRadialMultiplier = [0,1,1]
+        , getPolarSeparableFilterAxisAngularMultiplier = [1,0,1]
         }
       filters =
-        (\(V4PolarSeparableFilter _ xs) -> L.concat xs) . getFilterVectors $
+        (\(V4PolarSeparableFilterAxis _ xs) -> L.concat xs) . getFilterVectors $
         (V4.makeFilter
            (PolarSeparableFilter filterParams Null)
-           (div ny 2, div nx 2) :: PolarSeparableFilterExpansion)
+           (div ny 2, div nx 2) :: PolarSeparableFilterExpansionAxis)
       imgList =
         L.map
           (arrayToImage . listArray ((0, 0), (ny - 1, nx - 1)) . VU.toList)

@@ -44,6 +44,32 @@ gaussian2D sd i j =
   1 / ((2 * pi) * sd * sd) * exp (-r / (2 * (sd ^ (2 :: Int))))
   where
     r = fromIntegral (i * i + j * j)
+    
+
+{-# INLINE gaussian2D' #-}
+gaussian2D'
+  :: (Floating a, Ord a)
+    => Int -> Int -> a -> Int -> Int -> a
+gaussian2D' af rf sd i j -- =
+  | sqrt r < sd = 1
+  | otherwise = 0
+  -- 1 / ((2 * pi) * sd * sd) *
+  -- exp (-(sqrt r - r0) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
+  where
+    r = fromIntegral (i * i + j * j)
+    r0 = ((1 - exp (-0.01 * fromIntegral (abs af) )) * 75 * sd) / pi
+
+
+{-# INLINE gaussian2D'' #-}
+gaussian2D''
+  :: (Floating a)
+    => Int -> a -> Int -> Int -> a
+gaussian2D'' freq sd i j =
+  1 / ((2 * pi) * sd * sd) *
+  exp (-(sqrt r - r') ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
+  where
+    r = fromIntegral (i * i + j * j)
+    r' = ((1 - exp (-0.015 * fromIntegral (abs freq))) * 100 * sd) / pi
 
 {-# INLINE gaussian2DRing #-}
 
@@ -140,25 +166,3 @@ dftImageArr arr = threeDCArray2RArray dftCArr
     !dftCArr = dftN [1, 2] cArr
 
 
-{-# INLINE gaussian2D' #-}
-gaussian2D'
-  :: (Floating a)
-    => Int -> Int -> a -> Int -> Int -> a
-gaussian2D' af rf sd i j =
-  1 / ((2 * pi) * sd * sd) *
-  exp (-(sqrt r - r0) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
-  where
-    r = fromIntegral (i * i + j * j)
-    r0 = ((1 - exp (-0.01 * fromIntegral (abs af) )) * 75 * sd) / pi
-    
-
-{-# INLINE gaussian2D'' #-}
-gaussian2D''
-  :: (Floating a)
-    => Int -> a -> Int -> Int -> a
-gaussian2D'' freq sd i j =
-  1 / ((2 * pi) * sd * sd) *
-  exp (-(sqrt r - r') ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
-  where
-    r = fromIntegral (i * i + j * j)
-    r' = ((1 - exp (-0.015 * fromIntegral (abs freq))) * 100 * sd) / pi

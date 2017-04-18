@@ -16,8 +16,10 @@ class FilterExpansion a  where
 
 
 data V4SeparableFilter
-  = V4PolarSeparableFilter [Double]
-                           [[Vector (Complex Double)]]
+  = V4PolarSeparableFilterAxis [Double]
+                               [[Vector (Complex Double)]]
+  | V4PolarSeparableFilterGrid ([Double], [Double])
+                               [([[Vector (Complex Double)]], [[Vector (Complex Double)]])]
   | V4CartesianSeparableFilter [Double]
                                [[Vector (Complex Double)]]
   | V4HyperbolicSeparableFilter [Vector (Complex Double)]
