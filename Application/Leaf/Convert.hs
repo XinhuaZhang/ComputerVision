@@ -1,45 +1,58 @@
 {-# LANGUAGE FlexibleContexts #-}
-import           Application.FacialExpression.Conduit
 import           Control.Monad                        as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.Image
 import           CV.Array.LabeledArray
 import           CV.IO.ImageIO
 import           CV.Utility.Parallel
-import           CV.V4Filter
 import           Data.Array.Repa                      as R
 import           Data.Conduit
 import           Data.Conduit.List                    as CL
 import           Data.List                            as L
-import           Data.Vector.Unboxed                  as VU
 import           System.Environment
+import           Text.Printf
 
 main = do
-  (imageListPath:labelListPath:isColorStr:sizeStr:degStr:trainStr:_) <- getArgs
-  let parallelParams = ParallelParams {numThread = 4, batchSize = 120}
+  (imageListPath:labelListPath:isColorStr:trainStr:sizeStr:degStr:scaleFactorStr:aRangeStr:bRangeStr:_) <-
+    getArgs
+  let parallelParams =
+        ParallelParams
+        { numThread = 4
+        , batchSize = 120
+        }
       isColor = read isColorStr :: Bool
       colorStr =
         if isColor
           then "Color"
           else "Gray"
-  labels <-
-    fmap (L.map (\x -> read x :: Int) . L.lines) . readFile $ labelListPath
+      (r, c) = read sizeStr :: (Int, Int)
+      transformParams =
+        ImageTransformationParams
+        { imageTransformationParamsRows = r
+        , imageTransformationParamsCols = c
+        , rotationAngleParams = read degStr :: Double
+        , scaleFactorRange = read scaleFactorStr :: (Double, Double)
+        , contrastFactorARange = read aRangeStr :: (Double, Double)
+        , contrastFactorBRange = read bRangeStr :: (Double, Double)
+        }
+  labels <- fmap (L.map (\x -> read x :: Int) . L.lines) . readFile $ labelListPath
   runResourceT $
     imagePathSource imageListPath $$ readImageConduit isColor =$=
     revertConduit parallelParams =$=
     mergeSource (sourceList labels) =$=
     CL.map (\(l, arr) -> LabeledArray l arr) =$=
-    padResizeRotateLabeledArrayConduit
-      parallelParams
-      (read sizeStr :: Int)
-      (read degStr :: Double) =$=
-    -- padResizeImageConduit parallelParams (read sizeStr :: Int) 0 =$=
+    padTransformImageConduit parallelParams 0 transformParams =$=
     writeLabeledImageBinarySink
-      (trainStr L.++ "_" L.++ sizeStr L.++ "_" L.++ degStr L.++ "_" L.++
-       colorStr L.++
-       ".dat")
+      (printf
+         "%s_%s_%s_%s_%s_%s_%s.dat"
+         trainStr
+         colorStr
+         sizeStr
+         degStr
+         scaleFactorStr
+         aRangeStr
+         bRangeStr)
       (L.length labels)
-
 
 revertConduit
   :: (R.Source s Double)

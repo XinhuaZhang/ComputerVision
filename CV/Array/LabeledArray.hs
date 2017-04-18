@@ -306,3 +306,29 @@ padResizeRotateLabeledArrayConduit parallelParams n deg = do
         then 1
         else round (360 / deg) :: Int
     !degs = L.map (* deg) [0 .. fromIntegral len - 1]
+
+
+padTransformImageConduit
+  :: ParallelParams
+  -> Double
+  -> ImageTransformationParams
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+padTransformImageConduit parallelParams padVal imageTransformationParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do params <-
+          liftIO $
+          M.replicateM
+            (L.length xs)
+            (generateImageTransformation imageTransformationParams)
+        let ys =
+              parZipWithChunk
+                parallelParams
+                rseq
+                (\p (LabeledArray label' x) ->
+                    L.map (LabeledArray label') $! padTransformImage padVal p x)
+                params
+                xs
+        sourceList . L.concat $ ys
+        padTransformImageConduit parallelParams padVal imageTransformationParams)

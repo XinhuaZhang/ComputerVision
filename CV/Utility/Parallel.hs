@@ -13,12 +13,13 @@ data ParallelParams = ParallelParams
   } deriving (Show)
 
 {-Parallel Functions-}
+{-# INLINE parMapChunk #-}
 parMapChunk
   :: ParallelParams -> Strategy b -> (a -> b) -> [a] -> [b]
 parMapChunk ParallelParams {numThread = nt} strat f xs =
   (withStrategy (parListChunk (div (P.length xs) nt) strat) . P.map f) xs
 
-{-# INCLUDE parZipWithChunk #-}
+{-# INLINE parZipWithChunk #-}
 parZipWithChunk :: ParallelParams -> Strategy c -> (a -> b -> c) -> [a] -> [b] -> [c]
 parZipWithChunk ParallelParams {numThread = nt} strat f xs =
   withStrategy (parListChunk (div (P.length xs) nt) strat) . P.zipWith f xs
