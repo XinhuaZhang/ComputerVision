@@ -8,6 +8,7 @@ module CV.V4Filter
   , generateV4SeparableFilterAxis
   , generateV4SeparableFilterWithCenterAxis
   , applyV4SeparableFilterLabeledArrayConduit
+  , applyV4SeparableFilter
   -- , applyV4SeparableFilterComplexLabeledArrayConduit
   -- , filterNum
   -- , filterNumComplex

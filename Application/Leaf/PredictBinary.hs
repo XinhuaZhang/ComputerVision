@@ -23,15 +23,20 @@ main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   v4QuardTreeFilterParams <-
     fmap (\x -> read x :: V4SeparableFilterParams) . readFile $ paramsFilePath
-  let parallelParams = ParallelParams {numThread = 12, batchSize = 120}
+  let parallelParams =
+        ParallelParams
+        { numThread = 12
+        , batchSize = 120
+        }
       n = read sizeStr :: Int
-      filterVecsList = generateV4SeparableFilter v4QuardTreeFilterParams
       isColor = read isColorStr :: Bool
       gaussianFilterParams = GaussianFilterParams 32 n n
       gaussianFilter = Gaussian.makeFilter gaussianFilterParams
   runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
-    recenterFixedSizeConduit parallelParams gaussianFilter =$=
-    applyV4SeparableFilterLabeledArrayConduit parallelParams filterVecsList =$=
+    applyV4SeparableFilterLabeledArrayWithCenterConduit
+      parallelParams
+      gaussianFilter
+      v4QuardTreeFilterParams =$=
     featureConduitP parallelParams =$=
     predict modelName (modelName L.++ ".out")

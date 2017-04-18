@@ -20,27 +20,33 @@ import           System.Environment
 
 main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
-  let parallelParams = ParallelParams {numThread = 6, batchSize = 120}
-      deg = 15
+  let parallelParams =
+        ParallelParams
+        { numThread = 6
+        , batchSize = 120
+        }
       v4QuardTreeFilterParams =
-        V4SeparableFilterParams
-        { separableFilterRows = n * 2
-        , separableFilterCols = n * 2
-        , polarSeparableScale = [2 ** (i / 2) | i <- [6 .. 9]]
-        , polarSeparablePolarFactor = 4
-        , polarSeparableFreq = [1..8]
-        , polarSeparableAngle = [0,deg..90-deg]
-        , cartesianGratingScale = [2 ** (i / 2) | i <- [7 .. 10]]
+        V4SeparableFilterParamsAxis
+        { separableFilterRows = n
+        , separableFilterCols = n
+        , polarSeparableScale = [63]
+        , polarSeparableFreq = [1 .. 8]
+        , polarSeparableRadialMultiplier = [0, 1, 1]
+        , polarSeparableAngularMultiplier = [1, 0, 1]
+        , cartesianGratingScale =
+          [ 2 ** (i / 2)
+          | i <- [7 .. 10] ]
         , cartesianGratingFreq = L.take 8 [1 .. 8]
         , cartesianGratingAngle = [0,15 .. 360 - 15]
-        , hyperbolicSeparableScale = [2 ** (i / 2) | i <- [7 .. 10]]
+        , hyperbolicSeparableScale =
+          [ 2 ** (i / 2)
+          | i <- [7 .. 10] ]
         , hyperbolicSeparableUFreq = [0 .. 3]
         , hyperbolicSeparableVFreq = [0 .. 3]
         , hyperbolicSeparableAngle = 15
         , separableFilterParams = P
         }
       n = read sizeStr :: Int
-      filterVecsList = generateV4SeparableFilter v4QuardTreeFilterParams
       isColor = read isColorStr :: Bool
       gaussianFilterParams = GaussianFilterParams 32 n n
       gaussianFilter = Gaussian.makeFilter gaussianFilterParams
@@ -48,15 +54,19 @@ main = do
   featurePtr <-
     runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
-    recenterFixedSizeConduit parallelParams gaussianFilter =$=
-    applyV4SeparableFilterLabeledArrayConduit parallelParams filterVecsList =$=
+    applyV4SeparableFilterLabeledArrayWithCenterConduit
+      parallelParams
+      gaussianFilter
+      v4QuardTreeFilterParams =$=
     featurePtrConduit =$=
     CL.consume
   featurePtr1 <-
     runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
-    recenterFixedSizeConduit parallelParams gaussianFilter =$=
-    applyV4SeparableFilterLabeledArrayConduit parallelParams filterVecsList =$=
+    applyV4SeparableFilterLabeledArrayWithCenterConduit
+      parallelParams
+      gaussianFilter
+      v4QuardTreeFilterParams =$=
     CL.take 1
   let trainParams =
         TrainParams
@@ -64,13 +74,12 @@ main = do
         , trainC = 512
         , trainNumExamples = L.length featurePtr
         , trainFeatureIndexMax = VU.length . snd . L.head $ featurePtr1
-            -- (L.sum . L.map filterNum $ filterVecsList) *
-            -- if isColor
-            --   then 3
-            --   else 1
+        -- (L.sum . L.map filterNum $ filterVecsList) *
+        -- if isColor
+        --   then 3
+        --   else 1
         , trainModel = modelName
         }
       (labels, features) = L.unzip featurePtr
   print trainParams
-  print . VU.length . snd . L.head $ featurePtr1
   train trainParams labels features

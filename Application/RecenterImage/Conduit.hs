@@ -5,7 +5,7 @@ import           Control.Monad                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Filter.GaussianFilter
+import           CV.Filter.GaussianFilter     as Gaussian
 import           CV.Utility.Parallel
 import           Data.Array.Repa              as R
 import           Data.Complex
@@ -16,6 +16,7 @@ import           Data.List                    as L
 import           Data.Maybe
 import           Data.Ord
 import           Data.Vector.Unboxed          as VU
+import CV.V4Filter
 
 {-# INLINE findCenter #-}
 
@@ -47,7 +48,7 @@ recenterFixedSizeConduit parallelParams gaussianFilter = do
                 rdeepseq
                 (\(LabeledArray label x) ->
                    let (yIdx, xIdx) =
-                         findCenter . applyFilterFixedSize gaussianFilter $ x
+                         findCenter . Gaussian.applyFilterFixedSize gaussianFilter $ x
                        (Z :. nf' :. ny' :. nx') = extent x
                        arr =
                          computeUnboxedS $
@@ -83,7 +84,7 @@ findCenterConduit parallelParams = do
                 rseq
                 (\x ->
                    let gaussianParams = GaussianFilterParams 32 ny' nx'
-                       filteredImage = applyFilterVariedSize gaussianParams $ x
+                       filteredImage = Gaussian.applyFilterVariedSize gaussianParams $ x
                        (yIdx, xIdx) = findCenter filteredImage
                        (Z :. nf' :. ny' :. nx') = extent x
                        arr =
@@ -100,3 +101,56 @@ findCenterConduit parallelParams = do
         liftIO . print . fst . L.unzip $ ys
         sourceList . snd . L.unzip $ ys
         findCenterConduit parallelParams)
+
+
+applyV4SeparableFilterLabeledArrayWithCenterConduit
+  :: ParallelParams
+  -> GaussianFilter (R.Array U DIM2 (Complex Double))
+  -> V4SeparableFilterParamsAxis
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+applyV4SeparableFilterLabeledArrayWithCenterConduit parallelParams gaussianFilter filterParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray label' x) ->
+                    let (Z :. channels :. numRows :. numCols) = extent x
+                        imgVecs =
+                          L.map
+                            (\i ->
+                                VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                                (Z :. i :. All :. All))
+                            [0 .. channels - 1]
+                        center =
+                          findCenter . Gaussian.applyFilterFixedSize gaussianFilter $
+                          x
+                        filters =
+                          generateV4SeparableFilterWithCenterAxis filterParams center
+                    in (LabeledArray label' $!
+                        fromUnboxed (Z :. channels :. numRows :. numCols) .
+                        normalizeVec .
+                        VU.concat .
+                        L.map
+                          (\filter' ->
+                              VU.concat $
+                              L.map (applyV4SeparableFilter filter') imgVecs) $
+                        filters))
+                xs
+        sourceList ys
+        applyV4SeparableFilterLabeledArrayWithCenterConduit
+          parallelParams
+          gaussianFilter
+          filterParams)
+
+
+{-# INLINE normalizeVec #-}
+
+normalizeVec :: VU.Vector Double -> VU.Vector Double
+normalizeVec vec
+  | s == 0 = VU.replicate (VU.length vec) 0
+  | otherwise = VU.map (/ s) vec
+  where
+    s = sqrt . VU.sum . VU.map (^ 2) $ vec
