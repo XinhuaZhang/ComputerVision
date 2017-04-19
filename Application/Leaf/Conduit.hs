@@ -1,6 +1,8 @@
 module Application.Leaf.Conduit where
 
+import           Classifier.LibLinear
 import           Classifier.LibSVM
+import           Control.Arrow
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
@@ -12,6 +14,7 @@ import           Data.Conduit.List            as CL
 import           Data.List                    as L
 import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
+import           Foreign.Marshal.Array
 import           Foreign.Ptr
 
 
@@ -43,7 +46,7 @@ complexKernelP xs = do
   where
     n = L.length xs
     vec = V.fromList xs
-    
+
 
 complexKernel :: ParallelParams -> [VU.Vector (Complex Double)] -> [[Double]]
 complexKernel parallelParams xs = do
@@ -85,3 +88,28 @@ libSVMPredictConduit parallelParams trainFeatures = do
         ptrs <- liftIO $ M.mapM (getPreComputedKernelFeatureVecPtr (-1)) zs
         sourceList $ L.zip labels ptrs
         libSVMPredictConduit parallelParams trainFeatures)
+
+
+featurePtrConduit :: Conduit (a, VU.Vector Double) (ResourceT IO) (a, Ptr C'feature_node)
+featurePtrConduit =
+  awaitForever
+    (\(label, vec) -> do
+       featurePtr <- liftIO $ newArray . getFeature . Dense . VU.toList $ vec
+       yield (label, featurePtr))
+
+
+featureConduitP
+  :: ParallelParams
+  -> Conduit (a,VU.Vector Double) (ResourceT IO) (a, [C'feature_node])
+featureConduitP parallelParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (second $ getFeature . Dense . VU.toList) $
+              xs
+        CL.sourceList ys
+        featureConduitP parallelParams)
