@@ -325,7 +325,7 @@ padTransformImageConduit parallelParams padVal imageTransformationParams = do
         let ys =
               parZipWithChunk
                 parallelParams
-                rseq
+                rdeepseq
                 (\p (LabeledArray label' x) ->
                     L.map (LabeledArray label') $! padTransformImage padVal p x)
                 params

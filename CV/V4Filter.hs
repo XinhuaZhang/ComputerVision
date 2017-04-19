@@ -7,6 +7,8 @@ module CV.V4Filter
   , V4SeparableFilterParamsAxis(..)
   , generateV4SeparableFilterAxis
   , generateV4SeparableFilterWithCenterAxis
+  , generateV4SeparableFilterGrid
+  , generateV4SeparableFilterWithCenterGrid
   , applyV4SeparableFilterLabeledArrayConduit
   , applyV4SeparableFilter
   -- , applyV4SeparableFilterComplexLabeledArrayConduit
@@ -58,6 +60,7 @@ data V4SeparableFilterParamsAxis = V4SeparableFilterParamsAxis
   , hyperbolicSeparableAngle        :: !Double
   , separableFilterParams           :: !SeparableFilterParams
   } deriving (Show, Read)
+  
 
 generateV4SeparableFilterAxis :: V4SeparableFilterParamsAxis -> [V4SeparableFilter]
 generateV4SeparableFilterAxis params =
@@ -101,6 +104,69 @@ generateV4SeparableFilterWithCenterAxis params (rows, cols) =
         getFilterVectors
           (makeFilter
              (PolarSeparableFilter polarSeparableFilterParams Null :: PolarSeparableFilterExpansionAxis)
+             (rows, cols))
+      cgf =
+        getFilterVectors
+          (makeFilter
+             (CartesianGratingFilter cartesianGratingFilterParams Null :: CartesianGratingFilter)
+             (rows, cols))
+      hf =
+        getFilterVectors
+          (makeFilter
+             (HyperbolicSeparableFilter hyperbolicSeparableFilterParams Null :: HyperbolicSeparableFilter)
+             (rows, cols))
+  in case separableFilterParams params of
+       P -> [psf]
+       C -> [cgf]
+       H -> [hf]
+       PC -> [psf, cgf]
+       PH -> [psf, hf]
+       CH -> [cgf, hf]
+       PCH -> [psf, cgf, hf]
+       
+
+
+generateV4SeparableFilterGrid :: V4SeparableFilterParamsAxis -> [V4SeparableFilter]
+generateV4SeparableFilterGrid params =
+  let rows = div (separableFilterRows params) 2
+      cols = div (separableFilterCols params) 2
+  in generateV4SeparableFilterWithCenterGrid params (rows, cols)
+
+
+generateV4SeparableFilterWithCenterGrid :: V4SeparableFilterParamsAxis -> (Int,Int) -> [V4SeparableFilter]
+generateV4SeparableFilterWithCenterGrid params (rows, cols) =
+  let polarSeparableFilterParams =
+        PolarSeparableFilterParamsGrid
+        { getPolarSeparableFilterGridRows = separableFilterRows params
+        , getPolarSeparableFilterGridCols = separableFilterCols params
+        , getPolarSeparableFilterGridScale = polarSeparableScale params
+        , getPolarSeparableFilterGridRadialFreq =
+          polarSeparableRadialMultiplier params
+        , getPolarSeparableFilterGridAngularFreq =
+          polarSeparableAngularMultiplier params
+        }
+      cartesianGratingFilterParams =
+        CartesianGratingFilterParams
+        { getCartesianGratingFilterRows = separableFilterRows params
+        , getCartesianGratingFilterCols = separableFilterCols params
+        , getCartesianGratingFilterScale = cartesianGratingScale params
+        , getCartesianGratingFilterFreq = cartesianGratingFreq params
+        , getCartesianGratingFilterAngle = cartesianGratingAngle params
+        }
+      hfAngle = hyperbolicSeparableAngle params
+      hyperbolicSeparableFilterParams =
+        HyperbolicSeparableFilterParams
+        { getHyperbolicSeparableFilterRows = separableFilterRows params
+        , getHyperbolicSeparableFilterCols = separableFilterCols params
+        , getHyperbolicSeparableFilterScale = hyperbolicSeparableScale params
+        , getHyperbolicSeparableFilterUFreq = hyperbolicSeparableUFreq params
+        , getHyperbolicSeparableFilterVFreq = hyperbolicSeparableVFreq params
+        , getHyperbolicSeparableFilterAngle = [0,hfAngle .. 90 - hfAngle]
+        }
+      psf =
+        getFilterVectors
+          (makeFilter
+             (PolarSeparableFilter polarSeparableFilterParams Null :: PolarSeparableFilterExpansionGrid)
              (rows, cols))
       cgf =
         getFilterVectors
@@ -315,10 +381,23 @@ computePhaseDifference (fn:fs) (xn:xs) =
   L.concat
     (L.zipWith
        (\fm xm ->
-           let mn = fromIntegral $ lcm (round fm) (round fn) :: Double
-               (!y :+ (!z)) =
-                 (xn ** (mn / fn :+ 0)) * (conjugate $ xm ** (mn / fm :+ 0))
-           in [y, z])
+          if fm == 0
+            then []
+            else if signum fn == signum fm
+                   then let mn =
+                              fromIntegral $
+                              lcm (round . abs $ fm) (round . abs $ fn) :: Double
+                            (!y :+ (!z)) =
+                              (xn ** (mn / (abs fn) :+ 0)) *
+                              (conjugate $ xm ** (mn / (abs fm) :+ 0))
+                        in [y, z]
+                   else let mn =
+                              fromIntegral $
+                              lcm (round . abs $ fm) (round . abs $ fn) :: Double
+                            (!y :+ (!z)) =
+                              (xn ** (mn / (abs fn) :+ 0)) *
+                              (xm ** (mn / (abs fm) :+ 0))
+                        in [y, z])
        fs
        xs) L.++
   computePhaseDifference fs xs
@@ -350,21 +429,24 @@ applyV4SeparableFilter (V4PolarSeparableFilterAxis freqs filters) imgVec =
   let (mags, normalizedXS) =
         L.unzip . L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
         filters
-  in VU.fromList $ L.concat mags --L.++ L.concatMap (computePhaseDifference freqs) normalizedXS
+  in VU.fromList $ --L.concat mags 
+                   --L.++ 
+                   L.concatMap (computePhaseDifference freqs) normalizedXS
 applyV4SeparableFilter (V4PolarSeparableFilterGrid (rfs, afs) filters) imgVec =
   VU.concat .
   L.map
-    (uncurry (VU.++) .
-     join
-       (***)
-       (\xs ->
-           let (mags, normalizedXS) =
-                 L.unzip .
-                 L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
-                 xs
-           in VU.fromList $
-              L.concat mags L.++ L.concatMap (computePhaseDifference afs) normalizedXS L.++
-              (computePhaseDifference rfs . L.head . L.transpose $ normalizedXS))) $
+    (\xs ->
+       let (mags, normalizedXS) =
+             L.unzip .
+             L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
+             xs
+       in VU.fromList $
+          L.concat mags 
+          -- L.++
+          -- L.concatMap (computePhaseDifference afs) normalizedXS 
+          -- L.++
+          -- (computePhaseDifference rfs . L.head . L.transpose $ normalizedXS)
+    ) $
   filters
 applyV4SeparableFilter (V4CartesianSeparableFilter freqs filters) imgVec =
   let (mags, normalizedXS) =
@@ -375,6 +457,19 @@ applyV4SeparableFilter (V4CartesianSeparableFilter freqs filters) imgVec =
 applyV4SeparableFilter (V4HyperbolicSeparableFilter filters) imgVec =
   let xs = applyFilter imgVec filters
   in VU.fromList . L.map magnitude $xs
+applyV4SeparableFilter (FourierMellinTransform (rfs, afs) filters) imgVec =
+  VU.concat .
+  L.map
+    (\xs ->
+       let (mags, normalizedXS) =
+             L.unzip .
+             L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
+             xs
+       in VU.fromList $
+          L.concat mags L.++
+          L.concatMap (computePhaseDifference afs) normalizedXS L.++
+          (computePhaseDifference rfs . L.head . L.transpose $ normalizedXS)) $
+  filters
 applyV4SeparableFilter _ _ = error "applyV4SeparableFilter: filter type is not supported."
 
 

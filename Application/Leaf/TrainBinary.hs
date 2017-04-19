@@ -25,14 +25,15 @@ main = do
         { numThread = 6
         , batchSize = 120
         }
+      m = 15
       v4QuardTreeFilterParams =
         V4SeparableFilterParamsAxis
-        { separableFilterRows = n
-        , separableFilterCols = n
+        { separableFilterRows = rows
+        , separableFilterCols = cols
         , polarSeparableScale = [63]
         , polarSeparableFreq = [1 .. 8]
-        , polarSeparableRadialMultiplier = [0, 1, 1]
-        , polarSeparableAngularMultiplier = [1, 0, 1]
+        , polarSeparableRadialMultiplier = [-m,-(m-1)..m]
+        , polarSeparableAngularMultiplier = [-m,-(m-1)..m]
         , cartesianGratingScale =
           [ 2 ** (i / 2)
           | i <- [7 .. 10] ]
@@ -46,9 +47,9 @@ main = do
         , hyperbolicSeparableAngle = 15
         , separableFilterParams = P
         }
-      n = read sizeStr :: Int
+      (rows,cols) = read sizeStr :: (Int,Int)
       isColor = read isColorStr :: Bool
-      gaussianFilterParams = GaussianFilterParams 32 n n
+      gaussianFilterParams = GaussianFilterParams 32 rows cols
       gaussianFilter = Gaussian.makeFilter gaussianFilterParams
   writeFile paramsFilePath . show $ v4QuardTreeFilterParams
   featurePtr <-

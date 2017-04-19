@@ -107,7 +107,7 @@ applyV4SeparableFilterLabeledArrayWithCenterConduit
   :: ParallelParams
   -> GaussianFilter (R.Array U DIM2 (Complex Double))
   -> V4SeparableFilterParamsAxis
-  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double,VU.Vector Double)
 applyV4SeparableFilterLabeledArrayWithCenterConduit parallelParams gaussianFilter filterParams = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -117,26 +117,28 @@ applyV4SeparableFilterLabeledArrayWithCenterConduit parallelParams gaussianFilte
                 parallelParams
                 rdeepseq
                 (\(LabeledArray label' x) ->
-                    let (Z :. channels :. numRows :. numCols) = extent x
-                        imgVecs =
-                          L.map
-                            (\i ->
-                                VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
-                                (Z :. i :. All :. All))
-                            [0 .. channels - 1]
-                        center =
-                          findCenter . Gaussian.applyFilterFixedSize gaussianFilter $
-                          x
-                        filters =
-                          generateV4SeparableFilterWithCenterAxis filterParams center
-                    in (LabeledArray label' $!
-                        fromUnboxed (Z :. channels :. numRows :. numCols) .
-                        normalizeVec .
+                   let (Z :. channels :. numRows :. numCols) = extent x
+                       imgVecs =
+                         L.map
+                           (\i ->
+                              VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                              (Z :. i :. All :. All))
+                           [0 .. channels - 1]
+                       center =
+                         findCenter .
+                         Gaussian.applyFilterFixedSize gaussianFilter $
+                         x
+                       filters =
+                         generateV4SeparableFilterWithCenterGrid
+                           filterParams
+                           center
+                   in ( fromIntegral label'
+                      , normalizeVec .
                         VU.concat .
                         L.map
                           (\filter' ->
-                              VU.concat $
-                              L.map (applyV4SeparableFilter filter') imgVecs) $
+                             VU.concat $
+                             L.map (applyV4SeparableFilter filter') imgVecs) $
                         filters))
                 xs
         sourceList ys

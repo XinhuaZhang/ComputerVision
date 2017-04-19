@@ -19,18 +19,19 @@ import           Data.Set                          as S
 import           Data.Vector.Unboxed               as VU
 import           System.Environment
 
+
 main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   v4QuardTreeFilterParams <-
-    fmap (\x -> read x :: V4SeparableFilterParams) . readFile $ paramsFilePath
+    fmap (\x -> read x :: V4SeparableFilterParamsAxis) . readFile $ paramsFilePath
   let parallelParams =
         ParallelParams
-        { numThread = 12
+        { numThread = 6
         , batchSize = 120
         }
-      n = read sizeStr :: Int
+      (rows,cols) = read sizeStr :: (Int,Int)
       isColor = read isColorStr :: Bool
-      gaussianFilterParams = GaussianFilterParams 32 n n
+      gaussianFilterParams = GaussianFilterParams 32 rows cols
       gaussianFilter = Gaussian.makeFilter gaussianFilterParams
   runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=

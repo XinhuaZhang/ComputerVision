@@ -19,10 +19,12 @@ data V4SeparableFilter
   = V4PolarSeparableFilterAxis [Double]
                                [[Vector (Complex Double)]]
   | V4PolarSeparableFilterGrid ([Double], [Double])
-                               [([[Vector (Complex Double)]], [[Vector (Complex Double)]])]
+                               [[[Vector (Complex Double)]]]
   | V4CartesianSeparableFilter [Double]
                                [[Vector (Complex Double)]]
   | V4HyperbolicSeparableFilter [Vector (Complex Double)]
+  | FourierMellinTransform ([Double], [Double])
+                           [[[Vector (Complex Double)]]]
   | Null
 
 

@@ -166,3 +166,13 @@ dftImageArr arr = threeDCArray2RArray dftCArr
     !dftCArr = dftN [1, 2] cArr
 
 
+
+{-# INLINE disk #-}
+disk
+  :: (Floating a, Ord a)
+  => a -> Int -> Int -> a
+disk sd i j
+  | sqrt r < sd = 1
+  | otherwise = 0
+  where
+    r = fromIntegral (i * i + j * j)

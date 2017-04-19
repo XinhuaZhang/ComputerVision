@@ -35,6 +35,8 @@ main = do
         , contrastFactorARange = read aRangeStr :: (Double, Double)
         , contrastFactorBRange = read bRangeStr :: (Double, Double)
         }
+  xx <- generateImageTransformation transformParams
+  print xx 
   labels <- fmap (L.map (\x -> read x :: Int) . L.lines) . readFile $ labelListPath
   runResourceT $
     imagePathSource imageListPath $$ readImageConduit isColor =$=
