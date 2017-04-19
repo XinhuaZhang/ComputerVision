@@ -30,7 +30,7 @@ main = do
         V4SeparableFilterParamsAxis
         { separableFilterRows = rows
         , separableFilterCols = cols
-        , polarSeparableScale = [63]
+        , polarSeparableScale = [32,64]
         , polarSeparableFreq = [1 .. 8]
         , polarSeparableRadialMultiplier = [-m,-(m-1)..m]
         , polarSeparableAngularMultiplier = [-m,-(m-1)..m]
