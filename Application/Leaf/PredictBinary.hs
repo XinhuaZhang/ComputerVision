@@ -23,13 +23,10 @@ import           System.Environment
 main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   v4QuardTreeFilterParams <-
-    fmap (\x -> read x :: V4SeparableFilterParamsAxis) . readFile $ paramsFilePath
-  let parallelParams =
-        ParallelParams
-        { numThread = 6
-        , batchSize = 120
-        }
-      (rows,cols) = read sizeStr :: (Int,Int)
+    fmap (\x -> read x :: V4SeparableFilterParamsGrid) . readFile $
+    paramsFilePath
+  let parallelParams = ParallelParams {numThread = 12, batchSize = 120}
+      (rows, cols) = read sizeStr :: (Int, Int)
       isColor = read isColorStr :: Bool
       gaussianFilterParams = GaussianFilterParams 32 rows cols
       gaussianFilter = Gaussian.makeFilter gaussianFilterParams

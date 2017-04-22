@@ -22,30 +22,32 @@ main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   let parallelParams =
         ParallelParams
-        { numThread = 6
+        { numThread = 12
         , batchSize = 120
         }
       m = 15
       v4QuardTreeFilterParams =
-        V4SeparableFilterParamsAxis
-        { separableFilterRows = rows
-        , separableFilterCols = cols
-        , polarSeparableScale = [32,64]
-        , polarSeparableFreq = [1 .. 8]
-        , polarSeparableRadialMultiplier = [-m,-(m-1)..m]
-        , polarSeparableAngularMultiplier = [-m,-(m-1)..m]
-        , cartesianGratingScale =
+        V4SeparableFilterParamsGrid
+        { v4SeparableFilterParamsGridSeparableFilterRows = rows
+        , v4SeparableFilterParamsGridSeparableFilterCols = cols
+        -- , v4SeparableFilterParamsGridPolarSeparablePolarFactor = 1
+        , v4SeparableFilterParamsGridPolarSeparableScale = [64]
+        , v4SeparableFilterParamsGridPolarSeparableRadialFreq = [0..7]
+        , v4SeparableFilterParamsGridPolarSeparableAngularFreq = [0..7]
+        -- , v4SeparableFilterParamsGridPolarSeparableFreq = [-15,-14 .. 15]
+        -- , v4SeparableFilterParamsGridPolarSeparableAngle = [0,m.. 90-m]
+        , v4SeparableFilterParamsGridCartesianGratingScale =
           [ 2 ** (i / 2)
           | i <- [7 .. 10] ]
-        , cartesianGratingFreq = L.take 8 [1 .. 8]
-        , cartesianGratingAngle = [0,15 .. 360 - 15]
-        , hyperbolicSeparableScale =
+        , v4SeparableFilterParamsGridCartesianGratingFreq = L.take 8 [1 .. 8]
+        , v4SeparableFilterParamsGridCartesianGratingAngle = [0,15 .. 360 - 15]
+        , v4SeparableFilterParamsGridHyperbolicSeparableScale =
           [ 2 ** (i / 2)
           | i <- [7 .. 10] ]
-        , hyperbolicSeparableUFreq = [0 .. 3]
-        , hyperbolicSeparableVFreq = [0 .. 3]
-        , hyperbolicSeparableAngle = 15
-        , separableFilterParams = P
+        , v4SeparableFilterParamsGridHyperbolicSeparableUFreq = [0 .. 3]
+        , v4SeparableFilterParamsGridHyperbolicSeparableVFreq = [0 .. 3]
+        , v4SeparableFilterParamsGridHyperbolicSeparableAngle = 15
+        , v4SeparableFilterParamsGridSeparableFilterParams = P
         }
       (rows,cols) = read sizeStr :: (Int,Int)
       isColor = read isColorStr :: Bool
@@ -72,7 +74,7 @@ main = do
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 512
+        , trainC = 1
         , trainNumExamples = L.length featurePtr
         , trainFeatureIndexMax = VU.length . snd . L.head $ featurePtr1
         -- (L.sum . L.map filterNum $ filterVecsList) *

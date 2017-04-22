@@ -106,7 +106,7 @@ findCenterConduit parallelParams = do
 applyV4SeparableFilterLabeledArrayWithCenterConduit
   :: ParallelParams
   -> GaussianFilter (R.Array U DIM2 (Complex Double))
-  -> V4SeparableFilterParamsAxis
+  -> V4SeparableFilterParamsGrid
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double,VU.Vector Double)
 applyV4SeparableFilterLabeledArrayWithCenterConduit parallelParams gaussianFilter filterParams = do
   xs <- CL.take (batchSize parallelParams)
@@ -129,17 +129,27 @@ applyV4SeparableFilterLabeledArrayWithCenterConduit parallelParams gaussianFilte
                          Gaussian.applyFilterFixedSize gaussianFilter $
                          x
                        filters =
-                         generateV4SeparableFilterWithCenterGrid
-                           filterParams
-                           center
-                   in ( fromIntegral label'
-                      , normalizeVec .
-                        VU.concat .
-                        L.map
-                          (\filter' ->
-                             VU.concat $
-                             L.map (applyV4SeparableFilter filter') imgVecs) $
-                        filters))
+                         L.map
+                           (generateV4SeparableFilterWithCenterGrid filterParams)
+                           centers
+                       (cR, cC) = center
+                       centers =
+                         [(cR + i, cC + j) | i <- [-4,0 .. 4], j <- [-4,0 .. 4]]
+                       responses = L.map (\filters' -> VU.concat .
+                                                       L.map
+                                                         (\filter' ->
+                                                            VU.concat $
+                                                            L.map (applyV4SeparableFilter filter') imgVecs) $
+                                                       filters') filters
+                   in (fromIntegral label', normalizeVec . L.foldl1' (VU.zipWith (+)) $ responses))
+                      -- ( fromIntegral label'
+                      -- , normalizeVec .
+                      --   VU.concat .
+                      --   L.map
+                      --     (\filter' ->
+                      --        VU.concat $
+                      --        L.map (applyV4SeparableFilter filter') imgVecs) $
+                      --   filters))
                 xs
         sourceList ys
         applyV4SeparableFilterLabeledArrayWithCenterConduit
