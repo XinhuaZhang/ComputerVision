@@ -111,11 +111,14 @@ angularFunc180 freq x y =
 {-# INLINE radialFunc #-}
 
 radialFunc :: Double -> Int -> PixelOp (Pixel ComplexImage)
-radialFunc scale freq x y =
-  ejx
-    ((sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * fromIntegral freq *
-     (2 * pi) /
-     (16 * scale))
+radialFunc scale freq x y 
+  | r == 0 = 1
+  | otherwise = ejx (fromIntegral freq * (log r))
+  where r = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+  -- ejx
+  --   ((sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * fromIntegral freq *
+  --    (2 * pi) /
+  --    (16 * scale))
 -- ejx
 --   ((1 - exp (-1 * P.fromIntegral freq / 8)) *
 --    (sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) *
@@ -141,7 +144,8 @@ pinwheels :: Double -> Int -> Int -> PixelOp (C.Complex Double)
 pinwheels scale rf af x y
   | scale == 0 = (angularFunc af x y * radialFunc scale  rf x y) 
   | otherwise =
-    (real2Complex (gaussian2DRing af rf scale x y) * angularFunc af x y * radialFunc scale rf x y)
+    -- (real2Complex (gaussian2DRing af rf scale x y) *
+     angularFunc af x y * radialFunc scale rf x y -- )
     -- (real2Complex (gaussian2D  scale x y) * angularFunc af x y * radialFunc scale rf x y)
 
 {-# INLINE pinwheels180 #-}

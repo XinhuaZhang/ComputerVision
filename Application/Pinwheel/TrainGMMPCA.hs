@@ -101,7 +101,7 @@ main = do
               CL.consume
             runResourceT $
               CL.sourceList filteredArrs $$
-              gaussianVariedSizeConduit parallelParams gaussianFilterParams =$=
+              -- gaussianVariedSizeConduit parallelParams gaussianFilterParams =$=
               CL.map (downsample [downsampleFactor', downsampleFactor', 1]) =$=
               extractPointwiseFeatureConduit parallelParams =$=
               hGMMSink1
