@@ -13,6 +13,7 @@ class FilterExpansion a  where
   getFilterParameter :: a -> FilterParameter a
   getFilterVectors :: a -> V4SeparableFilter
   changeSizeParameter :: Int -> Int -> a -> a
+  
 
 
 data V4SeparableFilter
@@ -27,6 +28,11 @@ data V4SeparableFilter
                            [[[Vector (Complex Double)]]]
   | Null
 
+
+data V4SeparableFilterConvolution =
+  V4PolarSeparableFilterConvolutionAxis (Int, Int)
+                                        [Double]
+                                        [[Vector (Complex Double)]]
 
 {-# INLINE grid1D #-}
 
