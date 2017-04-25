@@ -11,6 +11,7 @@ module CV.V4Filter
   , generateV4SeparableFilterWithCenterGrid
   , applyV4SeparableFilterLabeledArrayConduit
   , applyV4SeparableFilter
+  , applyV4SeparableFilterComplex
   -- , applyV4SeparableFilterComplexLabeledArrayConduit
   -- , filterNum
   -- , filterNumComplex
@@ -33,6 +34,7 @@ import           Data.Conduit
 import           Data.Conduit.List                as CL
 import           Data.List                        as L
 import           Data.Vector.Unboxed              as VU
+import Data.Maybe as Maybe
 
 data SeparableFilterParams
   = P
@@ -370,6 +372,18 @@ normalizeComplex x =
       else x / (mag :+ 0))
   where
     mag = magnitude x
+    
+{-# INLINE normalizeComplex' #-}
+
+normalizeComplex' :: Complex Double -> ([Double], Complex Double)
+normalizeComplex' x =
+  ( [a,b]
+  , if mag == 0
+      then 0
+      else x / (mag :+ 0))
+  where
+    mag = magnitude x
+    (a:+b) = x / (mag :+ 0)
 
 {-# INLINE computePhaseDifference #-}
 
@@ -402,16 +416,6 @@ computePhaseDifference (fn:fs) (xn:xs) =
        xs) L.++
   computePhaseDifference fs xs
 
-{-# INLINE computeMagnitudeContrastInvarient #-}
-
-computeMagnitudeContrastInvarient :: [Double] -> [Double] -> [Double]
-computeMagnitudeContrastInvarient [] _ = []
-computeMagnitudeContrastInvarient _ [] = []
-computeMagnitudeContrastInvarient (0:fs) (_:xs) =
-  computeMagnitudeContrastInvarient fs xs
-computeMagnitudeContrastInvarient (_:fs) (xn:xs) =
-  L.map (\xm -> sqrt $ xn * xm) xs L.++ computeMagnitudeContrastInvarient fs xs
-
 {-# INLINE applyFilter #-}
 
 applyFilter :: VU.Vector (Complex Double)
@@ -441,11 +445,11 @@ applyV4SeparableFilter (V4PolarSeparableFilterGrid (rfs, afs) filters) imgVec =
              L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
              xs
        in VU.fromList $
-          L.concat mags 
+          -- L.concat mags 
           -- L.++
           -- L.concatMap (computePhaseDifference afs) normalizedXS 
           -- L.++
-          -- (computePhaseDifference rfs . L.head . L.transpose $ normalizedXS)
+          (L.concatMap (computePhaseDifference rfs)  . L.transpose $ normalizedXS)
     ) $
   filters
 applyV4SeparableFilter (V4CartesianSeparableFilter freqs filters) imgVec =
@@ -493,63 +497,87 @@ applyV4SeparableFilter _ _ = error "applyV4SeparableFilter: filter type is not s
 --     numAxes = L.length xs
 --     numFreq = L.length . L.head $ xs
 
+{-# INLINE computeMagnitudeContrastInvarient #-}
 
+computeMagnitudeContrastInvarient :: [Double] -> [Double] -> [Maybe Double]
+computeMagnitudeContrastInvarient [] _ = []
+computeMagnitudeContrastInvarient _ [] = []
+computeMagnitudeContrastInvarient (0:fs) (_:xs) =
+  computeMagnitudeContrastInvarient fs xs
+computeMagnitudeContrastInvarient (_:fs) (xn:xs) =
+  L.zipWith
+    (\fm xm ->
+        if fm == 0
+          then Nothing
+          else Just $ sqrt $ xn * xm)
+    fs
+    xs L.++
+  computeMagnitudeContrastInvarient fs xs
 
 {-# INLINE computePhaseDifferencePhase #-}
 
-computePhaseDifferencePhase :: [Double] -> [Complex Double] -> [Double]
-computePhaseDifferencePhase [] [] = []
+computePhaseDifferencePhase :: [Double] -> [Complex Double] -> [Maybe Double]
+computePhaseDifferencePhase [] _ = []
+computePhaseDifferencePhase _ [] = []
 computePhaseDifferencePhase (0:fs) (_:xs) = computePhaseDifferencePhase fs xs
 computePhaseDifferencePhase (fn:fs) (xn:xs) =
   (L.zipWith
      (\fm xm ->
-        let mn = fromIntegral $ lcm (round fm) (round fn)
-        in phase $ (xn ** (mn / fn :+ 0)) * (conjugate $ xm ** (mn / fm :+ 0)))
+         if fm == 0
+            then Nothing
+            else if signum fn == signum fm
+                   then let mn =
+                              fromIntegral $ lcm (round . abs $ fm) (round . abs $ fn) :: Double
+                        in Just . phase $
+                           (xn ** (mn / (abs fn) :+ 0)) *
+                           (conjugate $ xm ** (mn / (abs fm) :+ 0))
+                   else let mn =
+                              fromIntegral $ lcm (round . abs $ fm) (round . abs $ fn) :: Double
+                        in Just . phase $
+                           (xn ** (mn / (abs fn) :+ 0)) * (xm ** (mn / (abs fm) :+ 0)))
      fs
      xs) L.++
   computePhaseDifferencePhase fs xs
 
--- {-# INLINE applyV4SeparableFilterComplex #-}
+{-# INLINE applyV4SeparableFilterComplex #-}
 
--- applyV4SeparableFilterComplex :: V4SeparableFilter
---                               -> VU.Vector (Complex Double)
---                               -> VU.Vector (Complex Double)
--- applyV4SeparableFilterComplex (V4PolarSeparableFilter (rfs, afs) filters) imgVec =
---   VU.concat .
---   L.map
---     (uncurry (VU.++) .
---      join
---        (***)
---        (\xs ->
---           let (mags, normalizedXS) =
---                 L.unzip .
---                 L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
---                 xs
---           in VU.fromList $
---              (L.concat $
---               L.zipWith
---                 (L.zipWith mkPolar)
---                 (L.map (computeMagnitudeContrastInvarient afs) mags)
---                 (L.map (computePhaseDifferencePhase afs) normalizedXS)) L.++
---              (L.concat $
---               L.zipWith
---                 (L.zipWith mkPolar)
---                 (L.map (computeMagnitudeContrastInvarient rfs) . L.transpose $
---                  mags)
---                 (L.map (computePhaseDifferencePhase rfs) . L.transpose $
---                  normalizedXS)))) $
---   filters
--- applyV4SeparableFilterComplex (V4CartesianSeparableFilter freqs filters) imgVec =
---   let (mags, normalizedXS) =
---         L.unzip . L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
---         filters
---   in VU.fromList $
---      L.concat $
---      L.zipWith
---        (L.zipWith mkPolar)
---        (L.map (computeMagnitudeContrastInvarient freqs) mags)
---        (L.map (computePhaseDifferencePhase freqs) normalizedXS)
--- applyV4SeparableFilterComplex _ _ = error "applyV4SeparableFilter: filter type is not supported."
+applyV4SeparableFilterComplex :: V4SeparableFilter
+                              -> VU.Vector (Complex Double)
+                              -> VU.Vector (Complex Double)
+applyV4SeparableFilterComplex (V4PolarSeparableFilterGrid (rfs, afs) filters) imgVec =
+  VU.concat .
+  L.map
+    (\xs ->
+        let (mags, normalizedXS) =
+              L.unzip .
+              L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
+              xs
+        in VU.fromList $
+           (L.concat $
+            L.zipWith
+              (L.zipWith (\a b -> (0:+ b)))
+              (L.map (Maybe.catMaybes . computeMagnitudeContrastInvarient afs) mags)
+              (L.map (Maybe.catMaybes .computePhaseDifferencePhase afs) normalizedXS)) 
+           L.++
+           -- (L.map (:+0).  L.concat $ mags ) L.++
+           (L.concat $
+            L.zipWith
+              (L.zipWith (\a b -> (0:+ b)))
+              (L.map (Maybe.catMaybes . computeMagnitudeContrastInvarient rfs) . L.transpose $ mags)
+              (L.map (Maybe.catMaybes .  computePhaseDifferencePhase rfs) . L.transpose $ normalizedXS))
+    ) $
+  filters
+applyV4SeparableFilterComplex (V4CartesianSeparableFilter freqs filters) imgVec =
+  let (mags, normalizedXS) =
+        L.unzip . L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
+        filters
+  in VU.fromList $
+     L.concat $
+     L.zipWith
+       (L.zipWith mkPolar)
+       (L.map (Maybe.catMaybes . computeMagnitudeContrastInvarient freqs) mags)
+       (L.map (Maybe.catMaybes . computePhaseDifferencePhase freqs) normalizedXS)
+applyV4SeparableFilterComplex _ _ = error "applyV4SeparableFilter: filter type is not supported."
 
 
 

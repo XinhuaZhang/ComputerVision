@@ -146,6 +146,54 @@ applyV4SeparableFilterLabeledArrayWithCenterConduit parallelParams gaussianFilte
           parallelParams
           gaussianFilter
           filterParams)
+          
+
+
+applyV4SeparableFilterComplexLabeledArrayWithCenterConduit
+  :: ParallelParams
+  -> GaussianFilter (R.Array U DIM2 (Complex Double))
+  -> V4SeparableFilterParamsAxis
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double,VU.Vector (Complex Double))
+applyV4SeparableFilterComplexLabeledArrayWithCenterConduit parallelParams gaussianFilter filterParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray label' x) ->
+                    let (Z :. channels :. numRows :. numCols) = extent x
+                        imgVecs =
+                          L.map
+                            (\i ->
+                                VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                                (Z :. i :. All :. All))
+                            [0 .. channels - 1]
+                        center =
+                          findCenter . Gaussian.applyFilterFixedSize gaussianFilter $
+                          x
+                        filters =
+                          generateV4SeparableFilterWithCenterGrid filterParams center
+                        complexVec =
+                          VU.concat .
+                          L.map
+                            (\filter' ->
+                               VU.concat $
+                               L.map
+                                 (applyV4SeparableFilterComplex filter')
+                                 imgVecs) $
+                          filters
+                        normalizedMagVec =
+                          normalizeVec . VU.map magnitude $ complexVec
+                    in ( fromIntegral label'
+                       , VU.zipWith (\a b -> mkPolar a . phase $ b) normalizedMagVec complexVec))
+                xs
+        sourceList ys
+        applyV4SeparableFilterComplexLabeledArrayWithCenterConduit
+          parallelParams
+          gaussianFilter
+          filterParams)
 
 
 {-# INLINE normalizeVec #-}
