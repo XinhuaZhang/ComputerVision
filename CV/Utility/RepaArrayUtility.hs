@@ -234,18 +234,18 @@ threeDCArray2RArray cArr =
 {-# INLINE makeFilterList #-}
 
 makeFilterList :: Int -> Int -> (Int -> Int -> a) -> [a]
-makeFilterList ny nx f =
+makeFilterList rows cols f =
   [ let !x =
-          if r < (ny `div` 2)
+          if r < (rows `div` 2)
             then r
-            else r - ny
+            else r - rows
         !y =
-          if c < (nx `div` 2)
+          if c < (cols `div` 2)
             then c
-            else c - nx
+            else c - cols
     in f x y
-  | r <- [0 .. ny - 1]
-  , c <- [0 .. nx - 1]
+  | r <- [0 .. rows - 1]
+  , c <- [0 .. cols - 1]
   ]
 
 {-# INLINE rescale2D #-}
