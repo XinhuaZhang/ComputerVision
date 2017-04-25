@@ -208,15 +208,37 @@ pinwheelsAngle :: Double
                -> Double
                -> (Int -> Int -> Complex Double)
 pinwheelsAngle scale freq angle polarFactor x y
-  | rho == 0 = 1 -- real2Complex (gaussian2D'' freq scale x y)
+  | rho == 0 = real2Complex (gaussian2D'' freq scale x y)
   | angle == pi / 2 =
-    -- real2Complex (gaussian2D'' freq scale x y) *
-    ejx (2 * pi * fromIntegral freq / (log scale) * polarFactor * log rho)
+    real2Complex (gaussian2D'' freq scale x y) *
+    ejx (fromIntegral freq * polarFactor * log rho)
   | otherwise =
-    -- real2Complex (gaussian2D'' freq scale x y) *
+    real2Complex (gaussian2D'' freq scale x y) *
     ejx
       (fromIntegral freq *
-       (theta + 2 * pi / (log scale) * polarFactor * tan angle * log rho))
+       (theta + polarFactor * tan angle * log rho))
+  where
+    rho = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    theta = angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)
+    
+
+{-# INLINE pinwheelsAngleC #-}
+
+pinwheelsAngleC :: Double
+                -> Int
+                -> Double
+                -> Double
+                -> (Int -> Int -> Complex Double)
+pinwheelsAngleC scale freq angle polarFactor x y
+  | rho == 0 = real2Complex (gaussian2D'' freq scale x y)
+  | angle == pi / 2 =
+    real2Complex (gaussian2D'' freq scale x y) *
+    ejx (fromIntegral freq * polarFactor * log rho)
+  | otherwise =
+    real2Complex (gaussian2D'' freq scale x y) *
+    ejx
+      (fromIntegral freq *
+       (theta - polarFactor * tan angle * log rho))
   where
     rho = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     theta = angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)
@@ -232,7 +254,7 @@ pinwheelsAxis scale freq rm am x y
     (ejx
        (P.fromIntegral (freq * am) *
         angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)) *
-    (ejx ( 2 * pi * fromIntegral (freq * rm) * (log r) / (log scale)))) 
+    (ejx ( fromIntegral (freq * rm) * (log r)))) 
   where
     r = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     
@@ -404,12 +426,12 @@ instance FilterExpansion PolarSeparableFilterExpansionAxis where
   makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsAxis rows cols pf scales freqs angles) _) (centerR, centerC) =
     PolarSeparableFilter params .
     V4PolarSeparableFilterAxis (L.map fromIntegral freqs) $
-    [ [ VU.fromListN
-      (cols * rows)
-      [ pinwheelsAngle scale freq angle pf (c - centerC) (r - centerR)
-      | r <- [0 .. rows - 1]
-      , c <- [0 .. cols - 1]
-      ]
+    [ [ VU.fromListN (cols * rows) $
+    makeFilterList rows cols (pinwheelsAngle scale freq angle pf)
+      -- [ pinwheelsAngle scale freq angle pf (c - centerC) (r - centerR)
+      -- | r <- [0 .. rows - 1]
+      -- , c <- [0 .. cols - 1]
+      -- ]
     | freq <- freqs
     ]
     | scale <- scales

@@ -23,7 +23,7 @@ import           System.Environment
 main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   v4QuardTreeFilterParams <-
-    fmap (\x -> read x :: V4SeparableFilterParamsGrid) . readFile $
+    fmap (\x -> read x :: V4SeparableFilterParamsAxis) . readFile $
     paramsFilePath
   let parallelParams = ParallelParams {numThread = 12, batchSize = 120}
       (rows, cols) = read sizeStr :: (Int, Int)

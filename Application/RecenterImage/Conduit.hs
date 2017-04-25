@@ -106,7 +106,7 @@ findCenterConduit parallelParams = do
 applyV4SeparableFilterLabeledArrayWithCenterConduit
   :: ParallelParams
   -> GaussianFilter (R.Array U DIM2 (Complex Double))
-  -> V4SeparableFilterParamsGrid
+  -> V4SeparableFilterParamsAxis
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double,VU.Vector Double)
 applyV4SeparableFilterLabeledArrayWithCenterConduit parallelParams gaussianFilter filterParams = do
   xs <- CL.take (batchSize parallelParams)
@@ -130,11 +130,11 @@ applyV4SeparableFilterLabeledArrayWithCenterConduit parallelParams gaussianFilte
                          x
                        filters =
                          L.map
-                           (generateV4SeparableFilterWithCenterGrid filterParams)
+                           (generateV4SeparableFilterWithCenterAxis filterParams)
                            centers
-                       (cR, cC) = center
+                       (cR, cC) = (div numRows 2, div numCols 2)--center
                        centers =
-                         [(cR + i, cC + j) | i <- [-4,0 .. 4], j <- [-4,0 .. 4]]
+                         [(cR + i, cC + j) | i <- [0], j <- [0]]
                        responses = L.map (\filters' -> VU.concat .
                                                        L.map
                                                          (\filter' ->

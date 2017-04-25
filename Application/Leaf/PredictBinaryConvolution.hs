@@ -1,7 +1,9 @@
+{-# LANGUAGE BangPatterns #-}
 import           Application.Leaf.Conduit
 import           Application.RecenterImage.Conduit
 import           Classifier.LibLinear
 import           Control.Arrow
+import           Control.DeepSeq
 import           Control.Monad                     as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.Image
@@ -30,9 +32,9 @@ main = do
       (rows, cols) = read sizeStr :: (Int, Int)
       isColor = read isColorStr :: Bool
       filters = generateV4SeparableFilterAxis filterParams
-      filtersF = L.map (fourierTransform (rows, cols)) filters
+      !filtersF = L.map (fourierTransform (rows, cols)) filters
   runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
-    applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams filtersF =$=
+    (applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams $!! filtersF) =$=
     featureConduitP parallelParams =$=
     predict modelName (modelName L.++ ".out")

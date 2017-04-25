@@ -1,7 +1,9 @@
+{-# LANGUAGE BangPatterns #-}
 import           Application.Leaf.Conduit
 import           Application.RecenterImage.Conduit
 import           Classifier.LibLinear
 import           Control.Arrow
+import           Control.DeepSeq
 import           Control.Monad                     as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.Image
@@ -33,8 +35,8 @@ main = do
         , v4SeparableFilterParamsAxisSeparableFilterCols = cols
         , v4SeparableFilterParamsAxisPolarSeparablePolarFactor = 1
         , v4SeparableFilterParamsAxisPolarSeparableScale = [64]
-        , v4SeparableFilterParamsAxisPolarSeparableFreq = [-15,-14 .. 15]
-        , v4SeparableFilterParamsAxisPolarSeparableAngle = [0,m .. 90 - m]
+        , v4SeparableFilterParamsAxisPolarSeparableFreq = [-15..15]
+        , v4SeparableFilterParamsAxisPolarSeparableAngle = [0,m..90-m]
         , v4SeparableFilterParamsAxisCartesianGratingScale =
           [ 2 ** (i / 2)
           | i <- [7 .. 10] ]
@@ -51,18 +53,18 @@ main = do
       (rows, cols) = read sizeStr :: (Int, Int)
       isColor = read isColorStr :: Bool
       filters = generateV4SeparableFilterAxis filterParams
-      filtersF = L.map (fourierTransform (rows, cols)) filters
+      !filtersF = L.map  (fourierTransform (rows, cols)) filters
   writeFile paramsFilePath . show $ filterParams
   featurePtr <-
     runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
-    applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams filtersF =$=
+    (applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams $!! filtersF) =$=
     featurePtrConduit =$=
     CL.consume
   featurePtr1 <-
     runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
-    applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams filtersF =$=
+    (applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams $!! filtersF) =$=
     CL.take 1
   let trainParams =
         TrainParams

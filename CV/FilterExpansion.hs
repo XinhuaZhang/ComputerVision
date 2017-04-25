@@ -2,6 +2,7 @@
 
 module CV.FilterExpansion where
 
+import           Control.DeepSeq
 import           Data.Complex
 import           Data.List           as L
 import           Data.Vector.Unboxed
@@ -13,7 +14,7 @@ class FilterExpansion a  where
   getFilterParameter :: a -> FilterParameter a
   getFilterVectors :: a -> V4SeparableFilter
   changeSizeParameter :: Int -> Int -> a -> a
-  
+
 
 
 data V4SeparableFilter
@@ -33,6 +34,9 @@ data V4SeparableFilterConvolution =
   V4PolarSeparableFilterConvolutionAxis (Int, Int)
                                         [Double]
                                         [[Vector (Complex Double)]]
+                                        
+instance NFData V4SeparableFilterConvolution where
+  rnf (V4PolarSeparableFilterConvolutionAxis a b c) = a `seq` b `seq` c `seq` ()
 
 {-# INLINE grid1D #-}
 

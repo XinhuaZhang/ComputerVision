@@ -25,29 +25,29 @@ main = do
         { numThread = 12
         , batchSize = 120
         }
-      m = 15
+      m = 45
       v4QuardTreeFilterParams =
-        V4SeparableFilterParamsGrid
-        { v4SeparableFilterParamsGridSeparableFilterRows = rows
-        , v4SeparableFilterParamsGridSeparableFilterCols = cols
-        -- , v4SeparableFilterParamsGridPolarSeparablePolarFactor = 1
-        , v4SeparableFilterParamsGridPolarSeparableScale = [64]
-        , v4SeparableFilterParamsGridPolarSeparableRadialFreq = [0..7]
-        , v4SeparableFilterParamsGridPolarSeparableAngularFreq = [0..7]
-        -- , v4SeparableFilterParamsGridPolarSeparableFreq = [-15,-14 .. 15]
-        -- , v4SeparableFilterParamsGridPolarSeparableAngle = [0,m.. 90-m]
-        , v4SeparableFilterParamsGridCartesianGratingScale =
+        V4SeparableFilterParamsAxis
+        { v4SeparableFilterParamsAxisSeparableFilterRows = rows
+        , v4SeparableFilterParamsAxisSeparableFilterCols = cols
+        , v4SeparableFilterParamsAxisPolarSeparablePolarFactor = 1
+        , v4SeparableFilterParamsAxisPolarSeparableScale = [32]
+        -- , v4SeparableFilterParamsAxisPolarSeparableRadialFreq = [0..7]
+        -- , v4SeparableFilterParamsAxisPolarSeparableAngularFreq = [0..7]
+        , v4SeparableFilterParamsAxisPolarSeparableFreq = [1..2]
+        , v4SeparableFilterParamsAxisPolarSeparableAngle = [0]
+        , v4SeparableFilterParamsAxisCartesianGratingScale =
           [ 2 ** (i / 2)
           | i <- [7 .. 10] ]
-        , v4SeparableFilterParamsGridCartesianGratingFreq = L.take 8 [1 .. 8]
-        , v4SeparableFilterParamsGridCartesianGratingAngle = [0,15 .. 360 - 15]
-        , v4SeparableFilterParamsGridHyperbolicSeparableScale =
+        , v4SeparableFilterParamsAxisCartesianGratingFreq = L.take 8 [1 .. 8]
+        , v4SeparableFilterParamsAxisCartesianGratingAngle = [0,15 .. 360 - 15]
+        , v4SeparableFilterParamsAxisHyperbolicSeparableScale =
           [ 2 ** (i / 2)
           | i <- [7 .. 10] ]
-        , v4SeparableFilterParamsGridHyperbolicSeparableUFreq = [0 .. 3]
-        , v4SeparableFilterParamsGridHyperbolicSeparableVFreq = [0 .. 3]
-        , v4SeparableFilterParamsGridHyperbolicSeparableAngle = 15
-        , v4SeparableFilterParamsGridSeparableFilterParams = P
+        , v4SeparableFilterParamsAxisHyperbolicSeparableUFreq = [0 .. 3]
+        , v4SeparableFilterParamsAxisHyperbolicSeparableVFreq = [0 .. 3]
+        , v4SeparableFilterParamsAxisHyperbolicSeparableAngle = 15
+        , v4SeparableFilterParamsAxisSeparableFilterParams = P
         }
       (rows,cols) = read sizeStr :: (Int,Int)
       isColor = read isColorStr :: Bool
@@ -74,7 +74,7 @@ main = do
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 1
+        , trainC = 512
         , trainNumExamples = L.length featurePtr
         , trainFeatureIndexMax = VU.length . snd . L.head $ featurePtr1
         -- (L.sum . L.map filterNum $ filterVecsList) *

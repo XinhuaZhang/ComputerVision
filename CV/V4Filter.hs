@@ -546,11 +546,11 @@ applyV4SeparableFilter (V4PolarSeparableFilterGrid (rfs, afs) filters) imgVec =
              L.map (L.unzip . L.map normalizeComplex . applyFilter imgVec) $
              xs
        in VU.fromList $
-          -- L.concat mags 
+          L.concat mags 
           -- L.++
           -- L.concatMap (computePhaseDifference afs) normalizedXS 
           -- L.++
-          (L.concatMap (computePhaseDifference rfs) . L.transpose $ normalizedXS)
+          -- (L.concatMap (computePhaseDifference rfs) . L.transpose $ normalizedXS)
           -- L.concatMap (L.concatMap (\(a :+ b) -> [a,b])) normalizedXS
     ) $
   filters
