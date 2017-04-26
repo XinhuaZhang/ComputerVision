@@ -25,18 +25,18 @@ main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   let parallelParams =
         ParallelParams
-        { numThread = 12
-        , batchSize = 120
+        { numThread = 16
+        , batchSize = 160
         }
-      m = 15
+      m = 30
       filterParams =
         V4SeparableFilterParamsAxis
         { v4SeparableFilterParamsAxisSeparableFilterRows = rows
         , v4SeparableFilterParamsAxisSeparableFilterCols = cols
         , v4SeparableFilterParamsAxisPolarSeparablePolarFactor = 1
-        , v4SeparableFilterParamsAxisPolarSeparableScale = [64]
-        , v4SeparableFilterParamsAxisPolarSeparableFreq = [-15..15]
-        , v4SeparableFilterParamsAxisPolarSeparableAngle = [0,m..90-m]
+        , v4SeparableFilterParamsAxisPolarSeparableScale = [32]
+        , v4SeparableFilterParamsAxisPolarSeparableFreq = [1 .. 2]
+        , v4SeparableFilterParamsAxisPolarSeparableAngle = [0]
         , v4SeparableFilterParamsAxisCartesianGratingScale =
           [ 2 ** (i / 2)
           | i <- [7 .. 10] ]
@@ -53,7 +53,7 @@ main = do
       (rows, cols) = read sizeStr :: (Int, Int)
       isColor = read isColorStr :: Bool
       filters = generateV4SeparableFilterAxis filterParams
-      !filtersF = L.map  (fourierTransform (rows, cols)) filters
+  filtersF <- M.mapM (fourierTransformFilter (rows, cols)) filters
   writeFile paramsFilePath . show $ filterParams
   featurePtr <-
     runResourceT $

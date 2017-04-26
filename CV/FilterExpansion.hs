@@ -3,6 +3,7 @@
 module CV.FilterExpansion where
 
 import           Control.DeepSeq
+import           Data.Array.CArray
 import           Data.Complex
 import           Data.List           as L
 import           Data.Vector.Unboxed
@@ -31,10 +32,15 @@ data V4SeparableFilter
 
 
 data V4SeparableFilterConvolution =
-  V4PolarSeparableFilterConvolutionAxis (Int, Int)
-                                        [Double]
-                                        [[Vector (Complex Double)]]
-                                        
+  V4PolarSeparableFilterConvolutionAxis !(Int, Int)
+                                        ![Double]
+                                        ![[Vector (Complex Double)]]
+
+data V4SeparableFilteredImageConvolution =
+  V4PolarSeparableFilteredImageConvolutionAxis !(Int, Int)
+                                               ![Double]
+                                               ![[Vector (Complex Double)]]
+
 instance NFData V4SeparableFilterConvolution where
   rnf (V4PolarSeparableFilterConvolutionAxis a b c) = a `seq` b `seq` c `seq` ()
 

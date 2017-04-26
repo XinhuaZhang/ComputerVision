@@ -26,13 +26,16 @@ import           System.Environment
 main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   filterParams <-
-    fmap (\x -> read x :: V4SeparableFilterParamsAxis) . readFile $
-    paramsFilePath
-  let parallelParams = ParallelParams {numThread = 12, batchSize = 120}
+    fmap (\x -> read x :: V4SeparableFilterParamsAxis) . readFile $ paramsFilePath
+  let parallelParams =
+        ParallelParams
+        { numThread = 16
+        , batchSize = 160
+        }
       (rows, cols) = read sizeStr :: (Int, Int)
       isColor = read isColorStr :: Bool
       filters = generateV4SeparableFilterAxis filterParams
-      !filtersF = L.map (fourierTransform (rows, cols)) filters
+  filtersF <- M.mapM (fourierTransformFilter (rows, cols)) filters
   runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
     (applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams $!! filtersF) =$=
