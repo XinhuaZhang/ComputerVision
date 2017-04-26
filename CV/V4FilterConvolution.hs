@@ -26,12 +26,12 @@ import           Data.Vector.Unboxed              as VU
 import           Math.FFT
 
 
-{-# INLINE twoDFourierTransform #-}
+{-# INLINE twoDFourierTransformUNM #-}
 
-twoDFourierTransform :: (Int, Int)
-                     -> VU.Vector (Complex Double)
-                     -> VU.Vector (Complex Double)
-twoDFourierTransform (rows, cols) =
+twoDFourierTransformUNM :: (Int, Int)
+                        -> VU.Vector (Complex Double)
+                        -> VU.Vector (Complex Double)
+twoDFourierTransformUNM (rows, cols) =
   VU.fromListN (rows * cols) .
   UNM.pixelList .
   UNM.fft .
@@ -39,12 +39,12 @@ twoDFourierTransform (rows, cols) =
   Arr.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList
 
 
-{-# INLINE twoDFourierTransformUNM #-}
+{-# INLINE twoDFourierTransform #-}
 
-twoDFourierTransformUNM :: (Int, Int)
-                        -> VU.Vector (Complex Double)
-                        -> VU.Vector (Complex Double)
-twoDFourierTransformUNM (rows, cols) =
+twoDFourierTransform :: (Int, Int)
+                     -> VU.Vector (Complex Double)
+                     -> VU.Vector (Complex Double)
+twoDFourierTransform (rows, cols) =
   VU.fromListN (rows * cols) .
   CA.elems . dftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList
 

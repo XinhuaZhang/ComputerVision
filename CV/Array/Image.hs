@@ -397,22 +397,24 @@ padTransformGrayImage
   -> [R.Array U DIM2 Double]
 padTransformGrayImage padVal transformationList arr =
   L.map
-    (\(ImageTransformation r c deg sf a b) ->
-        let rescaledR = round $ fromIntegral r * sf
+    (\(ImageTransformation r' c' deg sf a b) ->
+        let r = div r' 2
+            c = div c' 2
+            rescaledR = round $ fromIntegral r * sf
             rescaledC = round $ fromIntegral c * sf
             ratioR = fromIntegral (m - 1) / fromIntegral (rescaledR - 1)
             ratioC = fromIntegral (m - 1) / fromIntegral (rescaledC - 1)
         in if deg == 0
              then computeS .
-                  R.map
-                    (\x ->
-                        let y = a * x + b
-                        in if y > 255
-                             then 255
-                             else if y < 0
-                                    then 0
-                                    else y) .
-                  RAU.pad [c, r] padVal .
+                  -- R.map
+                  --   (\x ->
+                  --       let y = a * x + b
+                  --       in if y > 255
+                  --            then 255
+                  --            else if y < 0
+                  --                   then 0
+                  --                   else y) .
+                  RAU.pad [c', r'] padVal .
                   fromFunction (Z :. rescaledR :. rescaledC) $
                   \(Z :. j :. i) ->
                      bicubicInterpolation
@@ -420,15 +422,15 @@ padTransformGrayImage padVal transformationList arr =
                        (minVal, maxVal)
                        (fromIntegral j * ratioR, fromIntegral i * ratioC)
              else computeS .
-                  R.map
-                    (\x ->
-                        let y = a * x + b
-                        in if y > 255
-                             then 255
-                             else if y < 0
-                                    then 0
-                                    else y) .
-                  RAU.pad [c, r] padVal .
+                  -- R.map
+                  --   (\x ->
+                  --       let y = a * x + b
+                  --       in if y > 255
+                  --            then 255
+                  --            else if y < 0
+                  --                   then 0
+                  --                   else y) .
+                  RAU.pad [c', r'] padVal .
                   fromFunction (Z :. rescaledR :. rescaledC) $
                   \(Z :. j :. i) ->
                      let (j', i') =
