@@ -184,7 +184,7 @@ applyV4SeparableFilterComplexLabeledArrayWithCenterConduit parallelParams gaussi
                           findCenter . Gaussian.applyFilterFixedSize gaussianFilter $
                           x
                         filters =
-                          generateV4SeparableFilterWithCenterGrid filterParams center
+                          generateV4SeparableFilterWithCenterAxis filterParams center
                         complexVec =
                           VU.concat .
                           L.map
