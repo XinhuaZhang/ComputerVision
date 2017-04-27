@@ -94,6 +94,21 @@ findGlobalMaximaMultiply1 vec1 vec2 =
 findGlobalMaximaSum :: [VU.Vector Double] -> Int
 findGlobalMaximaSum = VU.maxIndex . L.foldl1' (VU.zipWith (+))
 
+{-# INLINE findGlobalMaximaCenterOfMass #-}
+
+findGlobalMaximaCenterOfMass :: (Int, Int)
+                             -> VU.Vector Double
+                             -> VU.Vector Double
+                             -> (Int, Int)
+findGlobalMaximaCenterOfMass (rows, cols) vec1 vec2 =
+  join (***) (\x -> round $ x / VU.sum vec) .
+  L.foldl' (\(s1, s2) ((i, j), v) -> (s1 + i * v, s2 + j * v)) (0, 0) .
+  L.zip [(fromIntegral i, fromIntegral j) | i <- [1 .. rows], j <- [1 .. cols]] .
+  VU.toList $
+  VU.zipWith (*) vec1 vec2
+  where
+    vec = VU.zipWith (*) vec1 vec2
+
 {-# INLINE phaseDifference #-}
 
 phaseDifference
@@ -129,8 +144,12 @@ computePhaseDifference ((0, _, _):xs) = computePhaseDifference xs
 computePhaseDifference ((fn, xnC, xnM):xs) =
   L.concatMap
     (\(fm, xmC, xmM) ->
-        let idxs = findGlobalMaximaMultiply1 xnM xmM
+        let -- idxs = findGlobalMaximaMultiply1 xnM xmM
             --idxs = [63 * 128 + 64]
+            rows = 128
+            cols = 128
+            (a,b) = findGlobalMaximaCenterOfMass (rows,cols) xnM xmM
+            idxs = [a*cols + b]
         in if fm == 0
              then []
              else L.foldl1' (L.zipWith (+)) .
@@ -143,7 +162,7 @@ applyV4SeparableFilterConvolutionLabeledArrayConduit
   :: ParallelParams
   -> [V4SeparableFilterConvolution]
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double,VU.Vector Double)
-applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams !filters = do
+applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams filters = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -151,14 +170,14 @@ applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams !filters = d
               L.unzip .
               L.map
                 (\(LabeledArray label' x) ->
-                    let (Z :. channels :. _ :. _) = extent x
-                        imgVecs =
-                          L.map
-                            (\i ->
-                                VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
-                                (Z :. i :. All :. All))
-                            [0 .. channels - 1]
-                    in (fromIntegral label', imgVecs)) $
+                   let (Z :. channels :. _ :. _) = extent x
+                       imgVecs =
+                         L.map
+                           (\i ->
+                              VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                              (Z :. i :. All :. All))
+                           [0 .. channels - 1]
+                   in (fromIntegral label', imgVecs)) $
               xs
         filteredImgs <-
           liftIO $
@@ -171,10 +190,12 @@ applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams !filters = d
                 rdeepseq
                 (VU.concat .
                  L.concatMap
-                   (L.map calculateV4SeparableFilterConvolutionFeature))
-                filteredImgs
+                   (L.map calculateV4SeparableFilterConvolutionFeature)) $!
+              filteredImgs
         sourceList $ L.zip labels zs
-        applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams filters)
+        applyV4SeparableFilterConvolutionLabeledArrayConduit
+          parallelParams
+          filters)
 
 {-# INLINE normalizeVec #-}
 
