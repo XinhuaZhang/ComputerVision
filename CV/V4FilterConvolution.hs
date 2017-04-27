@@ -11,21 +11,15 @@ import           CV.Filter.CartesianGratingFilter as V4
 import           CV.Filter.HyperbolicFilter       as V4
 import           CV.Filter.PolarSeparableFilter   as V4 hiding (makeFilter)
 import           CV.FilterExpansion
-import           CV.Utility.Coordinates
+import           CV.Utility.FFT
 import           CV.Utility.Parallel
-import           CV.Utility.RepaArrayUtility
-import qualified Data.Array                       as Arr
 import           Data.Array.CArray                as CA
 import           Data.Array.Repa                  as R
 import           Data.Complex
 import           Data.Conduit
 import           Data.Conduit.List                as CL
-import qualified Data.Image                       as UNM
 import           Data.List                        as L
-import           Data.Ord
 import           Data.Vector.Unboxed              as VU
-import           Math.FFT
-import           Math.FFT.Base
 
 
 {-# INLINE fourierTransformFilter #-}
@@ -34,17 +28,10 @@ fourierTransformFilter :: (Int, Int) -> V4SeparableFilter -> IO V4SeparableFilte
 fourierTransformFilter (rows, cols) (V4PolarSeparableFilterAxis freqs vecs) =
   fmap (V4PolarSeparableFilterConvolutionAxis (rows, cols) freqs) .
   M.mapM
-    (M.mapM
-       (\x ->
-           withLock . return $!! VU.fromListN (rows * cols) . elems .
-           dftN [0, 1] .
-           listArray ((0, 0), (rows - 1, cols - 1)) .
-           VU.toList $
-           x)) $
+    (M.mapM (dftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)) $
   vecs
 fourierTransformFilter _ _ =
   error "fourierTransform: filter type is not supported."
-
 
 {-# INLINE applyFilterConvolution #-}
 
@@ -52,23 +39,13 @@ applyFilterConvolution
   :: ParallelParams
   -> (Int, Int)
   -> VU.Vector (Complex Double)
-  -> [VU.Vector (Complex Double)]
+  -> [CArray (Int,Int) (Complex Double)]
   -> IO [VU.Vector (Complex Double)]
 applyFilterConvolution parallelParams (rows, cols) imgVec filters' = do
   imgVecF <-
-    withLock . return $!! VU.fromListN (rows * cols) . elems . dftN [0, 1] .
-    listArray ((0, 0), (rows - 1, cols - 1)) .
-    VU.toList $
-    imgVec
-  let !xs = parMapChunk parallelParams rdeepseq (VU.zipWith (*) imgVecF) filters'
-  M.mapM
-    (\x ->
-        withLock . return $!! VU.fromListN (rows * cols) . CA.elems .
-        idftN [0, 1] .
-        listArray ((0, 0), (rows - 1, cols - 1)) .
-        VU.toList $
-        x)
-    xs
+    dftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList $ imgVec
+  let !xs = parMapChunk parallelParams rseq (liftArray2 (*) imgVecF) filters'
+  M.mapM (fmap (VU.fromListN (rows * cols) . CA.elems) . idftN [0, 1]) xs
 
 {-# INLINE applyV4FilterConvolution #-}
 

@@ -34,15 +34,21 @@ data V4SeparableFilter
 data V4SeparableFilterConvolution =
   V4PolarSeparableFilterConvolutionAxis !(Int, Int)
                                         ![Double]
-                                        ![[Vector (Complex Double)]]
+                                        ![[CArray (Int,Int) (Complex Double)]]
+                                        
+instance NFData V4SeparableFilterConvolution where
+  rnf (V4PolarSeparableFilterConvolutionAxis a b c) = a `seq` b `seq` c `seq` ()
 
 data V4SeparableFilteredImageConvolution =
   V4PolarSeparableFilteredImageConvolutionAxis !(Int, Int)
                                                ![Double]
                                                ![[Vector (Complex Double)]]
+                                               
+instance NFData V4SeparableFilteredImageConvolution where
+  rnf (V4PolarSeparableFilteredImageConvolutionAxis a b c) =
+    a `seq` b `seq` c `seq` ()
 
-instance NFData V4SeparableFilterConvolution where
-  rnf (V4PolarSeparableFilterConvolutionAxis a b c) = a `seq` b `seq` c `seq` ()
+
 
 {-# INLINE grid1D #-}
 
