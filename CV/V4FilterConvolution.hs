@@ -36,29 +36,27 @@ fourierTransformFilter _ _ =
 {-# INLINE applyFilterConvolution #-}
 
 applyFilterConvolution
-  :: ParallelParams
-  -> (Int, Int)
+  :: (Int, Int)
   -> VU.Vector (Complex Double)
-  -> [CArray (Int,Int) (Complex Double)]
+  -> [CArray (Int, Int) (Complex Double)]
   -> IO [VU.Vector (Complex Double)]
-applyFilterConvolution parallelParams (rows, cols) imgVec filters' = do
+applyFilterConvolution (rows, cols) imgVec filters' = do
   imgVecF <-
     dftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList $ imgVec
-  let !xs = parMapChunk parallelParams rseq (liftArray2 (*) imgVecF) filters'
+  let xs = L.map (liftArray2 (*) imgVecF) filters'
   M.mapM (fmap (VU.fromListN (rows * cols) . CA.elems) . idftN [0, 1]) xs
 
 {-# INLINE applyV4FilterConvolution #-}
 
 applyV4FilterConvolution
-  :: ParallelParams
-  -> V4SeparableFilterConvolution
+  :: V4SeparableFilterConvolution
   -> [VU.Vector (Complex Double)]
   -> IO [V4SeparableFilteredImageConvolution]
-applyV4FilterConvolution parallelParams (V4PolarSeparableFilterConvolutionAxis (rows, cols) freqs filters) =
+applyV4FilterConvolution (V4PolarSeparableFilterConvolutionAxis (rows, cols) freqs filters) =
   M.mapM
     (\imgVec ->
         fmap (V4PolarSeparableFilteredImageConvolutionAxis (rows, cols) freqs) .
-        M.mapM (applyFilterConvolution parallelParams (rows, cols) imgVec) $
+        M.mapM (applyFilterConvolution (rows, cols) imgVec) $
         filters)
 
 {-# INLINE calculateV4SeparableFilterConvolutionFeature #-}
@@ -165,10 +163,7 @@ applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams !filters = d
         filteredImgs <-
           liftIO $
           M.mapM
-            (\imgVecs ->
-                M.mapM
-                  (\filter' -> applyV4FilterConvolution parallelParams filter' imgVecs)
-                  filters)
+            (\imgVecs -> M.mapM (`applyV4FilterConvolution` imgVecs) filters)
             ys
         let zs =
               parMapChunk
