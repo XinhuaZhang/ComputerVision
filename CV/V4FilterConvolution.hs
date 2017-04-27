@@ -140,41 +140,39 @@ computePhaseDifference ((fn, xnC, xnM):xs) =
   computePhaseDifference xs
 
 applyV4SeparableFilterConvolutionLabeledArrayConduit
+  :: [V4SeparableFilterConvolution]
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [V4SeparableFilteredImageConvolution])
+applyV4SeparableFilterConvolutionLabeledArrayConduit filters =
+  awaitForever
+    (\(LabeledArray label' x) -> do
+       let (Z :. channels :. _ :. _) = extent x
+           imgVecs =
+             L.map
+               (\i ->
+                   VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                   (Z :. i :. All :. All))
+               [0 .. channels - 1]
+       ys <- liftIO $ M.mapM (`applyV4FilterConvolution` imgVecs) filters
+       yield (fromIntegral label', L.concat ys))
+
+
+
+calculateV4SeparableFilterConvolutionFeatureConduit
   :: ParallelParams
-  -> [V4SeparableFilterConvolution]
-  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double,VU.Vector Double)
-applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams !filters = do
+  -> Conduit (Double,[V4SeparableFilteredImageConvolution]) (ResourceT IO) (Double,VU.Vector Double)
+calculateV4SeparableFilterConvolutionFeatureConduit parallelParams = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
-    (do let (labels, ys) =
-              L.unzip .
-              L.map
-                (\(LabeledArray label' x) ->
-                    let (Z :. channels :. _ :. _) = extent x
-                        imgVecs =
-                          L.map
-                            (\i ->
-                                VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
-                                (Z :. i :. All :. All))
-                            [0 .. channels - 1]
-                    in (fromIntegral label', imgVecs)) $
-              xs
-        filteredImgs <-
-          liftIO $
-          M.mapM
-            (\imgVecs -> M.mapM (`applyV4FilterConvolution` imgVecs) filters)
-            ys
+    (do let (labels, filteredImgs) = L.unzip xs
         let zs =
               parMapChunk
                 parallelParams
                 rdeepseq
-                (VU.concat .
-                 L.concatMap
-                   (L.map calculateV4SeparableFilterConvolutionFeature))
+                (VU.concat . L.map calculateV4SeparableFilterConvolutionFeature)
                 filteredImgs
         sourceList $ L.zip labels zs
-        applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams filters)
+        calculateV4SeparableFilterConvolutionFeatureConduit parallelParams)
 
 {-# INLINE normalizeVec #-}
 
