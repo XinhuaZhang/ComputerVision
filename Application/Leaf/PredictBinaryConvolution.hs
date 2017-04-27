@@ -29,7 +29,7 @@ main = do
     fmap (\x -> read x :: V4SeparableFilterParamsAxis) . readFile $ paramsFilePath
   let parallelParams =
         ParallelParams
-        { numThread = 16
+        { numThread = 8
         , batchSize = 160
         }
       (rows, cols) = read sizeStr :: (Int, Int)
@@ -38,6 +38,7 @@ main = do
   filtersF <- M.mapM (fourierTransformFilter (rows, cols)) filters
   runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
-    (applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams $!! filtersF) =$=
+    applyV4SeparableFilterConvolutionLabeledArrayConduit filtersF =$=
+    calculateV4SeparableFilterConvolutionFeatureConduit parallelParams =$=
     featureConduitP parallelParams =$=
     predict modelName (modelName L.++ ".out")

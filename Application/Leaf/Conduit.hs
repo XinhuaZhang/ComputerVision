@@ -1,7 +1,7 @@
 module Application.Leaf.Conduit where
 
 import           Classifier.LibLinear
-import           Classifier.LibSVM
+-- import           Classifier.LibSVM
 import           Control.Arrow
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
@@ -72,24 +72,24 @@ complexKernel parallelParams xs = do
           else 0
 
 
-libSVMPredictConduit
-  :: ParallelParams
-  -> [VU.Vector (Complex Double)]
-  -> Conduit (Double, VU.Vector (Complex Double)) (ResourceT IO) (Double, Ptr C'svm_node)
-libSVMPredictConduit parallelParams trainFeatures = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let (labels, ys) = L.unzip xs
-            zs =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\y -> L.map (complexDistance y) trainFeatures)
-                ys
-        ptrs <- liftIO $ M.mapM (getPreComputedKernelFeatureVecPtr (-1)) zs
-        sourceList $ L.zip labels ptrs
-        libSVMPredictConduit parallelParams trainFeatures)
+-- libSVMPredictConduit
+--   :: ParallelParams
+--   -> [VU.Vector (Complex Double)]
+--   -> Conduit (Double, VU.Vector (Complex Double)) (ResourceT IO) (Double, Ptr C'svm_node)
+-- libSVMPredictConduit parallelParams trainFeatures = do
+--   xs <- CL.take (batchSize parallelParams)
+--   unless
+--     (L.null xs)
+--     (do let (labels, ys) = L.unzip xs
+--             zs =
+--               parMapChunk
+--                 parallelParams
+--                 rdeepseq
+--                 (\y -> L.map (complexDistance y) trainFeatures)
+--                 ys
+--         ptrs <- liftIO $ M.mapM (getPreComputedKernelFeatureVecPtr (-1)) zs
+--         sourceList $ L.zip labels ptrs
+--         libSVMPredictConduit parallelParams trainFeatures)
 
 
 featurePtrConduit :: Conduit (a, VU.Vector Double) (ResourceT IO) (a, Ptr C'feature_node)

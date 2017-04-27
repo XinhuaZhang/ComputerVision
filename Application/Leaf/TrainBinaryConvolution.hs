@@ -25,7 +25,7 @@ main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   let parallelParams =
         ParallelParams
-        { numThread = 16
+        { numThread = 8
         , batchSize = 160
         }
       m = 30
@@ -58,13 +58,15 @@ main = do
   featurePtr <-
     runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
-    (applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams $!! filtersF) =$=
+    applyV4SeparableFilterConvolutionLabeledArrayConduit filtersF =$=
+    calculateV4SeparableFilterConvolutionFeatureConduit parallelParams =$=
     featurePtrConduit =$=
     CL.consume
   featurePtr1 <-
     runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
-    (applyV4SeparableFilterConvolutionLabeledArrayConduit parallelParams $!! filtersF) =$=
+    applyV4SeparableFilterConvolutionLabeledArrayConduit filtersF =$=
+    calculateV4SeparableFilterConvolutionFeatureConduit parallelParams =$=
     CL.take 1
   let trainParams =
         TrainParams
