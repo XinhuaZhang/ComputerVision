@@ -25,18 +25,18 @@ main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   let parallelParams =
         ParallelParams
-        { numThread = 8
-        , batchSize = 160
+        { numThread = 6
+        , batchSize = 6
         }
-      m = 30
+      m = 15
       filterParams =
         V4SeparableFilterParamsAxis
         { v4SeparableFilterParamsAxisSeparableFilterRows = rows
         , v4SeparableFilterParamsAxisSeparableFilterCols = cols
         , v4SeparableFilterParamsAxisPolarSeparablePolarFactor = 1
-        , v4SeparableFilterParamsAxisPolarSeparableScale = [32]
-        , v4SeparableFilterParamsAxisPolarSeparableFreq = [1 .. 2]
-        , v4SeparableFilterParamsAxisPolarSeparableAngle = [0]
+        , v4SeparableFilterParamsAxisPolarSeparableScale = [64]
+        , v4SeparableFilterParamsAxisPolarSeparableFreq = [-15..15]
+        , v4SeparableFilterParamsAxisPolarSeparableAngle = [0,m..90-m]
         , v4SeparableFilterParamsAxisCartesianGratingScale =
           [ 2 ** (i / 2)
           | i <- [7 .. 10] ]

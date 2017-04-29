@@ -26,12 +26,9 @@ import           System.Environment
 main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   filterParams <-
-    fmap (\x -> read x :: V4SeparableFilterParamsAxis) . readFile $ paramsFilePath
-  let parallelParams =
-        ParallelParams
-        { numThread = 8
-        , batchSize = 160
-        }
+    fmap (\x -> read x :: V4SeparableFilterParamsAxis) . readFile $
+    paramsFilePath
+  let parallelParams = ParallelParams {numThread = 6, batchSize = 6}
       (rows, cols) = read sizeStr :: (Int, Int)
       isColor = read isColorStr :: Bool
       filters = generateV4SeparableFilterAxis filterParams
@@ -40,5 +37,5 @@ main = do
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
     applyV4SeparableFilterConvolutionLabeledArrayConduit filtersF =$=
     calculateV4SeparableFilterConvolutionFeatureConduit parallelParams =$=
-    featureConduitP parallelParams =$=
+    featureConduit =$=
     predict modelName (modelName L.++ ".out")

@@ -37,7 +37,9 @@ dftGU s f tdims ain = transformCArray f ain bds go
     go f' ip op =
       withTSpec tspec $
       \r ds hr hds -> plan_guru_dft r ds hr hds ip op (unSign s) f'
-    (bds, tspec) = dftShape RC tdims ain
+    (bds, tspec) = dftShape CC tdims ain
+
+{-# NOINLINE transformCArray #-}
 
 transformCArray
   :: (Ix i, Storable a, Storable b)
@@ -60,6 +62,8 @@ transformCArray f a lu planner =
              p <- withLock $ planner (unFlag f) ip op
              execute p
       unsafeForeignPtrToCArray ofp lu
+
+{-# NOINLINE transformCArray' #-}
 
 transformCArray'
   :: (Ix i, Storable a, Storable b)

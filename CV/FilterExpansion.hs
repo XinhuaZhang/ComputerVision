@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE BangPatterns #-}
 
 module CV.FilterExpansion where
 
@@ -29,13 +30,16 @@ data V4SeparableFilter
   | FourierMellinTransform ([Double], [Double])
                            [[[Vector (Complex Double)]]]
   | Null
+  
+instance NFData V4SeparableFilter where
+  rnf !_ = ()
 
 
 data V4SeparableFilterConvolution =
   V4PolarSeparableFilterConvolutionAxis !(Int, Int)
                                         ![Double]
-                                        ![[CArray (Int,Int) (Complex Double)]]
-                                        
+                                        ![[Vector (Complex Double)]]
+
 instance NFData V4SeparableFilterConvolution where
   rnf (V4PolarSeparableFilterConvolutionAxis a b c) = a `seq` b `seq` c `seq` ()
 

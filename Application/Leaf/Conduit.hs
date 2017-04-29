@@ -115,3 +115,8 @@ featureConduitP parallelParams = do
               xs
         CL.sourceList ys
         featureConduitP parallelParams)
+        
+
+featureConduit :: Conduit (a, VU.Vector Double) (ResourceT IO) (a, [C'feature_node])
+featureConduit =
+  awaitForever (\x -> yield $ second (getFeature . Dense . VU.toList) x)

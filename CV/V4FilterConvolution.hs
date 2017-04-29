@@ -25,10 +25,12 @@ import           Data.Vector.Unboxed              as VU
 {-# INLINE fourierTransformFilter #-}
 
 fourierTransformFilter :: (Int, Int) -> V4SeparableFilter -> IO V4SeparableFilterConvolution
-fourierTransformFilter (rows, cols) (V4PolarSeparableFilterAxis freqs vecs) =
+fourierTransformFilter (rows, cols) (V4PolarSeparableFilterAxis freqs !vecs) =
   fmap (V4PolarSeparableFilterConvolutionAxis (rows, cols) freqs) .
   M.mapM
-    (M.mapM (dftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)) $
+    (M.mapM
+       (fmap (VU.fromListN (rows * cols) . elems) .
+        dftN [0, 1] . CA.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)) $
   vecs
 fourierTransformFilter _ _ =
   error "fourierTransform: filter type is not supported."
@@ -38,13 +40,18 @@ fourierTransformFilter _ _ =
 applyFilterConvolution
   :: (Int, Int)
   -> VU.Vector (Complex Double)
-  -> [CArray (Int, Int) (Complex Double)]
+  -> [VU.Vector (Complex Double)]
   -> IO [VU.Vector (Complex Double)]
 applyFilterConvolution (rows, cols) imgVec filters' = do
   imgVecF <-
-    dftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList $ imgVec
-  let xs = L.map (liftArray2 (*) imgVecF) filters'
-  M.mapM (fmap (VU.fromListN (rows * cols) . CA.elems) . idftN [0, 1]) xs
+    fmap (VU.fromListN (rows * cols) . elems) .
+    dftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList $
+    imgVec
+  let xs = L.map (VU.zipWith (*) imgVecF) filters'
+  M.mapM
+    (fmap (VU.fromListN (rows * cols) . CA.elems) .
+     idftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)
+    xs
 
 {-# INLINE applyV4FilterConvolution #-}
 
@@ -67,13 +74,15 @@ calculateV4SeparableFilterConvolutionFeature (V4PolarSeparableFilteredImageConvo
   VU.fromList .
   L.concatMap
     (\filteredImg ->
-        let magnitudeImg = L.map (VU.map magnitude) filteredImg
+       let magnitudeImg = L.map (VU.map magnitude) filteredImg
             -- idx = findGlobalMaximaSum magnitudeImg
-            idx = ((div rows 2) - 1) * cols + div cols 2
-            mag = L.map (VU.! idx) magnitudeImg
-            phaseDiff = computePhaseDifference $ L.zip3 freqs filteredImg magnitudeImg
+           idx = ((div rows 2) - 1) * cols + div cols 2
+           mag = L.map (VU.! idx) magnitudeImg
+           phaseDiff =
+             computePhaseDifference (rows, cols) $
+             L.zip3 freqs filteredImg magnitudeImg
             -- mag -- L.++
-        in phaseDiff) $
+       in phaseDiff) $
   filteredImgs
 
 
@@ -119,6 +128,13 @@ phaseDifference
   -> Double
   -> [Double]
 phaseDifference idx vec1 fn vec2 fm
+  | idx < 0 || idx >= VU.length vec1 || idx >= VU.length vec2 =
+    error $
+    "phaseDifference: index is out of boundary (" L.++ show idx L.++ "," L.++
+    show (VU.length vec1) L.++
+    "," L.++
+    show (VU.length vec2) L.++
+    ")"
   | signum fn == signum fm =
     let (!y :+ (!z)) =
           (xn ** (mn / abs fn :+ 0)) * conjugate (xm ** (mn / abs fm :+ 0))
@@ -132,31 +148,33 @@ phaseDifference idx vec1 fn vec2 fm
     mn = fromIntegral $ lcm (round . abs $ fm) (round . abs $ fn) :: Double
     mag1 = magnitude (vec1 VU.! idx)
     mag2 = magnitude (vec2 VU.! idx)
-    mag =  min (mag1 / mag2) (mag2 / mag1)
+    mag = min (mag1 / mag2) (mag2 / mag1)
 
 
 {-# INLINE computePhaseDifference #-}
 
-computePhaseDifference :: [(Double, VU.Vector (Complex Double), VU.Vector Double)]
+computePhaseDifference :: (Int,Int) ->  [(Double, VU.Vector (Complex Double), VU.Vector Double)]
                        -> [Double]
-computePhaseDifference [] = []
-computePhaseDifference ((0, _, _):xs) = computePhaseDifference xs
-computePhaseDifference ((fn, xnC, xnM):xs) =
+computePhaseDifference _ [] = []
+computePhaseDifference dim ((0, _, _):xs) = computePhaseDifference dim xs
+computePhaseDifference (rows,cols) ((fn, xnC, xnM):xs) =
   L.concatMap
     (\(fm, xmC, xmM) ->
         let -- idxs = findGlobalMaximaMultiply1 xnM xmM
             --idxs = [63 * 128 + 64]
-            rows = 128
-            cols = 128
+            -- rows = 128
+            -- cols = 128
             (a,b) = findGlobalMaximaCenterOfMass (rows,cols) xnM xmM
-            idxs = [a*cols + b]
+            idxs = (a-1)*cols + b - 1
         in if fm == 0
              then []
-             else L.foldl1' (L.zipWith (+)) .
-                  L.map (\idx' -> phaseDifference idx' xnC fn xmC fm) $
-                  idxs)
+             else phaseDifference idxs xnC fn xmC fm
+                  -- L.foldl1' (L.zipWith (+)) .
+                  -- L.map (\idx' -> phaseDifference idx' xnC fn xmC fm) $
+                  -- idxs
+    )
     xs L.++
-  computePhaseDifference xs
+  computePhaseDifference (rows,cols) xs
 
 applyV4SeparableFilterConvolutionLabeledArrayConduit
   :: [V4SeparableFilterConvolution]
