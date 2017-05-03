@@ -16,7 +16,7 @@ module CV.V4Filter
   , applyV4SeparableFilterLabeledArrayConduit
   , applyV4SeparableFilter
   , applyV4SeparableFilterComplex
-  -- , applyV4SeparableFilterComplexLabeledArrayConduit
+  , applyV4SeparableFilterComplexLabeledArrayConduit
   -- , filterNum
   -- , filterNumComplex
   ) where
@@ -29,9 +29,7 @@ import           CV.Filter.CartesianGratingFilter as V4
 import           CV.Filter.HyperbolicFilter       as V4
 import           CV.Filter.PolarSeparableFilter   as V4 hiding (makeFilter)
 import           CV.FilterExpansion               as V4
-import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
-import           CV.Utility.RepaArrayUtility
 import           Data.Array.Repa                  as R
 import           Data.Complex
 import           Data.Conduit
@@ -684,6 +682,33 @@ applyV4SeparableFilterComplex (V4CartesianSeparableFilter freqs filters) imgVec 
        (L.zipWith mkPolar)
        (L.map (Maybe.catMaybes . computeMagnitudeContrastInvarient freqs) mags)
        (L.map (Maybe.catMaybes . computePhaseDifferencePhase freqs) normalizedXS)
+applyV4SeparableFilterComplex (FourierMellinTransform (rfs, afs) filters) imgVecs =
+  let kv =
+        L.drop
+          0
+          [ (k, v)
+          | v <- rfs
+          , k <- afs ]
+      (m00:m10:ms) = L.concatMap (L.concatMap (applyFilter imgVecs)) filters
+      -- ms = L.concatMap (L.concatMap (applyFilter imgVecs)) filters
+      alpha = 0.5
+  in if L.length kv == L.length ms + 2
+       then VU.fromList $
+            L.zipWith
+              (\(k, v) m
+                       
+                 ->
+                  -- (m00 ** (((-alpha) :+ v) / (alpha :+ 0))) * (exp (0 :+ (k * phase m10))) * m
+                  m * (m10 ** ((-k) :+ 0)) * ((magnitude m10) ** k :+ 0) * (m00 ** ((-alpha) :+ v))
+                  -- m * (m11 ** ((-k) :+ 0)) * ((magnitude m11) ** k :+ 0) *
+                  -- (m01 ** ((-alpha) :+ v))
+                  -- magnitude m :+ 0
+              )
+              kv
+              (m00:m10:ms)
+            -- VU.fromList . L.map (\x -> magnitude x :+ 0) $ ms
+       else error
+              "applyV4SeparableFilterComplex: FourierMellinTransform: frequence length error"
 applyV4SeparableFilterComplex _ _ = error "applyV4SeparableFilter: filter type is not supported."
 
 
@@ -703,45 +728,45 @@ applyV4SeparableFilterComplex _ _ = error "applyV4SeparableFilter: filter type i
 
 
 
--- applyV4SeparableFilterComplexLabeledArrayConduit
---   :: ParallelParams
---   -> [V4SeparableFilter]
---   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, VU.Vector (Complex Double))
--- applyV4SeparableFilterComplexLabeledArrayConduit parallelParams filters = do
---   xs <- CL.take (batchSize parallelParams)
---   unless
---     (L.null xs)
---     (do let ys =
---               parMapChunk
---                 parallelParams
---                 rdeepseq
---                 (\(LabeledArray l x) ->
---                    let (Z :. channels :. _ :. _) = extent x
---                        imgVecs =
---                          L.map
---                            (\i ->
---                               VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
---                               (Z :. i :. All :. All))
---                            [0 .. channels - 1]
---                        complexVec =
---                          VU.concat .
---                          L.map
---                            (\filter' ->
---                               VU.concat $
---                               L.map
---                                 (applyV4SeparableFilterComplex filter')
---                                 imgVecs) $
---                          filters
---                        normalizedMagVec =
---                          normalizeVec . VU.map magnitude $ complexVec
---                    in ( fromIntegral l
---                       , VU.zipWith
---                           (\a b -> mkPolar a . phase $ b)
---                           normalizedMagVec
---                           complexVec))
---                 xs
---         sourceList ys
---         applyV4SeparableFilterComplexLabeledArrayConduit parallelParams filters)
+applyV4SeparableFilterComplexLabeledArrayConduit
+  :: ParallelParams
+  -> [V4SeparableFilter]
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, VU.Vector (Complex Double))
+applyV4SeparableFilterComplexLabeledArrayConduit parallelParams filters = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray l x) ->
+                   let (Z :. channels :. _ :. _) = extent x
+                       imgVecs =
+                         L.map
+                           (\i ->
+                              VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                              (Z :. i :. All :. All))
+                           [0 .. channels - 1]
+                       complexVec =
+                         VU.concat .
+                         L.map
+                           (\filter' ->
+                              VU.concat $
+                              L.map
+                                (applyV4SeparableFilterComplex filter')
+                                imgVecs) $
+                         filters
+                       normalizedMagVec =
+                         normalizeVec . VU.map magnitude $ complexVec
+                   in ( fromIntegral l
+                      , VU.zipWith
+                          (\a b -> mkPolar a . phase $ b)
+                          normalizedMagVec
+                          complexVec))
+                xs
+        sourceList ys
+        applyV4SeparableFilterComplexLabeledArrayConduit parallelParams filters)
 
 
 
@@ -796,3 +821,6 @@ applyV4SeparableFilterComplex _ _ = error "applyV4SeparableFilter: filter type i
 --      L.concat mags L.++
 --      (computePhaseDifferencePair . L.concatMap (L.zip freqs) $ normalizedXS)
 -- applyV4SeparableFilterFull _ _ = error "applyV4SeparableFilterFull: filter type is not supported."
+
+
+

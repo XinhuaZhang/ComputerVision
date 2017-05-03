@@ -25,16 +25,16 @@ main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   let parallelParams =
         ParallelParams
-        { numThread = 6
-        , batchSize = 6
+        { numThread = 14
+        , batchSize = 28
         }
-      m = 15
+      m = 30
       filterParams =
         V4SeparableFilterParamsAxis
         { v4SeparableFilterParamsAxisSeparableFilterRows = rows
         , v4SeparableFilterParamsAxisSeparableFilterCols = cols
         , v4SeparableFilterParamsAxisPolarSeparablePolarFactor = 1
-        , v4SeparableFilterParamsAxisPolarSeparableScale = [64]
+        , v4SeparableFilterParamsAxisPolarSeparableScale = [56]
         , v4SeparableFilterParamsAxisPolarSeparableFreq = [-15..15]
         , v4SeparableFilterParamsAxisPolarSeparableAngle = [0,m..90-m]
         , v4SeparableFilterParamsAxisCartesianGratingScale =
@@ -71,7 +71,7 @@ main = do
   let trainParams =
         TrainParams
         { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = 1
+        , trainC = 512
         , trainNumExamples = L.length featurePtr
         , trainFeatureIndexMax = VU.length . snd . L.head $ featurePtr1
         -- (L.sum . L.map filterNum $ filterVecsList) *

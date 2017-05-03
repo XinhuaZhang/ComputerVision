@@ -65,7 +65,7 @@ gaussian2D''
   :: (Floating a, Ord a)
     => Int -> a -> Int -> Int -> a
 gaussian2D'' freq sd i j -- =
-  | r == 0 = 1
+  | r == 0 = 0
   | sqrt r < sd = 1 / (sqrt r)
   | otherwise = 0
   -- 1 / ((2 * pi) * sd * sd) *

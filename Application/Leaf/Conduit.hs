@@ -1,7 +1,7 @@
 module Application.Leaf.Conduit where
 
 import           Classifier.LibLinear
--- import           Classifier.LibSVM
+import           Classifier.LibSVM
 import           Control.Arrow
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
@@ -28,6 +28,16 @@ complexDistance vec1 vec2
   | otherwise = magnitude $ VU.sum (VU.zipWith (\x y -> x * conjugate y) vec1 vec2) / (s :+ 0)
   where
     s = VU.sum $ VU.zipWith (\x y -> magnitude x * magnitude y) vec1 vec2
+    
+
+{-# INLINE complexDistanceEuclidean #-}
+
+complexDistanceEuclidean :: VU.Vector (Complex Double)
+                         -> VU.Vector (Complex Double)
+                         -> Double
+complexDistanceEuclidean vec1 vec2 =
+  (-1) *
+  (sqrt . VU.sum $ VU.zipWith (\a b -> magnitude (a - b) ^ (2 :: Int)) vec1 vec2)
 
 complexKernelP :: [VU.Vector (Complex Double)] -> IO [[Double]]
 complexKernelP xs = do
@@ -68,28 +78,28 @@ complexKernel parallelParams xs = do
     arr =
       fromFunction (Z :. n :. n) $ \(Z :. j :. i) ->
         if j <= i
-          then complexDistance (vec V.! i) (vec V.! j)
+          then complexDistanceEuclidean (vec V.! i) (vec V.! j)
           else 0
 
 
--- libSVMPredictConduit
---   :: ParallelParams
---   -> [VU.Vector (Complex Double)]
---   -> Conduit (Double, VU.Vector (Complex Double)) (ResourceT IO) (Double, Ptr C'svm_node)
--- libSVMPredictConduit parallelParams trainFeatures = do
---   xs <- CL.take (batchSize parallelParams)
---   unless
---     (L.null xs)
---     (do let (labels, ys) = L.unzip xs
---             zs =
---               parMapChunk
---                 parallelParams
---                 rdeepseq
---                 (\y -> L.map (complexDistance y) trainFeatures)
---                 ys
---         ptrs <- liftIO $ M.mapM (getPreComputedKernelFeatureVecPtr (-1)) zs
---         sourceList $ L.zip labels ptrs
---         libSVMPredictConduit parallelParams trainFeatures)
+libSVMPredictConduit
+  :: ParallelParams
+  -> [VU.Vector (Complex Double)]
+  -> Conduit (Double, VU.Vector (Complex Double)) (ResourceT IO) (Double, Ptr C'svm_node)
+libSVMPredictConduit parallelParams trainFeatures = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let (labels, ys) = L.unzip xs
+            zs =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\y -> L.map (complexDistanceEuclidean y) trainFeatures)
+                ys
+        ptrs <- liftIO $ M.mapM (getPreComputedKernelFeatureVecPtr (-1)) zs
+        sourceList $ L.zip labels ptrs
+        libSVMPredictConduit parallelParams trainFeatures)
 
 
 featurePtrConduit :: Conduit (a, VU.Vector Double) (ResourceT IO) (a, Ptr C'feature_node)

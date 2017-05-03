@@ -34,8 +34,8 @@ main = do
         , v4SeparableFilterParamsAxisPolarSeparableScale = [32]
         -- , v4SeparableFilterParamsAxisPolarSeparableRadialFreq = [0..7]
         -- , v4SeparableFilterParamsAxisPolarSeparableAngularFreq = [0..7]
-        , v4SeparableFilterParamsAxisPolarSeparableFreq = [1..2]
-        , v4SeparableFilterParamsAxisPolarSeparableAngle = [0]
+        , v4SeparableFilterParamsAxisPolarSeparableFreq = [-4..4]
+        , v4SeparableFilterParamsAxisPolarSeparableAngle = [0,45]
         , v4SeparableFilterParamsAxisCartesianGratingScale =
           [ 2 ** (i / 2)
           | i <- [7 .. 10] ]

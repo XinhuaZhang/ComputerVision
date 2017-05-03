@@ -76,13 +76,18 @@ calculateV4SeparableFilterConvolutionFeature (V4PolarSeparableFilteredImageConvo
     (\filteredImg ->
        let magnitudeImg = L.map (VU.map magnitude) filteredImg
             -- idx = findGlobalMaximaSum magnitudeImg
-           idx = ((div rows 2) - 1) * cols + div cols 2
-           mag = L.map (VU.! idx) magnitudeImg
-           phaseDiff =
-             computePhaseDifference (rows, cols) $
-             L.zip3 freqs filteredImg magnitudeImg
+           -- idx = ((div rows 2) - 1) * cols + div cols 2
+           -- mag = L.map (VU.! idx) magnitudeImg
+           -- phaseDiff =
+           --   computePhaseDifference (rows, cols) $
+           --   L.zip3 freqs filteredImg magnitudeImg
             -- mag -- L.++
-       in phaseDiff) $
+       in -- (weightedJRP $ L.zip3 freqs filteredImg magnitudeImg)
+          -- L.++ 
+          -- L.++  (weightedMRM $ L.zip3 freqs filteredImg magnitudeImg)
+          -- (weightedMagnitude $ L.zip3 freqs filteredImg magnitudeImg)
+          (computeCenterOfMass (rows,cols) $ L.zip3 freqs filteredImg magnitudeImg)
+    ) $
   filteredImgs
 
 
@@ -109,14 +114,51 @@ findGlobalMaximaCenterOfMass :: (Int, Int)
                              -> VU.Vector Double
                              -> VU.Vector Double
                              -> (Int, Int)
-findGlobalMaximaCenterOfMass (rows, cols) vec1 vec2 =
-  join (***) (\x -> round $ x / VU.sum vec) .
-  L.foldl' (\(s1, s2) ((i, j), v) -> (s1 + i * v, s2 + j * v)) (0, 0) .
-  L.zip [(fromIntegral i, fromIntegral j) | i <- [1 .. rows], j <- [1 .. cols]] .
-  VU.toList $
-  VU.zipWith (*) vec1 vec2
+findGlobalMaximaCenterOfMass (rows, cols) vec1 vec2
+  | s == 0 = error $ "findGlobalMaximaCenterOfMass: 0 " L.++ show (VU.sum vec1) L.++ " " L.++ show (VU.sum vec2)
+  | otherwise =
+    join (***) (\x -> round $ x / VU.sum vec) .
+    L.foldl' (\(s1, s2) ((i, j), v) -> (s1 + i * v, s2 + j * v)) (0, 0) .
+    L.zip
+      [ (fromIntegral i, fromIntegral j)
+      | i <- [1 .. rows]
+      , j <- [1 .. cols] ] .
+    VU.toList $
+    VU.zipWith (*) vec1 vec2
   where
     vec = VU.zipWith (*) vec1 vec2
+    s = VU.sum vec
+    
+
+{-# INLINE findGlobalMaximaCenterOfMass1 #-}
+
+findGlobalMaximaCenterOfMass1 :: (Int, Int)
+                             -> VU.Vector Double
+                             -> (Int, Int)
+findGlobalMaximaCenterOfMass1 (rows, cols) vec
+  | s == 0 = error $ "findGlobalMaximaCenterOfMass1: 0 " L.++ show (VU.sum vec)
+  | otherwise =
+    join (***) (\x -> round $ x / VU.sum vec) .
+    L.foldl' (\(s1, s2) ((i, j), v) -> (s1 + i * v, s2 + j * v)) (0, 0) .
+    L.zip
+      [ (fromIntegral i, fromIntegral j)
+      | i <- [1 .. rows]
+      , j <- [1 .. cols] ] .
+    VU.toList $
+    vec
+  where
+    s = VU.sum vec
+    
+computeCenterOfMass
+  :: (Int, Int)
+  -> [(Double, VU.Vector (Complex Double), VU.Vector Double)]
+  -> [Double]
+computeCenterOfMass (rows, cols) xs =
+  let centers = L.map (findGlobalMaximaCenterOfMass1 (rows, cols)) ys
+      idx = L.map (\(a, b) -> (a - 1) * cols + b - 1) centers
+  in L.zipWith (VU.!) ys idx
+  where
+    (_, _, ys) = L.unzip3 xs
 
 {-# INLINE phaseDifference #-}
 
@@ -167,11 +209,11 @@ computePhaseDifference (rows,cols) ((fn, xnC, xnM):xs) =
             (a,b) = findGlobalMaximaCenterOfMass (rows,cols) xnM xmM
             idxs = (a-1)*cols + b - 1
         in if fm == 0
-             then []
-             else phaseDifference idxs xnC fn xmC fm
-                  -- L.foldl1' (L.zipWith (+)) .
-                  -- L.map (\idx' -> phaseDifference idx' xnC fn xmC fm) $
-                  -- idxs
+              then []
+              else phaseDifference idxs xnC fn xmC fm
+                   -- L.foldl1' (L.zipWith (+)) .
+                   -- L.map (\idx' -> phaseDifference idx' xnC fn xmC fm) $
+                   -- idxs
     )
     xs L.++
   computePhaseDifference (rows,cols) xs
@@ -189,6 +231,7 @@ applyV4SeparableFilterConvolutionLabeledArrayConduit filters =
                    VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
                    (Z :. i :. All :. All))
                [0 .. channels - 1]
+       -- liftIO . print . magnitude . VU.sum . L.foldl1' (VU.zipWith (+)) $ imgVecs
        ys <- liftIO $ M.mapM (`applyV4FilterConvolution` imgVecs) filters
        yield (fromIntegral label', L.concat ys))
 
@@ -206,7 +249,7 @@ calculateV4SeparableFilterConvolutionFeatureConduit parallelParams = do
               parMapChunk
                 parallelParams
                 rdeepseq
-                (VU.concat . L.map calculateV4SeparableFilterConvolutionFeature)
+                (normalizeVec . VU.concat . L.map calculateV4SeparableFilterConvolutionFeature)
                 filteredImgs
         sourceList $ L.zip labels zs
         calculateV4SeparableFilterConvolutionFeatureConduit parallelParams)
@@ -219,3 +262,84 @@ normalizeVec vec
   | otherwise = VU.map (/ s) vec
   where
     s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+
+
+{-# INLINE jrp #-}
+
+jrp :: Complex Double -> Double -> Complex Double -> Double -> Double
+jrp xn fn xm fm
+  | signum fn == signum fm =
+    let y =
+          (xn ** (mn / abs fn :+ 0)) * conjugate (xm ** (mn / abs fm :+ 0))
+    in phase y
+  | otherwise =
+    let y = (xn ** (mn / abs fn :+ 0)) * (xm ** (mn / abs fm :+ 0))
+    in phase y
+  where
+    mn = fromIntegral $ lcm (round . abs $ fm) (round . abs $ fn) :: Double
+    
+
+
+{-# INLINE mrm #-}
+
+mrm :: Double -> Double -> Double
+mrm xn xm = min (xn / xm) (xm / xn)
+
+{-# INLINE weightedSum #-}
+
+weightedSum :: VU.Vector Double -> VU.Vector Double -> Double
+weightedSum magVec vec
+  | s == 0 = error "weightedSum: 0 magnitude"
+  | otherwise = VU.sum (VU.zipWith (*) magVec vec) / s
+  where
+    s = VU.sum magVec
+
+{-# INLINE weightedJRP #-}
+
+weightedJRP :: [(Double, VU.Vector (Complex Double), VU.Vector Double)]
+            -> [Double]
+weightedJRP [] = []
+weightedJRP  ((0, _, _):xs) = weightedJRP xs
+weightedJRP ((fn, xnC, xnM):xs) =
+  L.concatMap
+    (\(fm, xmC, xmM) ->
+        if fm == 0
+          then []
+          else let mag = VU.zipWith (*) xnM xmM
+                   y = VU.zipWith (\pn pm -> jrp pn fn pm fm) xnC xmC
+                   z = weightedSum mag y
+               in [sin z, cos z])
+    xs L.++
+  weightedJRP xs
+  
+
+{-# INLINE weightedMRM #-}
+
+weightedMRM :: [(Double, VU.Vector (Complex Double), VU.Vector Double)]
+            -> [Double]
+weightedMRM [] = []
+-- weightedMRM  ((0, _, _):xs) = weightedMRM xs
+weightedMRM ((_fn, _xnC, xnM):xs) =
+  L.concatMap
+    (\(_fm, _xmC, xmM)
+      -- if fm == 0
+      --   then []
+      --   else
+       ->
+        let mag = VU.zipWith (*) xnM xmM
+        in [weightedSum mag $ VU.zipWith mrm xnM xmM])
+    xs L.++
+  weightedMRM xs
+  
+weightedMagnitude :: [(Double, VU.Vector (Complex Double), VU.Vector Double)]
+                  -> [Double]
+weightedMagnitude xs =
+  L.zipWith
+    (\c m ->
+        let (a, b) = VU.unzip . VU.map (\(a' :+ b') -> (a', b')) $ c
+            avgC = weightedSum m a :+ weightedSum m b
+        in magnitude avgC)
+    cs
+    ms
+  where
+    (_, cs, ms) = L.unzip3 xs

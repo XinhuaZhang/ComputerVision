@@ -13,19 +13,19 @@ main = do
   let (ny, nx) = (128, 128)
       deg = 30
       filterParams =
-        PolarSeparableFilterParamsAxis
-        { getPolarSeparableFilterAxisRows = ny
-        , getPolarSeparableFilterAxisCols = nx
-        , getPolarSeparableFilterAxisScale = [48]
-        , getPolarSeparableFilterAxisFreq = [1 .. 8]
-        , getPolarSeparableFilterAxisRadialMultiplier = [0,1,1]
-        , getPolarSeparableFilterAxisAngularMultiplier = [1,0,1]
+        FourierMellinTransformParamsGrid
+        { getFourierMellinTransformGridRows = ny
+        , getFourierMellinTransformGridCols = nx
+        , getFourierMellinTransformGridScale = [64]
+        , getFourierMellinTransformGridRadialFreq = [0 .. 2]
+        , getFourierMellinTransformGridAngularFreq = [0 .. 2]
         }
       filters =
-        (\(V4PolarSeparableFilterAxis _ xs) -> L.concat xs) . getFilterVectors $
-        (V4.makeFilter
-           (PolarSeparableFilter filterParams Null)
-           (div ny 2, div nx 2) :: PolarSeparableFilterExpansionAxis)
+        (\(FourierMellinTransform _ xs) -> L.concatMap L.concat xs) $
+        getFilterVectors
+          (V4.makeFilter
+             (PolarSeparableFilter filterParams Null :: FourierMellinTransformExpansionGrid)
+             (div nx 2, div ny 2))
       imgList =
         L.map
           (arrayToImage . listArray ((0, 0), (ny - 1, nx - 1)) . VU.toList)

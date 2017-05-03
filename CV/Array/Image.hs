@@ -398,10 +398,10 @@ padTransformGrayImage
 padTransformGrayImage padVal transformationList arr =
   L.map
     (\(ImageTransformation r' c' deg sf a b) ->
-        let r = div r' 2
-            c = div c' 2
-            rescaledR = round $ fromIntegral r * sf
-            rescaledC = round $ fromIntegral c * sf
+        let -- r = div r' 2
+            -- c = div c' 2
+            rescaledR = round $ fromIntegral r' * sf
+            rescaledC = round $ fromIntegral c' * sf
             ratioR = fromIntegral (m - 1) / fromIntegral (rescaledR - 1)
             ratioC = fromIntegral (m - 1) / fromIntegral (rescaledC - 1)
         in if deg == 0

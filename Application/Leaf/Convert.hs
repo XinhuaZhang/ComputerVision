@@ -46,7 +46,7 @@ main = do
     padTransformImageConduit parallelParams 0 transformParams =$=
     writeLabeledImageBinarySink
       (printf
-         "%s_%s_%s_%s_%s_%s_%s.dat"
+         "%s_%s_%s_%s_%s_%s_%s_1.dat"
          trainStr
          colorStr
          sizeStr
