@@ -97,7 +97,7 @@ real2Complex x = x C.:+ 0
 angularFunc :: Int -> PixelOp (Pixel ComplexImage)
 angularFunc freq x y =
   ejx
-    (P.fromIntegral freq *
+    (P.fromIntegral (-freq) *
      angleFunctionRad (P.fromIntegral x) (P.fromIntegral y))
 
 {-# INLINE angularFunc180 #-}
@@ -112,8 +112,8 @@ angularFunc180 freq x y =
 
 radialFunc :: Double -> Int -> PixelOp (Pixel ComplexImage)
 radialFunc scale freq x y 
-  | r == 0 = 1
-  | otherwise = ejx (fromIntegral freq * (log r))
+  | r == 0 = 0
+  | otherwise = r ** ((-0.5) :+ (fromIntegral (-freq))) -- ejx (fromIntegral freq * (log r)) / r
   where r = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
   -- ejx
   --   ((sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * fromIntegral freq *
