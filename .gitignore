@@ -44,3 +44,6 @@ main
 *.dat*
 *model
 *.ppm
+*.pca
+*.bak
+run*

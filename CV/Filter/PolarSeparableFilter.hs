@@ -528,14 +528,15 @@ instance FilterExpansion PolarSeparableFilterExpansionGrid where
 fourierMellinTransform :: Double -> Double -> Int -> Int -> Int -> Complex Double
 fourierMellinTransform scale rf af x y
   | x == 0 && y == 0 = 0
-  | otherwise =
-    ((fromIntegral x :+ fromIntegral y) ** (fromIntegral (-af) :+ 0)) *
-    ((sqrt (fromIntegral x ^ (2 :: Int) + fromIntegral y ^ (2 :: Int))) **
-     (((fromIntegral af - 0.5) :+ (-rf)))) /
-    (2 * pi)
--- (0 :+ disk scale x y) *
-       -- (r ** ((-0.5) :+ (fromIntegral (-rf)))) *
-       -- exp (0 :+ (fromIntegral (-af) * theta))
+  | otherwise = 
+    -- ((fromIntegral x :+ fromIntegral y) ** (fromIntegral (-af) :+ 0)) *
+    -- ((sqrt (fromIntegral x ^ (2 :: Int) + fromIntegral y ^ (2 :: Int))) **
+    --  (((fromIntegral af - 1) :+ (-rf)))) /
+    -- (2 * pi)
+       -- (0 :+ disk scale x y) *
+       (r ** ((-0.5) :+ (-rf))) *
+       -- exp (0 :+ ((-rf) * log r)) *
+       exp (0 :+ (fromIntegral (-af) * theta)) 
        where
          r = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
          theta = angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)
@@ -560,12 +561,13 @@ instance FilterExpansion FourierMellinTransformExpansionGrid where
   {-# INLINE makeFilter #-}
   makeFilter (PolarSeparableFilter params@(FourierMellinTransformParamsGrid rows cols scales rfs afs) _) (centerR, centerC) =
     PolarSeparableFilter params .
-    FourierMellinTransform ( rfs, L.map fromIntegral afs) $
+    FourierMellinTransform ( rfs, L.map fromIntegral afs) $ 
     [ [ [ VU.fromListN
-           (cols * rows)
-           [ fourierMellinTransform scale rf af (c - centerC) (r - centerR)
-           | r <- [0 .. rows - 1]
-           , c <- [0 .. cols - 1] ]
+           (cols * rows) $
+           makeFilterList rows cols (fourierMellinTransform scale rf af)
+           -- [ fourierMellinTransform scale rf af (c - centerC) (r - centerR)
+           -- | r <- [0 .. rows - 1]
+           -- , c <- [0 .. cols - 1] ]
         | af <- afs ]
       | rf <- rfs ]
     | scale <- scales ]

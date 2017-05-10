@@ -175,7 +175,7 @@ disk
   :: (Floating a, Ord a)
   => a -> Int -> Int -> a
 disk sd i j
-  | sqrt r < sd = 1
+  | log r < sd = 1
   | otherwise = 0
   where
-    r = fromIntegral (i * i + j * j)
+    r = sqrt $ fromIntegral (i * i + j * j)

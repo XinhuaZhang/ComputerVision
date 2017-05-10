@@ -32,6 +32,14 @@ fourierTransformFilter (rows, cols) (V4PolarSeparableFilterAxis freqs !vecs) =
        (fmap (VU.fromListN (rows * cols) . elems) .
         dftN [0, 1] . CA.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)) $
   vecs
+fourierTransformFilter (rows, cols) (FourierMellinTransform freqs vecs) =
+  fmap (FourierMellinTransformConvolution (rows, cols) freqs) .
+  M.mapM
+    (M.mapM
+       (M.mapM
+          (fmap (VU.fromListN (rows * cols) . elems) .
+           dftN [0, 1] . CA.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList))) $
+  vecs
 fourierTransformFilter _ _ =
   error "fourierTransform: filter type is not supported."
 

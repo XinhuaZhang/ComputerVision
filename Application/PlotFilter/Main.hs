@@ -10,15 +10,15 @@ import           Data.Vector.Unboxed as VU
 
 
 main = do
-  let (ny, nx) = (128, 128)
+  let (ny, nx) = (2048, 2048)
       deg = 30
       filterParams =
         FourierMellinTransformParamsGrid
         { getFourierMellinTransformGridRows = ny
         , getFourierMellinTransformGridCols = nx
-        , getFourierMellinTransformGridScale = [64]
-        , getFourierMellinTransformGridRadialFreq = [0 .. 2]
-        , getFourierMellinTransformGridAngularFreq = [0 .. 2]
+        , getFourierMellinTransformGridScale = [2*pi]
+        , getFourierMellinTransformGridRadialFreq = [4,8,16]
+        , getFourierMellinTransformGridAngularFreq = [0]
         }
       filters =
         (\(FourierMellinTransform _ xs) -> L.concatMap L.concat xs) $
