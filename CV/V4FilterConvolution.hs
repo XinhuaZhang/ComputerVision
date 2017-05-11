@@ -73,6 +73,12 @@ applyV4FilterConvolution (V4PolarSeparableFilterConvolutionAxis (rows, cols) fre
         fmap (V4PolarSeparableFilteredImageConvolutionAxis (rows, cols) freqs) .
         M.mapM (applyFilterConvolution (rows, cols) imgVec) $
         filters)
+applyV4FilterConvolution (FourierMellinTransformConvolution (rows, cols) freqs filters) =
+  M.mapM
+    (\imgVec ->
+        fmap (FourierMellinTransformFilteredImageConvolution (rows, cols) freqs) .
+        M.mapM (M.mapM (applyFilterConvolution (rows, cols) imgVec)) $
+        filters)
 
 {-# INLINE calculateV4SeparableFilterConvolutionFeature #-}
 
@@ -239,7 +245,6 @@ applyV4SeparableFilterConvolutionLabeledArrayConduit filters =
                    VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
                    (Z :. i :. All :. All))
                [0 .. channels - 1]
-       -- liftIO . print . magnitude . VU.sum . L.foldl1' (VU.zipWith (+)) $ imgVecs
        ys <- liftIO $ M.mapM (`applyV4FilterConvolution` imgVecs) filters
        yield (fromIntegral label', L.concat ys))
 

@@ -47,11 +47,14 @@ instance NFData V4SeparableFilterConvolution where
   rnf (V4PolarSeparableFilterConvolutionAxis a b c) = a `seq` b `seq` c `seq` ()
   rnf (FourierMellinTransformConvolution a b c) = a `seq` b `seq` c `seq` ()
 
-data V4SeparableFilteredImageConvolution =
-  V4PolarSeparableFilteredImageConvolutionAxis !(Int, Int)
-                                               ![Double]
-                                               ![[Vector (Complex Double)]]
-                                               
+data V4SeparableFilteredImageConvolution
+  = V4PolarSeparableFilteredImageConvolutionAxis !(Int, Int)
+                                                 ![Double]
+                                                 ![[Vector (Complex Double)]]
+  | FourierMellinTransformFilteredImageConvolution (Int, Int)
+                                                   ([Double], [Double])
+                                                   [[[Vector (Complex Double)]]]
+
 instance NFData V4SeparableFilteredImageConvolution where
   rnf (V4PolarSeparableFilteredImageConvolutionAxis a b c) =
     a `seq` b `seq` c `seq` ()
