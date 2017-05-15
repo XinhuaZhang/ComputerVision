@@ -189,11 +189,10 @@ computeSVMKernel parallelParams xs =
   parMapChunk parallelParams rdeepseq (\x -> P.map (intersection x) xs) xs
 
 entropy
-  :: (Num a, Floating a)
-  => KdHist a -> a
+  :: KdHist Int -> Double
 entropy (KdHist _ bins) = -1 * (L.sum . L.map ((\x -> x * log x) . (/ s)) $ xs)
   where
-    xs = L.map (\(Bin _ n) -> n) bins
+    xs = L.map (\(Bin _ n) -> fromIntegral n) bins
     s = L.sum xs
 
 -- Only works for 2 dimension histogram.
