@@ -4,7 +4,6 @@
 module CV.FilterExpansion where
 
 import           Control.DeepSeq
-import           Data.Array.CArray
 import           Data.Complex
 import           Data.List           as L
 import           Data.Vector.Unboxed
@@ -57,6 +56,8 @@ data V4SeparableFilteredImageConvolution
 
 instance NFData V4SeparableFilteredImageConvolution where
   rnf (V4PolarSeparableFilteredImageConvolutionAxis a b c) =
+    a `seq` b `seq` c `seq` ()
+  rnf (FourierMellinTransformFilteredImageConvolution a b c) =
     a `seq` b `seq` c `seq` ()
 
 

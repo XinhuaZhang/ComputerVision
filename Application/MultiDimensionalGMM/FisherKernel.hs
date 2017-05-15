@@ -54,9 +54,10 @@ fisherVectorSigma gmm xs =
     assignments = getAssignmentVec gmm xs
 
 fisherVectorConduit
-  :: ParallelParams
+  :: (NFData a)
+  => ParallelParams
   -> GMM
-  -> Conduit (Int,[VU.Vector Double]) (ResourceT IO) (Int,VU.Vector Double)
+  -> Conduit (a, [VU.Vector Double]) (ResourceT IO) (a, VU.Vector Double)
 fisherVectorConduit parallelParams gmm = do
   xs <- CL.take (batchSize parallelParams)
   unless
