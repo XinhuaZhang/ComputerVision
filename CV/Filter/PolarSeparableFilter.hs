@@ -208,12 +208,12 @@ pinwheelsAngle :: Double
                -> Double
                -> (Int -> Int -> Complex Double)
 pinwheelsAngle scale freq angle polarFactor x y
-  | rho == 0 = real2Complex (gaussian2D'' freq scale x y)
+  | rho == 0 = 0 -- real2Complex (gaussian2D'' freq scale x y)
   | angle == pi / 2 =
-    real2Complex (gaussian2D'' freq scale x y) *
+    -- real2Complex (gaussian2D'' freq scale x y) *
     ejx (fromIntegral freq * polarFactor * log rho)
   | otherwise =
-    real2Complex (gaussian2D'' freq scale x y) *
+    -- real2Complex (gaussian2D'' freq scale x y) *
     ejx
       (fromIntegral freq *
        (theta + polarFactor * tan angle * log rho))
@@ -427,11 +427,11 @@ instance FilterExpansion PolarSeparableFilterExpansionAxis where
     PolarSeparableFilter params .
     V4PolarSeparableFilterAxis (L.map fromIntegral freqs) $
     [ [ VU.fromListN (cols * rows) $
-    -- makeFilterList rows cols (pinwheelsAngle scale freq angle pf)
-      [ pinwheelsAngle scale freq angle pf (c - centerC) (r - centerR)
-      | r <- [0 .. rows - 1]
-      , c <- [0 .. cols - 1]
-      ]
+    makeFilterList rows cols (pinwheelsAngle scale freq angle pf)
+      -- [ pinwheelsAngle scale freq angle pf (c - centerC) (r - centerR)
+      -- | r <- [0 .. rows - 1]
+      -- , c <- [0 .. cols - 1]
+      -- ]
     | freq <- freqs
     ]
     | scale <- scales

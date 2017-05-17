@@ -180,14 +180,18 @@ orientationHistogramConduit parallelParams patchSize stride n = do
 pcaSink
   :: ParallelParams
   -> FilePath
-  -> Int
-  -> Sink (Double, [VU.Vector Double]) (ResourceT IO) (PCAMatrix Double, [VU.Vector Double])
-pcaSink parallelParams filePath numPrincipal = do
-  xs <- CL.consume
+  -> Int -> Int
+  -> Sink (Double, [VU.Vector Double]) (ResourceT IO) (PCAMatrix Double, [[VU.Vector Double]])
+pcaSink parallelParams filePath numPrincipal numTrain = do
+  xs <- CL.take numTrain
   let ys = L.concat . snd . L.unzip $ xs
-      (pcaMat, _, vecs) = pcaSVD parallelParams numPrincipal ys
+      (pcaMat, _, _) = pcaSVD parallelParams numPrincipal ys
+      vecs =
+        parMapChunk parallelParams rdeepseq (L.map (pcaReduction pcaMat)) .
+        snd . L.unzip $
+        xs
   liftIO $ encodeFile filePath pcaMat
-  return (pcaMat,vecs)
+  return (pcaMat, vecs)
 
 pcaConduit
   :: ParallelParams
@@ -195,11 +199,13 @@ pcaConduit
   -> Conduit (Double, [VU.Vector Double]) (ResourceT IO) (Double, [VU.Vector Double])
 pcaConduit parallelParams pcaMat = do
   xs <- CL.take (batchSize parallelParams)
-  let ys =
-        parMapChunk
-          parallelParams
-          rdeepseq
-          (second (L.map (pcaReduction pcaMat)))
-          xs
-  sourceList ys
-  pcaConduit parallelParams pcaMat
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (second (L.map (pcaReduction pcaMat)))
+                xs
+        sourceList ys
+        pcaConduit parallelParams pcaMat)

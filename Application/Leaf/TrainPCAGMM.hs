@@ -21,6 +21,7 @@ import           System.IO
 main = do
   args <- getArgs
   params <- parseArgs args
+  print params
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
@@ -33,7 +34,7 @@ main = do
         , v4SeparableFilterParamsAxisSeparableFilterCols = imageSize params
         , v4SeparableFilterParamsAxisPolarSeparablePolarFactor = 1
         , v4SeparableFilterParamsAxisPolarSeparableScale = [56]
-        , v4SeparableFilterParamsAxisPolarSeparableFreq = [-4 .. 4]
+        , v4SeparableFilterParamsAxisPolarSeparableFreq = [1 .. 6]
         , v4SeparableFilterParamsAxisPolarSeparableAngle = [0,m .. 90 - m]
         , v4SeparableFilterParamsAxisCartesianGratingScale =
           [ 2 ** (i / 2)
@@ -61,12 +62,16 @@ main = do
       (patchSize params)
       (stride params)
       (numBin params) =$=
-    pcaSink parallelParams (pcaFile params) (numPrincipal params)
+    pcaSink
+      parallelParams
+      (pcaFile params)
+      (numPrincipal params)
+      (numGMMExample params)
   withBinaryFile (gmmFile params) WriteMode $
     \h ->
        runResourceT $
        CL.sourceList vecs $$
-       hGMMSink2
+       hGMMSink1
          parallelParams
          h
          (numGaussian params)

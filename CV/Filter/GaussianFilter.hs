@@ -66,8 +66,8 @@ gaussian2D''
     => Int -> a -> Int -> Int -> a
 gaussian2D'' freq sd i j -- =
   | r == 0 = 0
-  | sqrt r < sd = 1 / (sqrt r)
-  | otherwise = 0
+  | sqrt r < sd = 1 
+  | otherwise = 1
   -- 1 / ((2 * pi) * sd * sd) *
   -- exp (-(sqrt r - r') ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
   where
