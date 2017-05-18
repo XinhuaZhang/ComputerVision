@@ -2,8 +2,10 @@
 module CV.V4FilterConvolution where
 
 import           Control.Arrow
+import           Control.Concurrent.MVar          (MVar)
 import           Control.DeepSeq
 import           Control.Monad                    as M
+import           Control.Monad.Parallel                    as MP
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
@@ -13,71 +15,213 @@ import           CV.Filter.PolarSeparableFilter   as V4 hiding (makeFilter)
 import           CV.FilterExpansion
 import           CV.Utility.FFT
 import           CV.Utility.Parallel
+import           CV.Utility.RepaArrayUtility
+import qualified Data.Array                       as Arr
 import           Data.Array.CArray                as CA
 import           Data.Array.Repa                  as R
 import           Data.Complex
 import           Data.Conduit
 import           Data.Conduit.List                as CL
+import qualified Data.Image                       as UNM
 import           Data.List                        as L
 import           Data.Vector.Unboxed              as VU
+import qualified Math.FFT                         as MF
 
 
 {-# INLINE fourierTransformFilter #-}
 
-fourierTransformFilter :: (Int, Int) -> V4SeparableFilter -> IO V4SeparableFilterConvolution
-fourierTransformFilter (rows, cols) (V4PolarSeparableFilterAxis freqs !vecs) =
+fourierTransformFilter :: MVar () ->  (Int, Int) -> V4SeparableFilter -> IO V4SeparableFilterConvolution
+fourierTransformFilter lock (rows, cols) (V4PolarSeparableFilterAxis freqs !vecs) =
   fmap (V4PolarSeparableFilterConvolutionAxis (rows, cols) freqs) .
   M.mapM
-    (M.mapM
-       (fmap (VU.fromListN (rows * cols) . elems) .
-        dftN [0, 1] . CA.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)) $
+    (MP.mapM
+        (fmap (VU.fromListN (rows * cols) . elems) .
+         dftN lock [0, 1] . CA.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)) $
   vecs
-fourierTransformFilter (rows, cols) (FourierMellinTransform freqs vecs) =
+fourierTransformFilter lock (rows, cols) (FourierMellinTransform freqs vecs) =
   fmap (FourierMellinTransformConvolution (rows, cols) freqs) .
   M.mapM
     (M.mapM
-       (M.mapM
-          (fmap (VU.fromListN (rows * cols) . elems) .
-           dftN [0, 1] . CA.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList))) $
+       (MP.mapM
+           (fmap (VU.fromListN (rows * cols) . elems) .
+            dftN lock [0, 1] . CA.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList))) $
   vecs
-fourierTransformFilter _ _ =
+fourierTransformFilter _ _ _ =
   error "fourierTransform: filter type is not supported."
+
+
+{-# INLINE fourierTransformFilterP #-}
+
+fourierTransformFilterP :: (Int, Int) -> V4SeparableFilter -> V4SeparableFilterConvolution
+fourierTransformFilterP (rows, cols) (V4PolarSeparableFilterAxis freqs !vecs) =
+  V4PolarSeparableFilterConvolutionAxis (rows, cols) freqs .
+  parMap
+    rdeepseq
+    (L.map
+       ((VU.fromListN (rows * cols) . elems) .
+        MF.dftN [0, 1] . CA.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)) $
+  vecs
+fourierTransformFilterP (rows, cols) (FourierMellinTransform freqs vecs) =
+  FourierMellinTransformConvolution (rows, cols) freqs .
+  parMap
+    rdeepseq
+    (L.map
+       (L.map
+          ((VU.fromListN (rows * cols) . elems) .
+           MF.dftN [0, 1] . CA.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList))) $
+  vecs
+fourierTransformFilterP _ _ =
+  error "fourierTransform: filter type is not supported."
+
+
+{-# INLINE fourierTransformFilterUNM #-}
+
+fourierTransformFilterUNM :: (Int, Int) -> V4SeparableFilter -> V4SeparableFilterConvolution
+fourierTransformFilterUNM (rows, cols) (V4PolarSeparableFilterAxis freqs !vecs) =
+  V4PolarSeparableFilterConvolutionAxis (rows, cols) freqs .
+  parMap
+    rdeepseq
+    (L.map
+       (\x ->
+           (VU.fromListN (rows * cols) . UNM.pixelList) . UNM.fft $
+           (UNM.arrayToImage .
+            Arr.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList $
+            x :: UNM.ComplexImage))) $
+  vecs
+fourierTransformFilterUNM (rows, cols) (FourierMellinTransform freqs vecs) =
+  FourierMellinTransformConvolution (rows, cols) freqs .
+  parMap
+    rdeepseq
+    (L.map
+       (L.map
+          ((VU.fromListN (rows * cols) . elems) .
+           MF.dftN [0, 1] . CA.listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList))) $
+  vecs
+fourierTransformFilterUNM _ _ =
+  error "fourierTransform: filter type is not supported."
+
+
+{-# INLINE applyFilterConvolutionIO #-}
+
+applyFilterConvolutionIO
+  :: MVar ()
+  -> (Int, Int)
+  -> Int
+  -> VU.Vector (Complex Double)
+  -> [VU.Vector (Complex Double)]
+  -> [VU.Vector (Complex Double)]
+  -> IO [VU.Vector (Complex Double)]
+applyFilterConvolutionIO lock (rows, cols) downsampleFactor imgVec gFilters pFilters = do
+  imgVecF <-
+    fmap (VU.fromListN (rows * cols) . elems) .
+    dftN lock [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList $
+    imgVec
+  if downsampleFactor == 1
+    then MP.mapM
+           (fmap (VU.fromListN (rows * cols) . CA.elems) .
+            idftN lock [0, 1] .
+            listArray ((0, 0), (rows - 1, cols - 1)) .
+            VU.toList . VU.zipWith (*) imgVecF)
+           pFilters
+    else fmap L.concat .
+         MP.mapM
+           (\pf ->
+               M.mapM
+                 (fmap
+                    (toUnboxed .
+                     computeS .
+                     downsample [downsampleFactor, downsampleFactor] .
+                     fromListUnboxed (Z :. rows :. cols) . elems) .
+                  idftN lock [0, 1] .
+                  listArray ((0, 0), (rows - 1, cols - 1)) .
+                  VU.toList . VU.zipWith3 (\a b c -> a * b * c) imgVecF pf)
+                 gFilters) $
+         pFilters
+
+
 
 {-# INLINE applyFilterConvolution #-}
 
 applyFilterConvolution
   :: (Int, Int)
+  -> Int
   -> VU.Vector (Complex Double)
   -> [VU.Vector (Complex Double)]
-  -> IO [VU.Vector (Complex Double)]
-applyFilterConvolution (rows, cols) imgVec filters' = do
-  imgVecF <-
-    fmap (VU.fromListN (rows * cols) . elems) .
-    dftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList $
-    imgVec
-  let xs = L.map (VU.zipWith (*) imgVecF) filters'
+  -> [VU.Vector (Complex Double)]
+  -> [VU.Vector (Complex Double)]
+applyFilterConvolution (rows, cols) downsampleFactor imgVec gFilters pFilters =
+  let imgVecF =
+        (VU.fromListN (rows * cols) . elems) .
+        MF.dftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList $
+        imgVec
+      xs = L.map (VU.zipWith (*) imgVecF) pFilters
+      ys = L.concatMap (\x -> L.map (VU.zipWith (*) x) gFilters) xs
+  in if downsampleFactor == 1
+       then L.map
+              ((VU.fromListN (rows * cols) . CA.elems) .
+               MF.idftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)
+              ys
+       else L.map
+              (toUnboxed .
+               computeS .
+               downsample [downsampleFactor, downsampleFactor] .
+               fromListUnboxed (Z :. rows :. cols) .
+               elems .
+               MF.idftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)
+              ys
+
+{-# INLINE applyV4FilterConvolutionIO #-}
+
+applyV4FilterConvolutionIO
+  :: MVar ()
+  -> V4SeparableFilterConvolution
+  -> Int
+  -> [VU.Vector (Complex Double)]
+  -> [VU.Vector (Complex Double)]
+  -> IO [V4SeparableFilteredImageConvolution]
+applyV4FilterConvolutionIO lock (V4PolarSeparableFilterConvolutionAxis (rows, cols) freqs filters) downsampleFactor gFilters =
   M.mapM
-    (fmap (VU.fromListN (rows * cols) . CA.elems) .
-     idftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)
-    xs
+    (\imgVec ->
+        fmap (V4PolarSeparableFilteredImageConvolutionAxis (rows, cols) freqs) .
+        M.mapM (applyFilterConvolutionIO lock (rows, cols) downsampleFactor imgVec gFilters) $
+        filters)
+applyV4FilterConvolutionIO lock (FourierMellinTransformConvolution (rows, cols) freqs filters) downsampleFactor gFilters =
+  M.mapM
+    (\imgVec ->
+        fmap (FourierMellinTransformFilteredImageConvolution (rows, cols) freqs) .
+        M.mapM
+          (M.mapM
+             (applyFilterConvolutionIO
+                lock
+                (rows, cols)
+                downsampleFactor
+                imgVec
+                gFilters)) $
+        filters)
+
 
 {-# INLINE applyV4FilterConvolution #-}
 
 applyV4FilterConvolution
   :: V4SeparableFilterConvolution
+  -> Int
   -> [VU.Vector (Complex Double)]
-  -> IO [V4SeparableFilteredImageConvolution]
-applyV4FilterConvolution (V4PolarSeparableFilterConvolutionAxis (rows, cols) freqs filters) =
-  M.mapM
+  -> [VU.Vector (Complex Double)]
+  -> [V4SeparableFilteredImageConvolution]
+applyV4FilterConvolution (V4PolarSeparableFilterConvolutionAxis (rows, cols) freqs filters) downsampleFactor gFilters =
+  L.map
     (\imgVec ->
-        fmap (V4PolarSeparableFilteredImageConvolutionAxis (rows, cols) freqs) .
-        M.mapM (applyFilterConvolution (rows, cols) imgVec) $
+        V4PolarSeparableFilteredImageConvolutionAxis (rows, cols) freqs .
+        L.map
+          (applyFilterConvolution (rows, cols) downsampleFactor imgVec gFilters) $
         filters)
-applyV4FilterConvolution (FourierMellinTransformConvolution (rows, cols) freqs filters) =
-  M.mapM
+applyV4FilterConvolution (FourierMellinTransformConvolution (rows, cols) freqs filters) downsampleFactor gFilters =
+  L.map
     (\imgVec ->
-        fmap (FourierMellinTransformFilteredImageConvolution (rows, cols) freqs) .
-        M.mapM (M.mapM (applyFilterConvolution (rows, cols) imgVec)) $
+        FourierMellinTransformFilteredImageConvolution (rows, cols) freqs .
+        L.map
+          (L.map
+             (applyFilterConvolution (rows, cols) downsampleFactor imgVec gFilters)) $
         filters)
 
 {-# INLINE calculateV4SeparableFilterConvolutionFeature #-}
@@ -97,7 +241,7 @@ calculateV4SeparableFilterConvolutionFeature (V4PolarSeparableFilteredImageConvo
            --   L.zip3 freqs filteredImg magnitudeImg
             -- mag -- L.++
        in -- (weightedJRP $ L.zip3 freqs filteredImg magnitudeImg)
-          -- L.++ 
+          -- L.++
           -- L.++  (weightedMRM $ L.zip3 freqs filteredImg magnitudeImg)
           -- (weightedMagnitude $ L.zip3 freqs filteredImg magnitudeImg)
           (computeCenterOfMass (rows,cols) $ L.zip3 freqs filteredImg magnitudeImg)
@@ -142,7 +286,7 @@ findGlobalMaximaCenterOfMass (rows, cols) vec1 vec2
   where
     vec = VU.zipWith (*) vec1 vec2
     s = VU.sum vec
-    
+
 
 {-# INLINE findGlobalMaximaCenterOfMass1 #-}
 
@@ -162,7 +306,7 @@ findGlobalMaximaCenterOfMass1 (rows, cols) vec
     vec
   where
     s = VU.sum vec
-    
+
 computeCenterOfMass
   :: (Int, Int)
   -> [(Double, VU.Vector (Complex Double), VU.Vector Double)]
@@ -233,9 +377,12 @@ computePhaseDifference (rows,cols) ((fn, xnC, xnM):xs) =
   computePhaseDifference (rows,cols) xs
 
 applyV4SeparableFilterConvolutionLabeledArrayConduit
-  :: [V4SeparableFilterConvolution]
+  :: MVar ()
+  -> Int
+  -> [VU.Vector (Complex Double)]
+  -> [V4SeparableFilterConvolution]
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [V4SeparableFilteredImageConvolution])
-applyV4SeparableFilterConvolutionLabeledArrayConduit filters =
+applyV4SeparableFilterConvolutionLabeledArrayConduit lock downsampleFactor gFilters filters =
   awaitForever
     (\(LabeledArray label' x) -> do
        let (Z :. channels :. _ :. _) = extent x
@@ -245,8 +392,54 @@ applyV4SeparableFilterConvolutionLabeledArrayConduit filters =
                    VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
                    (Z :. i :. All :. All))
                [0 .. channels - 1]
-       ys <- liftIO $ M.mapM (`applyV4FilterConvolution` imgVecs) filters
+       ys <-
+         liftIO $
+         M.mapM
+           (\x' -> applyV4FilterConvolutionIO lock x' downsampleFactor imgVecs gFilters)
+           filters
        yield (fromIntegral label', L.concat ys))
+
+
+applyV4SeparableFilterConvolutionLabeledArrayConduitP
+  :: ParallelParams
+  -> Int
+  -> [VU.Vector (Complex Double)]
+  -> [V4SeparableFilterConvolution]
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [V4SeparableFilteredImageConvolution])
+applyV4SeparableFilterConvolutionLabeledArrayConduitP parallelParams downsampleFactor gFilters pFilters = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray label' x) ->
+                    let (Z :. channels :. _ :. _) = extent x
+                        imgVecs =
+                          L.map
+                            (\i ->
+                                VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                                (Z :. i :. All :. All))
+                            [0 .. channels - 1]
+                        zs =
+                          L.map
+                            (\pf ->
+                                applyV4FilterConvolution
+                                  pf
+                                  downsampleFactor
+                                  gFilters
+                                  imgVecs)
+                            pFilters
+                    in (fromIntegral label', L.concat zs))
+                xs
+        sourceList ys
+        applyV4SeparableFilterConvolutionLabeledArrayConduitP
+          parallelParams
+          downsampleFactor
+          gFilters
+          pFilters)
+
 
 
 
@@ -290,7 +483,7 @@ jrp xn fn xm fm
     in phase y
   where
     mn = fromIntegral $ lcm (round . abs $ fm) (round . abs $ fn) :: Double
-    
+
 
 
 {-# INLINE mrm #-}
@@ -324,7 +517,7 @@ weightedJRP ((fn, xnC, xnM):xs) =
                in [sin z, cos z])
     xs L.++
   weightedJRP xs
-  
+
 
 {-# INLINE weightedMRM #-}
 
@@ -343,7 +536,7 @@ weightedMRM ((_fn, _xnC, xnM):xs) =
         in [weightedSum mag $ VU.zipWith mrm xnM xmM])
     xs L.++
   weightedMRM xs
-  
+
 weightedMagnitude :: [(Double, VU.Vector (Complex Double), VU.Vector Double)]
                   -> [Double]
 weightedMagnitude xs =

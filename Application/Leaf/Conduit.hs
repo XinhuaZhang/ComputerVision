@@ -175,6 +175,37 @@ orientationHistogramConduit parallelParams patchSize stride n = do
                 xs
         sourceList ys
         orientationHistogramConduit parallelParams patchSize stride n)
+        
+
+magnitudeConduit
+  :: ParallelParams
+  -> Conduit (Double, [V4SeparableFilteredImageConvolution]) (ResourceT IO) (Double, [VU.Vector Double])
+magnitudeConduit parallelParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(label, filteredImages) ->
+                    let y =
+                          L.concatMap
+                            (\img ->
+                                case img of
+                                  V4PolarSeparableFilteredImageConvolutionAxis _ _ vecs ->
+                                    L.concat vecs
+                                  FourierMellinTransformFilteredImageConvolution _ _ vecs ->
+                                    L.concatMap L.concat vecs)
+                            filteredImages
+                        z =
+                          L.map (normalizeVec . VU.fromList) .
+                          L.transpose . L.map (VU.toList . VU.map magnitude) $
+                          y
+                    in (label, z))
+                xs
+        sourceList ys
+        magnitudeConduit parallelParams)
 
 
 pcaSink

@@ -1,38 +1,56 @@
 module CV.Utility.FFT where
 
+import           Control.Concurrent.MVar (MVar, withMVar)
 import           Data.Array.CArray
-import           Data.Array.CArray.Base (mallocForeignPtrArrayAligned)
-import           Data.Bits              (complement, (.&.), (.|.))
+import           Data.Array.CArray.Base  (mallocForeignPtrArrayAligned)
+import           Data.Bits               (complement, (.&.), (.|.))
 import           Data.Complex
-import           Foreign.ForeignPtr     (withForeignPtr)
-import           Foreign.Marshal.Array  (copyArray)
+import           Foreign.ForeignPtr      (withForeignPtr)
+import           Foreign.ForeignPtr
+import           Foreign.Marshal.Array   (copyArray)
 import           Foreign.Ptr
 import           Foreign.Storable
-import           Math.FFT.Base          hiding (dftG, dftGU, dftN, idftN,
-                                         transformCArray, transformCArray')
+import           Math.FFT.Base           hiding (dftG, dftGU, dftN, idftN,
+                                          transformCArray, transformCArray')
 
 dftN
   :: (FFTWReal r, Ix i, Shapable i)
-  => [Int] -> CArray i (Complex r) -> IO (CArray i (Complex r))
+  => MVar ()
+  -> [Int]
+  -> CArray i (Complex r)
+  -> IO (CArray i (Complex r))
 dftN = dftG DFTForward estimate
 
 idftN
   :: (FFTWReal r, Ix i, Shapable i)
-  => [Int] -> CArray i (Complex r) -> IO (CArray i (Complex r))
+  => MVar ()
+  -> [Int]
+  -> CArray i (Complex r)
+  -> IO (CArray i (Complex r))
 idftN = dftG DFTBackward estimate
 
 dftG
   :: (FFTWReal r, Ix i, Shapable i)
-  => Sign -> Flag -> [Int] -> CArray i (Complex r) -> IO (CArray i (Complex r))
-dftG s f tdims ain =
+  => Sign
+  -> Flag
+  -> MVar ()
+  -> [Int]
+  -> CArray i (Complex r)
+  -> IO (CArray i (Complex r))
+dftG s f m tdims ain =
   case s of
-    DFTForward  -> dftGU s f tdims ain
-    DFTBackward -> fmap (unsafeNormalize tdims) (dftGU s f tdims ain)
+    DFTForward  -> dftGU m s f tdims ain
+    DFTBackward -> fmap (unsafeNormalize tdims) (dftGU m s f tdims ain)
 
 dftGU
   :: (FFTWReal r, Ix i, Shapable i)
-  => Sign -> Flag -> [Int] -> CArray i (Complex r) -> IO (CArray i (Complex r))
-dftGU s f tdims ain = transformCArray f ain bds go
+  => MVar ()
+  -> Sign
+  -> Flag
+  -> [Int]
+  -> CArray i (Complex r)
+  -> IO (CArray i (Complex r))
+dftGU m s f tdims ain = transformCArray m f ain bds go
   where
     go f' ip op =
       withTSpec tspec $
@@ -43,15 +61,16 @@ dftGU s f tdims ain = transformCArray f ain bds go
 
 transformCArray
   :: (Ix i, Storable a, Storable b)
-  => Flag
+  => MVar ()
+  -> Flag
   -> CArray i a
   -> (i, i)
   -> (FFTWFlag -> Ptr a -> Ptr b -> IO Plan)
   -> IO (CArray i b)
-transformCArray f a lu planner =
+transformCArray m f a lu planner =
   if f `has` estimate && not (any (f `has`) [patient, exhaustive])
     then go
-    else transformCArray' f a lu planner
+    else transformCArray' m f a lu planner
   where
     go = do
       ofp <- mallocForeignPtrArrayAligned (rangeSize lu)
@@ -59,7 +78,7 @@ transformCArray f a lu planner =
         \ip ->
            withForeignPtr ofp $
            \op -> do
-             p <- withLock $ planner (unFlag f) ip op
+             p <- withMVar m $ \_ -> planner (unFlag f) ip op
              execute p
       unsafeForeignPtrToCArray ofp lu
 
@@ -67,12 +86,13 @@ transformCArray f a lu planner =
 
 transformCArray'
   :: (Ix i, Storable a, Storable b)
-  => Flag
+  => MVar ()
+  -> Flag
   -> CArray i a
   -> (i, i)
   -> (FFTWFlag -> Ptr a -> Ptr b -> IO Plan)
   -> IO (CArray i b)
-transformCArray' f a lu planner = do
+transformCArray' m f a lu planner = do
   ofp <- mallocForeignPtrArrayAligned (rangeSize lu)
   wfp <- mallocForeignPtrArrayAligned sz
   withCArray a $
@@ -81,7 +101,7 @@ transformCArray' f a lu planner = do
        \op ->
           withForeignPtr wfp $
           \wp -> do
-            p <- withLock $ planner (unFlag f') wp op
+            p <- withMVar m $ \_ -> planner (unFlag f') wp op
             copyArray wp ip sz
             execute p
   unsafeForeignPtrToCArray ofp lu

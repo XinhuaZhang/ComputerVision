@@ -22,6 +22,7 @@ data Flag
   | PatchSize Int
   | Stride Int
   | NumBin Int
+  | GaussianScale [Double]
   deriving (Show)
 
 data Params = Params
@@ -42,6 +43,7 @@ data Params = Params
   , patchSize        :: Int
   , stride           :: Int
   , numBin           :: Int
+  , gaussianScale    :: [Double]
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -115,6 +117,19 @@ options =
       ["numBin"]
       (ReqArg (NumBin . readInt) "INT")
       "Set the number of bins for histogram pooling."
+  , Option
+      ['z']
+      ["gaussianScale"]
+      (ReqArg
+         (\x ->
+             let go xs [] = [xs]
+                 go xs (y:ys) =
+                   if y == ','
+                     then xs : go [] ys
+                     else go (y : xs) ys
+             in GaussianScale . map (readDouble . reverse) $ go [] x)
+         "[Double]")
+      "Set the Gaussian scale list."
   ]
 
 readInt :: String -> Int
@@ -160,6 +175,7 @@ parseFlag flags = go flags defaultFlag
       , patchSize = 0
       , stride = 1
       , numBin = 1
+      , gaussianScale = []
       }
     go [] params = params
     go (x:xs) params =
@@ -265,6 +281,12 @@ parseFlag flags = go flags defaultFlag
             xs
             (params
              { numBin = v
+             })
+        GaussianScale v ->
+          go
+            xs
+            (params
+             { gaussianScale = v
              })
 
 
