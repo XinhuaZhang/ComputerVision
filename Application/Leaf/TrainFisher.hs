@@ -61,7 +61,7 @@ main = do
   featurePtr <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    applyV4SeparableFilterConvolutionLabeledArrayConduit lock parallelParams (stride params) gFilters filtersF  =$=
+    applyV4SeparableFilterConvolutionLabeledArrayConduit lock parallelParams 1 gFilters filtersF  =$=
     orientationHistogramConduit
       parallelParams
       (patchSize params)
