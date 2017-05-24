@@ -185,8 +185,7 @@ magnitudeConduit parallelParams = do
   unless
     (L.null xs)
     (do let ys =
-              parMapChunk
-                parallelParams
+              parMap
                 rdeepseq
                 (\(label, filteredImages) ->
                     let y =
@@ -233,8 +232,7 @@ pcaConduit parallelParams pcaMat = do
   unless
     (L.null xs)
     (do let ys =
-              parMapChunk
-                parallelParams
+              parMap
                 rdeepseq
                 (second (L.map (pcaReduction pcaMat)))
                 xs

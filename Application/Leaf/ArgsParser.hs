@@ -175,7 +175,7 @@ parseFlag flags = go flags defaultFlag
       , patchSize = 0
       , stride = 1
       , numBin = 1
-      , gaussianScale = []
+      , gaussianScale = [1]
       }
     go [] params = params
     go (x:xs) params =

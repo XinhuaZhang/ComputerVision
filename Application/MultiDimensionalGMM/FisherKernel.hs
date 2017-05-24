@@ -5,6 +5,7 @@ import           Application.MultiDimensionalGMM.Gaussian
 import           Application.MultiDimensionalGMM.GMM
 import           Application.MultiDimensionalGMM.MixtureModel
 import           Control.Monad
+import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Utility.Parallel
 import           Data.Conduit
@@ -63,8 +64,7 @@ fisherVectorConduit parallelParams gmm = do
   unless
     (L.null xs)
     (do let !ys =
-              parMapChunk
-                parallelParams
+              parMap
                 rdeepseq
                 (\(label, x) ->
                     let !vecMu = fisherVectorMu gmm x

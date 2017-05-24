@@ -6,7 +6,7 @@ module CV.FilterExpansion where
 import           Control.DeepSeq
 import           Data.Complex
 import           Data.List           as L
-import           Data.Vector.Unboxed
+import           Data.Vector.Unboxed as VU
 
 class FilterExpansion a  where
   type FilterParameter a :: *
@@ -59,6 +59,15 @@ instance NFData V4SeparableFilteredImageConvolution where
     a `seq` b `seq` c `seq` ()
   rnf (FourierMellinTransformFilteredImageConvolution a b c) =
     a `seq` b `seq` c `seq` ()
+
+
+instance Show V4SeparableFilteredImageConvolution where
+  show (V4PolarSeparableFilteredImageConvolutionAxis a b c) =
+    (show a) L.++ "\n" L.++ (show b) L.++ "\n" L.++
+    (show . VU.length . L.head . L.head $ c)
+  show (FourierMellinTransformFilteredImageConvolution a b c) =
+    (show a) L.++ "\n" L.++ (show b) L.++ "\n" L.++
+    (show . VU.length . L.head . L.head . L.head $ c)
 
 
 

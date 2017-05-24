@@ -1,17 +1,18 @@
 module CV.Utility.FFT where
 
-import           Control.Concurrent.MVar (MVar, withMVar)
+import           Control.Concurrent.MVar 
 import           Data.Array.CArray
 import           Data.Array.CArray.Base  (mallocForeignPtrArrayAligned)
 import           Data.Bits               (complement, (.&.), (.|.))
 import           Data.Complex
-import           Foreign.ForeignPtr      (withForeignPtr)
 import           Foreign.ForeignPtr
 import           Foreign.Marshal.Array   (copyArray)
 import           Foreign.Ptr
 import           Foreign.Storable
 import           Math.FFT.Base           hiding (dftG, dftGU, dftN, idftN,
                                           transformCArray, transformCArray')
+
+{-# INLINE dftN #-}
 
 dftN
   :: (FFTWReal r, Ix i, Shapable i)
@@ -21,6 +22,8 @@ dftN
   -> IO (CArray i (Complex r))
 dftN = dftG DFTForward estimate
 
+{-# INLINE idftN #-}
+
 idftN
   :: (FFTWReal r, Ix i, Shapable i)
   => MVar ()
@@ -28,6 +31,8 @@ idftN
   -> CArray i (Complex r)
   -> IO (CArray i (Complex r))
 idftN = dftG DFTBackward estimate
+
+{-# INLINE dftG #-}
 
 dftG
   :: (FFTWReal r, Ix i, Shapable i)
@@ -41,6 +46,8 @@ dftG s f m tdims ain =
   case s of
     DFTForward  -> dftGU m s f tdims ain
     DFTBackward -> fmap (unsafeNormalize tdims) (dftGU m s f tdims ain)
+
+{-# INLINE dftGU #-}
 
 dftGU
   :: (FFTWReal r, Ix i, Shapable i)
@@ -57,7 +64,7 @@ dftGU m s f tdims ain = transformCArray m f ain bds go
       \r ds hr hds -> plan_guru_dft r ds hr hds ip op (unSign s) f'
     (bds, tspec) = dftShape CC tdims ain
 
-{-# NOINLINE transformCArray #-}
+{-# INLINE transformCArray #-}
 
 transformCArray
   :: (Ix i, Storable a, Storable b)
@@ -78,11 +85,13 @@ transformCArray m f a lu planner =
         \ip ->
            withForeignPtr ofp $
            \op -> do
-             p <- withMVar m $ \_ -> planner (unFlag f) ip op
+             x <- takeMVar m
+             p <- planner (unFlag f) ip op
+             putMVar m x
              execute p
       unsafeForeignPtrToCArray ofp lu
 
-{-# NOINLINE transformCArray' #-}
+{-# INLINE transformCArray' #-}
 
 transformCArray'
   :: (Ix i, Storable a, Storable b)
@@ -101,7 +110,9 @@ transformCArray' m f a lu planner = do
        \op ->
           withForeignPtr wfp $
           \wp -> do
-            p <- withMVar m $ \_ -> planner (unFlag f') wp op
+            x <- takeMVar m
+            p <- planner (unFlag f') wp op
+            putMVar m x
             copyArray wp ip sz
             execute p
   unsafeForeignPtrToCArray ofp lu

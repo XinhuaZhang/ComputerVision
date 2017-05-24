@@ -117,14 +117,18 @@ applyFilterConvolutionIO lock (rows, cols) downsampleFactor imgVec gFilters pFil
     dftN lock [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList $
     imgVec
   if downsampleFactor == 1
-    then MP.mapM
-           (fmap (VU.fromListN (rows * cols) . CA.elems) .
-            idftN lock [0, 1] .
-            listArray ((0, 0), (rows - 1, cols - 1)) .
-            VU.toList . VU.zipWith (*) imgVecF)
-           pFilters
+    then fmap L.concat .
+         M.mapM
+          (\pf ->
+              M.mapM
+                (fmap (VU.fromListN (rows * cols) . CA.elems) .
+                 idftN lock [0, 1] .
+                 listArray ((0, 0), (rows - 1, cols - 1)) .
+                 VU.toList . VU.zipWith3 (\a b c -> a * b) imgVecF pf)
+                gFilters) $
+         pFilters
     else fmap L.concat .
-         MP.mapM
+         M.mapM
            (\pf ->
                M.mapM
                  (fmap
@@ -134,7 +138,7 @@ applyFilterConvolutionIO lock (rows, cols) downsampleFactor imgVec gFilters pFil
                      fromListUnboxed (Z :. rows :. cols) . elems) .
                   idftN lock [0, 1] .
                   listArray ((0, 0), (rows - 1, cols - 1)) .
-                  VU.toList . VU.zipWith3 (\a b c -> a * b * c) imgVecF pf)
+                  VU.toList . VU.zipWith3 (\a b c -> a * b) imgVecF pf)
                  gFilters) $
          pFilters
 
@@ -160,7 +164,7 @@ applyFilterConvolution (rows, cols) downsampleFactor imgVec gFilters pFilters =
        then L.map
               ((VU.fromListN (rows * cols) . CA.elems) .
                MF.idftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)
-              ys
+              xs
        else L.map
               (toUnboxed .
                computeS .
@@ -168,7 +172,7 @@ applyFilterConvolution (rows, cols) downsampleFactor imgVec gFilters pFilters =
                fromListUnboxed (Z :. rows :. cols) .
                elems .
                MF.idftN [0, 1] . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)
-              ys
+              xs
 
 {-# INLINE applyV4FilterConvolutionIO #-}
 
@@ -377,27 +381,61 @@ computePhaseDifference (rows,cols) ((fn, xnC, xnM):xs) =
   computePhaseDifference (rows,cols) xs
 
 applyV4SeparableFilterConvolutionLabeledArrayConduit
-  :: MVar ()
+  :: MVar () -> ParallelParams
   -> Int
   -> [VU.Vector (Complex Double)]
   -> [V4SeparableFilterConvolution]
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [V4SeparableFilteredImageConvolution])
-applyV4SeparableFilterConvolutionLabeledArrayConduit lock downsampleFactor gFilters filters =
-  awaitForever
-    (\(LabeledArray label' x) -> do
-       let (Z :. channels :. _ :. _) = extent x
-           imgVecs =
-             L.map
-               (\i ->
-                   VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
-                   (Z :. i :. All :. All))
-               [0 .. channels - 1]
-       ys <-
-         liftIO $
-         M.mapM
-           (\x' -> applyV4FilterConvolutionIO lock x' downsampleFactor imgVecs gFilters)
-           filters
-       yield (fromIntegral label', L.concat ys))
+applyV4SeparableFilterConvolutionLabeledArrayConduit lock parallelParams downsampleFactor gFilters filters = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do ys <-
+          liftIO $
+          MP.mapM
+            (\(LabeledArray label' x) -> do
+               let (Z :. channels :. _ :. _) = extent x
+                   imgVecs =
+                     L.map
+                       (\i ->
+                           VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+                           (Z :. i :. All :. All))
+                       [0 .. channels - 1]
+               ys <-
+                 liftIO $
+                 M.mapM
+                   (\x' ->
+                       applyV4FilterConvolutionIO
+                         lock
+                         x'
+                         downsampleFactor
+                         imgVecs
+                         gFilters)
+                   filters
+               return (fromIntegral label', L.concat ys))
+            xs
+        sourceList ys
+        applyV4SeparableFilterConvolutionLabeledArrayConduit
+          lock
+          parallelParams
+          downsampleFactor
+          gFilters
+          filters)
+-- awaitForever
+--   (\(LabeledArray label' x) -> do
+--      let (Z :. channels :. _ :. _) = extent x
+--          imgVecs =
+--            L.map
+--              (\i ->
+--                  VU.map (:+ 0) . toUnboxed . computeS . R.slice x $
+--                  (Z :. i :. All :. All))
+--              [0 .. channels - 1]
+--      ys <-
+--        liftIO $
+--        M.mapM
+--          (\x' -> applyV4FilterConvolutionIO lock x' downsampleFactor imgVecs gFilters)
+--          filters
+--      yield (fromIntegral label', L.concat ys))
 
 
 applyV4SeparableFilterConvolutionLabeledArrayConduitP

@@ -18,7 +18,9 @@ import           Data.List                                    as L
 import           Data.Vector.Unboxed                          as VU
 import           System.Environment
 import           System.IO
-
+import           Control.Concurrent.MVar             (newMVar)
+import           CV.Filter.GaussianFilter            as Gaussian
+import Data.Array.Repa as R
 
 main = do
   args <- getArgs
@@ -34,11 +36,19 @@ main = do
         , Par.batchSize = AP.batchSize params
         }
       filters = generateV4SeparableFilterAxis filterParams
+      gFilterParams =
+        L.map
+          (\s -> GaussianFilterParams s (imageSize params) (imageSize params)) .
+        gaussianScale $
+        params
+  lock <- newMVar ()
   filtersF <-
-    M.mapM (fourierTransformFilter (imageSize params, imageSize params)) filters
+    M.mapM (fourierTransformFilter lock (imageSize params, imageSize params)) filters
+  gFilters <-
+    M.mapM (fmap (getFilter . fmap toUnboxed) . Gaussian.makeFilter lock) gFilterParams
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    applyV4SeparableFilterConvolutionLabeledArrayConduit filtersF =$=
+    applyV4SeparableFilterConvolutionLabeledArrayConduit lock parallelParams 1 gFilters filtersF  =$=
     orientationHistogramConduit
       parallelParams
       (patchSize params)

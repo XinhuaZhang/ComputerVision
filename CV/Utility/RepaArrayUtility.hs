@@ -1,7 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE QuasiQuotes #-}
 module CV.Utility.RepaArrayUtility where
 
 import           Data.Array.Repa              as R
@@ -50,18 +49,17 @@ crop
   => [Int] -> [Int] -> R.Array s sh e -> R.Array D sh e
 crop start len arr
   | L.any (< 0) start ||
-      L.or (L.zipWith3 (\x y z -> x > (z - y))
-                       start
-                       len
-                       dList) =
+      L.or (L.zipWith3 (\x y z -> x > (z - y)) start len dList) =
     error $
     "Crop out of boundary!\n" L.++ show start L.++ "\n" L.++ show len L.++ "\n" L.++
     show dList
   | otherwise =
-    R.backpermute (shapeOfList len)
-                (shapeOfList . L.zipWith (+) start . listOfShape)
-                arr
-  where dList = listOfShape $ extent arr
+    R.backpermute
+      (shapeOfList len)
+      (shapeOfList . L.zipWith (+) start . listOfShape)
+      arr
+  where
+    dList = listOfShape $ extent arr
 
 cropUnsafe
   :: (Source s e
@@ -103,24 +101,38 @@ pad newDims padVal arr
 
 computeDerivativeP
   :: R.Array U DIM2 Double -> IO [R.Array U DIM2 Double]
-computeDerivativeP arr =
-  do let xStencil =
-           [stencil2| 0 0 0
-                      -1 0 1
-                      0 0 0 |]
-         yStencil =
-           [stencil2| 0 -1 0
-                      0 0 0
-                      0 1 0 |]
-         xyStencil =
-           [stencil2| 1 0 -1
-                      0 0 0
-                      -1 0 1 |]
-         ds =
-           L.map (\s -> R.map (/ 2) $ mapStencil2 BoundClamp s arr)
-                 [xStencil,yStencil,xyStencil]
-     ds' <- P.mapM computeP ds
-     return $! (arr : ds')
+computeDerivativeP arr = do
+  let xStencil =
+        makeStencil2 3 3 $
+        \ix ->
+           case ix of
+             Z :. 0 :. (-1) -> Just (-1)
+             Z :. 0 :. 1 -> Just 1
+             _ -> Nothing
+      yStencil =
+        makeStencil2 3 3 $
+        \ix ->
+           case ix of
+             Z :. -1 :. 0 -> Just (-1)
+             Z :. 1 :. 0 -> Just 1
+             _ -> Nothing
+
+
+      xyStencil =
+        makeStencil2 3 3 $
+        \ix ->
+           case ix of
+             Z :. -1 :. -1 -> Just 1
+             Z :. -1 :. 1 -> Just (-1)
+             Z :. 1 :. -1 -> Just (-1)
+             Z :. 1 :. 1 -> Just 1
+             _ -> Nothing
+      ds =
+        L.map
+          (\s -> R.map (/ 2) $ mapStencil2 BoundClamp s arr)
+          [xStencil, yStencil, xyStencil]
+  ds' <- P.mapM computeP ds
+  return $! (arr : ds')
 
 
 {-# INLINE computeDerivativeS #-}
@@ -129,17 +141,28 @@ computeDerivativeS
   :: R.Array U DIM2 Double -> [R.Array U DIM2 Double]
 computeDerivativeS arr = arr : ds'
   where xStencil =
-          [stencil2| 0 0 0
-                     -1 0 1
-                     0 0 0 |]
+          makeStencil2 3 3 $
+          \ix ->
+             case ix of
+               Z :. 0 :. (-1) -> Just (-1)
+               Z :. 0 :. 1 -> Just 1
+               _ -> Nothing
         yStencil =
-          [stencil2| 0 -1 0
-                     0 0 0
-                     0 1 0 |]
+          makeStencil2 3 3 $
+          \ix ->
+             case ix of
+               Z :. -1 :. 0 -> Just (-1)
+               Z :. 1 :. 0 -> Just 1
+               _ -> Nothing
         xyStencil =
-          [stencil2| 1 0 -1
-                     0 0 0
-                     -1 0 1 |]
+          makeStencil2 3 3 $
+          \ix ->
+             case ix of
+               Z :. -1 :. -1 -> Just 1
+               Z :. -1 :. 1 -> Just (-1)
+               Z :. 1 :. -1 -> Just (-1)
+               Z :. 1 :. 1 -> Just 1
+               _ -> Nothing 
         ds =
           L.map (\s -> R.map (/ 2) $ mapStencil2 BoundClamp s arr)
                 [xStencil,yStencil,xyStencil]
