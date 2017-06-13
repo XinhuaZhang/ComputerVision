@@ -1,90 +1,114 @@
-module CV.Utility.FFT where
+module CV.Utility.FFT
+  ( FFTWWisdom(..)
+  , FFTW(..)
+  , initializefftw
+  , dft2d
+  , idft2d
+  , exportWisdomString
+  , importWisdomString
+  , generateWisdom
+  ) where
 
-import           Data.Array.CArray
-import           Data.Array.CArray.Base (mallocForeignPtrArrayAligned)
-import           Data.Bits              (complement, (.&.), (.|.))
+import           Control.Concurrent.MVar
+import           CV.Utility.FFT.Base          (Flag (..), Sign (..), estimate,
+                                               exhaustive, exportWisdomString,
+                                               importWisdomString, measure,
+                                               patient, unFlag, unSign,
+                                               wisdomOnly)
+import           CV.Utility.FFT.FFI
+import           Data.Bits                    ((.|.))
 import           Data.Complex
-import           Foreign.ForeignPtr     (withForeignPtr)
-import           Foreign.Marshal.Array  (copyArray)
-import           Foreign.Ptr
-import           Foreign.Storable
-import           Math.FFT.Base          hiding (dftG, dftGU, dftN, idftN,
-                                         transformCArray, transformCArray')
+import           Data.List                    as L
+import           Data.Vector.Storable         as VS
+import           Data.Vector.Storable.Mutable as VSM
 
-dftN
-  :: (FFTWReal r, Ix i, Shapable i)
-  => [Int] -> CArray i (Complex r) -> IO (CArray i (Complex r))
-dftN = dftG DFTForward estimate
+data FFTWWisdom
+  = FFTWWisdomPath String
+  | FFTWWisdomNull
 
-idftN
-  :: (FFTWReal r, Ix i, Shapable i)
-  => [Int] -> CArray i (Complex r) -> IO (CArray i (Complex r))
-idftN = dftG DFTBackward estimate
+data FFTW = FFTW
+  { fftwLock       :: !(MVar ())
+  , fftwWisdomFlag :: !Bool
+  }
 
-dftG
-  :: (FFTWReal r, Ix i, Shapable i)
-  => Sign -> Flag -> [Int] -> CArray i (Complex r) -> IO (CArray i (Complex r))
-dftG s f tdims ain =
-  case s of
-    DFTForward  -> dftGU s f tdims ain
-    DFTBackward -> fmap (unsafeNormalize tdims) (dftGU s f tdims ain)
+initializefftw :: FFTWWisdom -> IO FFTW
+initializefftw FFTWWisdomNull = do
+  lock <- newMVar ()
+  return $! FFTW lock False
+initializefftw (FFTWWisdomPath path) = do
+  str <- readFile path
+  flag <- importWisdomString str
+  if flag
+    then do
+      lock <- newMVar ()
+      return $ FFTW lock True
+    else error $ "initializefftw: importWisdomString (" L.++ str L.++ ")"
+    
+generateWisdom :: FFTW
+               -> FilePath
+               -> Int
+               -> Int
+               -> VS.Vector (Complex Double)
+               -> IO ()
+generateWisdom fftw path rows cols vec = do
+  _x <- dft2d fftw rows cols vec
+  _x <- idft2d fftw rows cols vec
+  wisdom <- exportWisdomString
+  writeFile path wisdom
 
-dftGU
-  :: (FFTWReal r, Ix i, Shapable i)
-  => Sign -> Flag -> [Int] -> CArray i (Complex r) -> IO (CArray i (Complex r))
-dftGU s f tdims ain = transformCArray f ain bds go
-  where
-    go f' ip op =
-      withTSpec tspec $
-      \r ds hr hds -> plan_guru_dft r ds hr hds ip op (unSign s) f'
-    (bds, tspec) = dftShape CC tdims ain
+{-# INLINE dft2d #-}
 
-{-# NOINLINE transformCArray #-}
+dft2d
+  :: FFTW
+  -> Int
+  -> Int
+  -> VS.Vector (Complex Double)
+  -> IO (VS.Vector (Complex Double))
+dft2d (FFTW lock' True) rows cols vec =
+  dft2dG lock' rows cols vec DFTForward (estimate .|. wisdomOnly)
+dft2d (FFTW lock' False) rows cols vec = dft2dG lock' rows cols vec DFTForward measure
 
-transformCArray
-  :: (Ix i, Storable a, Storable b)
-  => Flag
-  -> CArray i a
-  -> (i, i)
-  -> (FFTWFlag -> Ptr a -> Ptr b -> IO Plan)
-  -> IO (CArray i b)
-transformCArray f a lu planner =
-  if f `has` estimate && not (any (f `has`) [patient, exhaustive])
-    then go
-    else transformCArray' f a lu planner
-  where
-    go = do
-      ofp <- mallocForeignPtrArrayAligned (rangeSize lu)
-      withCArray a $
-        \ip ->
-           withForeignPtr ofp $
-           \op -> do
-             p <- withLock $ planner (unFlag f) ip op
-             execute p
-      unsafeForeignPtrToCArray ofp lu
+{-# INLINE idft2d #-}
 
-{-# NOINLINE transformCArray' #-}
+idft2d
+  :: FFTW
+  -> Int
+  -> Int
+  -> VS.Vector (Complex Double)
+  -> IO (VS.Vector (Complex Double))
+idft2d (FFTW lock' True) rows cols vec =
+  VS.map (/ (fromIntegral $ rows * cols)) <$>
+  dft2dG lock' rows cols vec DFTBackward (estimate .|. wisdomOnly)
+idft2d (FFTW lock' False) rows cols vec =
+  VS.map (/ (fromIntegral $ rows * cols)) <$>
+  dft2dG lock' rows cols vec DFTBackward measure
 
-transformCArray'
-  :: (Ix i, Storable a, Storable b)
-  => Flag
-  -> CArray i a
-  -> (i, i)
-  -> (FFTWFlag -> Ptr a -> Ptr b -> IO Plan)
-  -> IO (CArray i b)
-transformCArray' f a lu planner = do
-  ofp <- mallocForeignPtrArrayAligned (rangeSize lu)
-  wfp <- mallocForeignPtrArrayAligned sz
-  withCArray a $
+{-# INLINE dft2dG #-}
+
+dft2dG
+  :: MVar ()
+  -> Int
+  -> Int
+  -> VS.Vector (Complex Double)
+  -> Sign
+  -> Flag
+  -> IO (VS.Vector (Complex Double))
+dft2dG lock' rows cols vec sign flag = do
+  v <- VSM.new (rows * cols)
+  x <- takeMVar lock'
+  VS.unsafeWith vec $
     \ip ->
-       withForeignPtr ofp $
-       \op ->
-          withForeignPtr wfp $
-          \wp -> do
-            p <- withLock $ planner (unFlag f') wp op
-            copyArray wp ip sz
-            execute p
-  unsafeForeignPtrToCArray ofp lu
-  where
-    sz = size a
-    f' = f .&. complement preserveInput .|. destroyInput
+       VSM.unsafeWith v $
+       \op -> do
+         p <-
+           c_plan_dft_2d
+             (fromIntegral rows)
+             (fromIntegral cols)
+             ip
+             op
+             (unSign sign)
+             (unFlag flag)
+         c_execute p
+         c_destroy_plan p
+  putMVar lock' x
+  VS.freeze v

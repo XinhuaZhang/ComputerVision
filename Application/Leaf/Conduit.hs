@@ -1,13 +1,18 @@
 module Application.Leaf.Conduit where
 
+import           Application.Leaf.Pooling
 import           Classifier.LibLinear
 import           Classifier.LibSVM
 import           Control.Arrow
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
+import           CV.FilterExpansion
+import           CV.Statistics.PCA
 import           CV.Utility.Parallel
+import           CV.V4FilterConvolution
 import           Data.Array.Repa              as R
+import           Data.Binary
 import           Data.Complex
 import           Data.Conduit
 import           Data.Conduit.List            as CL
@@ -23,12 +28,12 @@ import           Foreign.Ptr
 complexDistance :: VU.Vector (Complex Double)
                 -> VU.Vector (Complex Double)
                 -> Double
-complexDistance vec1 vec2 
+complexDistance vec1 vec2
   | s == 0 = 0
   | otherwise = magnitude $ VU.sum (VU.zipWith (\x y -> x * conjugate y) vec1 vec2) / (s :+ 0)
   where
     s = VU.sum $ VU.zipWith (\x y -> magnitude x * magnitude y) vec1 vec2
-    
+
 
 {-# INLINE complexDistanceEuclidean #-}
 
@@ -125,8 +130,111 @@ featureConduitP parallelParams = do
               xs
         CL.sourceList ys
         featureConduitP parallelParams)
-        
+
 
 featureConduit :: Conduit (a, VU.Vector Double) (ResourceT IO) (a, [C'feature_node])
-featureConduit =
-  awaitForever (\x -> yield $ second (getFeature . Dense . VU.toList) x)
+featureConduit = awaitForever (yield . second (getFeature . Dense . VU.toList))
+
+
+{-# INLINE getOrientationHistogram #-}
+
+getOrientationHistogram :: Int
+                        -> Int
+                        -> Int
+                        -> V4SeparableFilteredImageConvolution
+                        -> [[VU.Vector Double]]
+getOrientationHistogram patchSize stride n (FourierMellinTransformFilteredImageConvolution (rows, cols) _ vecs) =
+  L.map (getDenseFeatures patchSize stride n . vector2Array (rows, cols)) .
+  L.concatMap L.concat $
+  vecs
+getOrientationHistogram patchSize stride n (V4PolarSeparableFilteredImageConvolutionAxis (rows, cols) _ vecs) =
+  L.map (getDenseFeatures patchSize stride n . vector2Array (rows, cols)) . L.concat $
+  vecs
+
+orientationHistogramConduit
+  :: ParallelParams
+  -> Int
+  -> Int
+  -> Int
+  -> Conduit (Double, [V4SeparableFilteredImageConvolution]) (ResourceT IO) (Double, [VU.Vector Double])
+orientationHistogramConduit parallelParams patchSize stride n = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(label, filteredImages) ->
+                    let y = L.map (getOrientationHistogram patchSize stride n) filteredImages
+                        z =
+                          L.map VU.concat .
+                          L.transpose . L.map (L.map VU.concat . L.transpose) $
+                          y
+                    in (label, z))
+                xs
+        sourceList ys
+        orientationHistogramConduit parallelParams patchSize stride n)
+        
+
+magnitudeConduit
+  :: ParallelParams
+  -> Conduit (Double, [V4SeparableFilteredImageConvolution]) (ResourceT IO) (Double, [VU.Vector Double])
+magnitudeConduit parallelParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMap
+                rdeepseq
+                (\(label, filteredImages) ->
+                    let y =
+                          L.concatMap
+                            (\img ->
+                                case img of
+                                  V4PolarSeparableFilteredImageConvolutionAxis _ _ vecs ->
+                                    L.concat vecs
+                                  FourierMellinTransformFilteredImageConvolution _ _ vecs ->
+                                    L.concatMap L.concat vecs)
+                            filteredImages
+                        z =
+                          L.map (normalizeVec . VU.fromList) .
+                          L.transpose . L.map (VU.toList . VU.map magnitude) $
+                          y
+                    in (label, z))
+                xs
+        sourceList ys
+        magnitudeConduit parallelParams)
+
+
+pcaSink
+  :: ParallelParams
+  -> FilePath
+  -> Int -> Int
+  -> Sink (Double, [VU.Vector Double]) (ResourceT IO) (PCAMatrix Double, [[VU.Vector Double]])
+pcaSink parallelParams filePath numPrincipal numTrain = do
+  xs <- CL.take numTrain
+  let ys = L.concat . snd . L.unzip $ xs
+      (pcaMat, _, _) = pcaSVD parallelParams numPrincipal ys
+      vecs =
+        parMapChunk parallelParams rdeepseq (L.map (pcaReduction pcaMat)) .
+        snd . L.unzip $
+        xs
+  liftIO $ encodeFile filePath pcaMat
+  return (pcaMat, vecs)
+
+pcaConduit
+  :: ParallelParams
+  -> PCAMatrix Double
+  -> Conduit (Double, [VU.Vector Double]) (ResourceT IO) (Double, [VU.Vector Double])
+pcaConduit parallelParams pcaMat = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMap
+                rdeepseq
+                (second (L.map (pcaReduction pcaMat)))
+                xs
+        sourceList ys
+        pcaConduit parallelParams pcaMat)

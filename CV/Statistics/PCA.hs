@@ -3,18 +3,18 @@
 module CV.Statistics.PCA where
 
 import           CV.Utility.Parallel
-import           Data.Array.Repa       as R
 import           Data.Array            as Arr
+import           Data.Array.Repa       as R
 import           Data.Binary
 import           Data.List             as L
 import           Data.Vector           as V
 import           Data.Vector.Unboxed   as VU
+import           Foreign.Storable
 import           Numeric.LinearAlgebra as LA
-import Foreign.Storable
 
-data PCAMatrix a = PCAMatrix 
+data PCAMatrix a = PCAMatrix
   { pcaMean   :: !(VU.Vector a)
-  , pcaMatrix :: !(V.Vector (VU.Vector a)) 
+  , pcaMatrix :: !(V.Vector (VU.Vector a))
   } deriving Show
 
 instance (Binary a, Unbox a) =>
@@ -37,8 +37,8 @@ computeRemoveMean parallelParams xs =
   where
     !s = L.foldl1' (VU.zipWith (+)) xs
     !mean = VU.map (/ fromIntegral (L.length xs)) s
-    
-  
+
+
 {-# INLINE removeMean #-}
 
 removeMean
@@ -65,7 +65,7 @@ covarianceMatrix parallelParams xs = (len >< len) . R.toList $ rArr
       -- L.filter (\(i, j) -> j >= i) $
       [(i, j) | i <- [0 .. len - 1], j <- [0 .. len - 1]]
     len = VU.length . L.head $ xs
-    arr = array ((0, 0), (len - 1, len - 1)) ys 
+    arr = array ((0, 0), (len - 1, len - 1)) ys
     rArr =
       fromFunction
         (Z :. len :. len)

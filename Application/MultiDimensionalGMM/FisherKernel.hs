@@ -5,6 +5,7 @@ import           Application.MultiDimensionalGMM.Gaussian
 import           Application.MultiDimensionalGMM.GMM
 import           Application.MultiDimensionalGMM.MixtureModel
 import           Control.Monad
+import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Utility.Parallel
 import           Data.Conduit
@@ -54,16 +55,16 @@ fisherVectorSigma gmm xs =
     assignments = getAssignmentVec gmm xs
 
 fisherVectorConduit
-  :: ParallelParams
+  :: (NFData a)
+  => ParallelParams
   -> GMM
-  -> Conduit (Int,[VU.Vector Double]) (ResourceT IO) (Int,VU.Vector Double)
+  -> Conduit (a, [VU.Vector Double]) (ResourceT IO) (a, VU.Vector Double)
 fisherVectorConduit parallelParams gmm = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
     (do let !ys =
-              parMapChunk
-                parallelParams
+              parMap
                 rdeepseq
                 (\(label, x) ->
                     let !vecMu = fisherVectorMu gmm x
