@@ -1,4 +1,4 @@
-module Application.Leaf.ArgsParser where
+module Application.HandWriting.ArgsParser where
 
 import           Data.Maybe
 import           System.Console.GetOpt
@@ -25,7 +25,7 @@ data Flag
   | GaussianScale [Double]
   | KMeansFile String
   | DataFile String
-  | FFTWWisdomFilePath FilePath 
+  | FFTWWisdomFilePath FilePath
   deriving (Show)
 
 data Params = Params
@@ -138,7 +138,7 @@ options =
       "Set the Gaussian scale list."
   ,  Option ['z'] ["KMeansFile"] (ReqArg KMeansFile "FILE") "KMeans data file."
   ,  Option ['z'] ["DataFile"] (ReqArg DataFile "FILE") "Data file, such as convolution result and vlad"
-  ,  Option ['z'] ["fftwPath"] (ReqArg FFTWWisdomFilePath "FILE") ""
+  ,  Option ['z'] ["fftwFile"] (ReqArg FFTWWisdomFilePath "FILE") ""
   ]
 
 readInt :: String -> Int

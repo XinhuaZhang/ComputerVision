@@ -4,9 +4,12 @@ module Application.HandWriting.IO
   , offlineCharacterConduit
   , writeSink
   , sparseOfflineCharacterConduit
+  , sparseOfflineCharacterSource
+  , sparseOfflineCharacter2nonsparseVector
   ) where
 
 import           Application.HandWriting.Types
+import           Control.Arrow                 ((***))
 import           Control.Monad                 as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
@@ -69,13 +72,37 @@ writeSink filePath = do
            BL.hPut h . encode $ len'
            BL.hPut h x)
   liftIO $ hClose h
-  
+
 sparseOfflineCharacterConduit :: Conduit BS.ByteString (ResourceT IO) SparseOfflineCharacter
 sparseOfflineCharacterConduit = do
   sizeBs <- CB.take 4
   unless
     (BL.null sizeBs)
-    (do let size' = fromIntegral (decode sizeBs :: Word32) 
+    (do let size' = fromIntegral (decode sizeBs :: Word32)
         dataBs <- CB.take size'
         yield . decode $ dataBs
         sparseOfflineCharacterConduit)
+
+
+sparseOfflineCharacterSource :: FilePath -> Source IO SparseOfflineCharacter
+sparseOfflineCharacterSource filePath = do
+  h <- liftIO $ openBinaryFile filePath ReadMode
+  go h
+  liftIO $ hClose h
+  where
+    go handle = do
+      sizeBs <- liftIO $ BL.hGet handle 4
+      unless
+        (BL.null sizeBs)
+        (do let size' = fromIntegral (decode sizeBs :: Word32)
+            dataBs <- liftIO $ BL.hGet handle size'
+            yield . decode $ dataBs
+            go handle)
+
+{-# INLINE sparseOfflineCharacterSource #-}
+
+sparseOfflineCharacter2nonsparseVector :: SparseOfflineCharacter -> VU.Vector Double
+sparseOfflineCharacter2nonsparseVector (SparseOfflineCharacter _ w h vec) =
+  VU.accumulate (+) (VU.replicate (fromIntegral w * fromIntegral h) 0) .
+  VU.map (fromIntegral *** fromIntegral) $
+  vec

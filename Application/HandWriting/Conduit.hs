@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns     #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Application.HandWriting.Conduit where
 
@@ -5,17 +6,22 @@ import           Application.HandWriting.IO
 import           Classifier.LibLinear
 import           Codec.Picture
 import           Control.Arrow
+import           Control.Concurrent.MVar
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Parallel       as MP
 import           Control.Monad.Trans.Resource
+-- import           CV.Statistics.KMeans
+import           Control.DeepSeq
 import           CV.Statistics.PCA
-import           CV.Statistics.KMeans
+import           CV.Utility.FFT
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
+import           CV.Utility.Time
 import           CV.V4Filter                  hiding
                                                (applyFilterVariedSizeConduit,
                                                applyV4QuadTreeFilterConduit)
+import           CV.V4FilterConvolution       hiding (applyV4SeparableFilterConvolutionLabeledArrayConduit)
 import           Data.Array.Repa              as R
 import           Data.Binary
 import           Data.ByteString              as BS
@@ -24,10 +30,12 @@ import           Data.Complex
 import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.List                    as L
+import           Data.Vector.Storable         as VS
 import           Data.Vector.Unboxed          as VU
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import           Numeric.LinearAlgebra        as LA
+import           System.IO
 
 plotCharacter
   :: FilePath -> OfflineCharacter -> IO ()
@@ -55,95 +63,95 @@ plotSparseCharacter filePath (SparseOfflineCharacter _ w h c) =
       VU.map (first fromIntegral) $
       c
 
-applyFilterVariedSizeConduit
-  :: ParallelParams
-  -> PolarSeparableFilterParamsGrid
-  -> CartesianGratingFilterParams
-  -> HyperbolicFilterParams
-  -> Conduit OfflineCharacter (ResourceT IO) (Double,[VU.Vector Double])
-applyFilterVariedSizeConduit parallelParams polarFilterParams cartesianGratingFilterParams hyperbolicFilterParams = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\(OfflineCharacter t w h c) ->
-                    let rows = fromIntegral h
-                        cols = fromIntegral w
-                        psf =
-                          makeFilter . changeSizeParameter rows cols $
-                          PolarSeparableFilter polarFilterParams [] :: PolarSeparableFilterExpansion
-                        cgf =
-                          makeFilter . changeSizeParameter rows cols $
-                          CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter
-                        hf =
-                          makeFilter . changeSizeParameter rows cols $
-                          HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter
-                        psfVecs = getFilterVectors psf
-                        cgfVecs = getFilterVectors cgf
-                        hfVecs = getFilterVectors hf
-                        filterVecsList =
-                          L.zipWith3
-                            (\a b c -> a L.++ b L.++ c)
-                            psfVecs
-                            cgfVecs
-                            hfVecs
-                    in ( fromIntegral t
-                       , applyFilter (VU.map (\x -> fromIntegral x :+ 0) c) filterVecsList))
-                xs
-        sourceList ys
-        applyFilterVariedSizeConduit
-          parallelParams
-          polarFilterParams
-          cartesianGratingFilterParams
-          hyperbolicFilterParams)
+-- applyFilterVariedSizeConduit
+--   :: ParallelParams
+--   -> PolarSeparableFilterParamsGrid
+--   -> CartesianGratingFilterParams
+--   -> HyperbolicFilterParams
+--   -> Conduit OfflineCharacter (ResourceT IO) (Double,[VU.Vector Double])
+-- applyFilterVariedSizeConduit parallelParams polarFilterParams cartesianGratingFilterParams hyperbolicFilterParams = do
+--   xs <- CL.take (batchSize parallelParams)
+--   unless
+--     (L.null xs)
+--     (do let ys =
+--               parMapChunk
+--                 parallelParams
+--                 rdeepseq
+--                 (\(OfflineCharacter t w h c) ->
+--                     let rows = fromIntegral h
+--                         cols = fromIntegral w
+--                         psf =
+--                           makeFilter . changeSizeParameter rows cols $
+--                           PolarSeparableFilter polarFilterParams [] :: PolarSeparableFilterExpansion
+--                         cgf =
+--                           makeFilter . changeSizeParameter rows cols $
+--                           CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter
+--                         hf =
+--                           makeFilter . changeSizeParameter rows cols $
+--                           HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter
+--                         psfVecs = getFilterVectors psf
+--                         cgfVecs = getFilterVectors cgf
+--                         hfVecs = getFilterVectors hf
+--                         filterVecsList =
+--                           L.zipWith3
+--                             (\a b c -> a L.++ b L.++ c)
+--                             psfVecs
+--                             cgfVecs
+--                             hfVecs
+--                     in ( fromIntegral t
+--                        , applyFilter (VU.map (\x -> fromIntegral x :+ 0) c) filterVecsList))
+--                 xs
+--         sourceList ys
+--         applyFilterVariedSizeConduit
+--           parallelParams
+--           polarFilterParams
+--           cartesianGratingFilterParams
+--           hyperbolicFilterParams)
 
-applyFilterVariedSizeGridConduit
-  :: ParallelParams
-  -> PolarSeparableFilterParamsGrid
-  -> CartesianGratingFilterParams
-  -> HyperbolicFilterParams
-  -> Conduit OfflineCharacter (ResourceT IO) (Double,[VU.Vector Double])
-applyFilterVariedSizeGridConduit parallelParams polarFilterParams cartesianGratingFilterParams hyperbolicFilterParams = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\(OfflineCharacter t w h c) ->
-                    let rows = fromIntegral h
-                        cols = fromIntegral w
-                        psf =
-                          makeFilter . changeSizeParameter rows cols $
-                          PolarSeparableFilter polarFilterParams [] :: PolarSeparableFilterExpansion
-                        cgf =
-                          makeFilter . changeSizeParameter rows cols $
-                          CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter
-                        hf =
-                          makeFilter . changeSizeParameter rows cols $
-                          HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter
-                        psfVecs = getFilterVectors psf
-                        cgfVecs = getFilterVectors cgf
-                        hfVecs = getFilterVectors hf
-                        filterVecsList =
-                          L.zipWith3
-                            (\a b c -> a L.++ b L.++ c)
-                            psfVecs
-                            cgfVecs
-                            hfVecs
-                    in ( fromIntegral t
-                       , applyFilter (VU.map (\x -> fromIntegral x :+ 0) c) filterVecsList))
-                xs
-        sourceList ys
-        applyFilterVariedSizeGridConduit
-          parallelParams
-          polarFilterParams
-          cartesianGratingFilterParams
-          hyperbolicFilterParams)
+-- applyFilterVariedSizeGridConduit
+--   :: ParallelParams
+--   -> PolarSeparableFilterParamsGrid
+--   -> CartesianGratingFilterParams
+--   -> HyperbolicFilterParams
+--   -> Conduit OfflineCharacter (ResourceT IO) (Double,[VU.Vector Double])
+-- applyFilterVariedSizeGridConduit parallelParams polarFilterParams cartesianGratingFilterParams hyperbolicFilterParams = do
+--   xs <- CL.take (batchSize parallelParams)
+--   unless
+--     (L.null xs)
+--     (do let ys =
+--               parMapChunk
+--                 parallelParams
+--                 rdeepseq
+--                 (\(OfflineCharacter t w h c) ->
+--                     let rows = fromIntegral h
+--                         cols = fromIntegral w
+--                         psf =
+--                           makeFilter . changeSizeParameter rows cols $
+--                           PolarSeparableFilter polarFilterParams [] :: PolarSeparableFilterExpansion
+--                         cgf =
+--                           makeFilter . changeSizeParameter rows cols $
+--                           CartesianGratingFilter cartesianGratingFilterParams [] :: CartesianGratingFilter
+--                         hf =
+--                           makeFilter . changeSizeParameter rows cols $
+--                           HyperbolicFilter hyperbolicFilterParams [] :: HyperbolicFilter
+--                         psfVecs = getFilterVectors psf
+--                         cgfVecs = getFilterVectors cgf
+--                         hfVecs = getFilterVectors hf
+--                         filterVecsList =
+--                           L.zipWith3
+--                             (\a b c -> a L.++ b L.++ c)
+--                             psfVecs
+--                             cgfVecs
+--                             hfVecs
+--                     in ( fromIntegral t
+--                        , applyFilter (VU.map (\x -> fromIntegral x :+ 0) c) filterVecsList))
+--                 xs
+--         sourceList ys
+--         applyFilterVariedSizeGridConduit
+--           parallelParams
+--           polarFilterParams
+--           cartesianGratingFilterParams
+--           hyperbolicFilterParams)
 
 applyFilterfixedSizeSparseConduit
   :: ParallelParams
@@ -168,53 +176,53 @@ applyFilterfixedSizeSparseConduit parallelParams filterVecsList =
                 applyFilterfixedSizeSparseConduit parallelParams filterVecsList)
 
 
-applyV4QuadTreeFilterConduit
-  :: ParallelParams
-  -> V4QuadTreeFilter
-  -> Conduit SparseOfflineCharacter (ResourceT IO) (Double, [[VU.Vector Double]])
-applyV4QuadTreeFilterConduit parallelParams filters = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\(SparseOfflineCharacter t _ _ c) ->
-                    ( fromIntegral t
-                    , L.map
-                        (applyFilterSparse
-                           (VU.map
-                              (\(i, v) -> (fromIntegral i, fromIntegral v :+ 0))
-                              c))
-                        filters))
-                xs
-        sourceList ys
-        applyV4QuadTreeFilterConduit parallelParams filters)
+-- applyV4QuadTreeFilterConduit
+--   :: ParallelParams
+--   -> V4QuadTreeFilter
+--   -> Conduit SparseOfflineCharacter (ResourceT IO) (Double, [[VU.Vector Double]])
+-- applyV4QuadTreeFilterConduit parallelParams filters = do
+--   xs <- CL.take (batchSize parallelParams)
+--   unless
+--     (L.null xs)
+--     (do let ys =
+--               parMapChunk
+--                 parallelParams
+--                 rdeepseq
+--                 (\(SparseOfflineCharacter t _ _ c) ->
+--                     ( fromIntegral t
+--                     , L.map
+--                         (applyFilterSparse
+--                            (VU.map
+--                               (\(i, v) -> (fromIntegral i, fromIntegral v :+ 0))
+--                               c))
+--                         filters))
+--                 xs
+--         sourceList ys
+--         applyV4QuadTreeFilterConduit parallelParams filters)
 
-applyV4QuadTreeFilterComplexConduit
-  :: ParallelParams
-  -> V4QuadTreeFilter
-  -> Conduit SparseOfflineCharacter (ResourceT IO) (Double, [[VU.Vector (Complex Double)]])
-applyV4QuadTreeFilterComplexConduit parallelParams filters = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\(SparseOfflineCharacter t _ _ c) ->
-                    ( fromIntegral t
-                    , L.map
-                        (applyFilterSparseComplex
-                           (VU.map
-                              (\(i, v) -> (fromIntegral i, fromIntegral v :+ 0))
-                              c))
-                        filters))
-                xs
-        sourceList ys
-        applyV4QuadTreeFilterComplexConduit parallelParams filters)
+-- applyV4QuadTreeFilterComplexConduit
+--   :: ParallelParams
+--   -> V4QuadTreeFilter
+--   -> Conduit SparseOfflineCharacter (ResourceT IO) (Double, [[VU.Vector (Complex Double)]])
+-- applyV4QuadTreeFilterComplexConduit parallelParams filters = do
+--   xs <- CL.take (batchSize parallelParams)
+--   unless
+--     (L.null xs)
+--     (do let ys =
+--               parMapChunk
+--                 parallelParams
+--                 rdeepseq
+--                 (\(SparseOfflineCharacter t _ _ c) ->
+--                     ( fromIntegral t
+--                     , L.map
+--                         (applyFilterSparseComplex
+--                            (VU.map
+--                               (\(i, v) -> (fromIntegral i, fromIntegral v :+ 0))
+--                               c))
+--                         filters))
+--                 xs
+--         sourceList ys
+--         applyV4QuadTreeFilterComplexConduit parallelParams filters)
 
 {-# INLINE applyFilter #-}
 
@@ -253,11 +261,11 @@ applyFilterSparseComplex imgVec =
        (\filterVec ->
           VU.sum . VU.map (\(i, v) -> (filterVec VU.! i) * v) $ imgVec))
 
-{-# INLINE normalizeVec #-}
+-- {-# INLINE normalizeVec #-}
 
-normalizeVec :: VU.Vector Double -> VU.Vector Double
-normalizeVec vec = VU.map (/ s) vec
-  where s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+-- normalizeVec :: VU.Vector Double -> VU.Vector Double
+-- normalizeVec vec = VU.map (/ s) vec
+--   where s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
 
 {-# INLINE complexVec2RealVec #-}
 
@@ -387,23 +395,87 @@ pcaConduit parallelParams pcaMats = do
         sourceList ys
         pcaConduit parallelParams pcaMats)
 
-kmeansConduit
-  :: ParallelParams
-  -> [KMeansModel]
-  -> Conduit (Double, [[VU.Vector Double]]) (ResourceT IO) (Double, [[VU.Vector Double]])
-kmeansConduit parallelParams kmeansModels = do
+-- kmeansConduit
+--   :: ParallelParams
+--   -> [KMeansModel]
+--   -> Conduit (Double, [[VU.Vector Double]]) (ResourceT IO) (Double, [[VU.Vector Double]])
+-- kmeansConduit parallelParams kmeansModels = do
+--   xs <- CL.take (batchSize parallelParams)
+--   unless
+--     (L.null xs)
+--     (do let ys =
+--               parMapChunk
+--                 parallelParams
+--                 rdeepseq
+--                 (second $
+--                  L.zipWith
+--                    (\kmeansModel ->
+--                       L.map (computeSoftAssignment (center kmeansModel)))
+--                    kmeansModels)
+--                 xs
+--         sourceList ys
+--         kmeansConduit parallelParams kmeansModels)
+
+
+applyV4SeparableFilterConvolutionLabeledArrayConduit
+  :: FFTW
+  -> ParallelParams
+  -> Int
+  -> [VS.Vector (Complex Double)]
+  -> [V4SeparableFilterConvolution]
+  -> Conduit SparseOfflineCharacter (ResourceT IO) (Double, [VU.Vector Double])
+applyV4SeparableFilterConvolutionLabeledArrayConduit fftw parallelParams downsampleFactor gFilters pFilters = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (second $
-                 L.zipWith
-                   (\kmeansModel ->
-                      L.map (computeSoftAssignment (center kmeansModel)))
-                   kmeansModels)
-                xs
+    (do ys <-
+          liftIO $
+          M.mapM
+            (\char -> do
+               zs <-
+                 L.concat <$>
+                 M.mapM
+                   (\pf ->
+                       L.concatMap
+                         (\(V4PolarSeparableFilteredImageConvolutionAxis _ _ vecs) ->
+                             L.concat vecs) <$>
+                       applyV4FilterConvolution
+                         fftw
+                         pf
+                         downsampleFactor
+                         gFilters
+                         [ VU.convert . VU.map (:+ 0) . sparseOfflineCharacter2nonsparseVector $
+                           char
+                         ])
+                   pFilters
+               let as =
+                     L.map VU.fromList .
+                     L.transpose . L.map (VU.toList . VU.map magnitude) $
+                     zs
+               return (fromIntegral . sparseOCTag $ char, as))
+            xs
         sourceList ys
-        kmeansConduit parallelParams kmeansModels)
+        liftIO printCurrentTime
+        applyV4SeparableFilterConvolutionLabeledArrayConduit
+          fftw
+          parallelParams
+          downsampleFactor
+          gFilters
+          pFilters)
+
+
+writeFeatureSink :: FilePath -> Sink (Double, VU.Vector Double) (ResourceT IO) ()
+writeFeatureSink filePath = do
+  h <- liftIO $ openBinaryFile filePath WriteMode
+  go h
+  where
+    go handle = do
+      x <- await
+      case x of
+        Nothing -> liftIO $ hClose handle
+        Just (y, vec) -> do
+          let bs = encode (y, VU.toList vec)
+              len = fromIntegral $ BL.length bs :: Word32
+          liftIO $ BL.hPut handle (encode len)
+          liftIO $ BL.hPut handle bs
+          go handle

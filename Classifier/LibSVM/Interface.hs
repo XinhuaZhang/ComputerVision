@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE ForeignFunctionInterface   #-}
@@ -140,8 +141,7 @@ predict modelName output =
              -> (Int,Int)
              -> (Double,Ptr C'svm_node)
              -> IO (Int,Int)
-
-        func model (correct,total) (target,featurePtr) =
+        func model (correct,total) (!target,!featurePtr) =
           do prediction <- c'svm_predict model featurePtr
              if round target == round prediction
                 then return (correct + 1,total + 1)
