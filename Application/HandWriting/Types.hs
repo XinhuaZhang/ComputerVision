@@ -1,5 +1,6 @@
 module Application.HandWriting.Types where
 
+import           Control.DeepSeq
 import           Data.Binary
 import           Data.List           as L
 import           Data.Vector.Unboxed as VU
@@ -36,3 +37,6 @@ instance Binary SparseOfflineCharacter where
     h <- get
     c <- get
     return $! SparseOfflineCharacter t w h . fromList $ c
+
+instance NFData SparseOfflineCharacter where
+  rnf (SparseOfflineCharacter a b c vec) = a `seq` b `seq` c `seq` rnf vec

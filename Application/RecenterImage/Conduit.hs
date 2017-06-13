@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
 module Application.RecenterImage.Conduit where
 
 import           Control.Concurrent.MVar      (MVar)
@@ -18,6 +19,7 @@ import           Data.Ix
 import           Data.List                    as L
 import           Data.Ord
 import           Data.Vector.Unboxed          as VU
+import CV.Utility.Time
 
 {-# INLINE findCenter #-}
 
@@ -174,6 +176,66 @@ applyV4SeparableFilterLabeledArrayWithCenterConduit lock parallelParams gaussian
                 centers
         sourceList ys
         applyV4SeparableFilterLabeledArrayWithCenterConduit
+          lock
+          parallelParams
+          gaussianFilter
+          filterParams)
+          
+
+applyV4SeparableFilterLabeledArrayWithCenterConduit1
+  :: MVar ()
+  -> ParallelParams
+  -> GaussianFilter (R.Array U DIM2 (Complex Double))
+  -> V4SeparableFilterParamsAxis
+  -> Conduit (Double, [V4SeparableFilteredImageConvolution]) (ResourceT IO) (Double, VU.Vector Double)
+applyV4SeparableFilterLabeledArrayWithCenterConduit1 lock parallelParams !gaussianFilter filterParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    -- centers <-
+    --   liftIO $
+    --   M.mapM
+    --     (\(LabeledArray _ x) ->
+    --         fmap findCenter . Gaussian.applyFilterFixedSize lock gaussianFilter $
+    --         x)
+    --     xs
+    (do let !ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(label', filteredImages) ->
+                    let zs =
+                          L.concatMap
+                            (\img ->
+                                case img of
+                                  V4PolarSeparableFilteredImageConvolutionAxis _ _ vecs ->
+                                    L.map (VU.map (\x  -> magnitude x :+ 0)) . L.concat $ vecs
+                                  _ ->
+                                    error
+                                      "applyV4SeparableFilterLabeledArrayWithCenterConduit1")
+                            filteredImages
+                        (rows, cols) =
+                          (\(V4PolarSeparableFilteredImageConvolutionAxis dim _ _) ->
+                              dim) .
+                          L.head $
+                          filteredImages
+                        filters =
+                          generateV4SeparableFilterWithCenterAxis
+                            filterParams
+                            (div rows 2, div cols 2)
+                    in ( label'
+                       , normalizeVec .
+                         VU.concat .
+                         L.map
+                           (\filter' ->
+                               VU.concat $
+                               L.map (applyV4SeparableFilter filter') zs) $
+                         filters))
+                xs
+        -- centers
+        liftIO printCurrentTime
+        sourceList ys
+        applyV4SeparableFilterLabeledArrayWithCenterConduit1
           lock
           parallelParams
           gaussianFilter

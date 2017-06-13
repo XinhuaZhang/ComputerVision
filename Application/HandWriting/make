@@ -1,16 +1,17 @@
 #/bin/bash
 
 export OMP_NUM_THREADS=16
-FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000  -funbox-strict-fields" #-fllvm -optlo-O3
+FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000  -funbox-strict-fields -fllvm -optlo-O3 " #-fllvm -optlo-O3
 OBJPATH="../../Classifier/LibLinear/"
-LIBS="-lstdc++ -llapack -lblas -lgomp"
+SVMPATH="../../Classifier/LibSVM/"
+LIBS="-lstdc++ -llapack -lblas -lgomp -lfftw3 -lfftw3f -lfftw3l -lm" # 
 
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o  Main.hs -o main
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o  Main.hs -o main
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Train.hs -o train
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Predict.hs -o predict
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o  Extract.hs -o extract
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainSparse.hs -o trainSparse1
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictSparse.hs -o predictSparse1
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o  Extract.hs -o extract
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TrainSparse.hs -o trainSparse1
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o PredictSparse.hs -o predictSparse1
 ## wait
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o  SparseGMM.hs -o sparseGMM
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o  TrainSparseGMM.hs -o trainSparseGMM 
@@ -20,4 +21,8 @@ cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Predict
 
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o  SparseKMeans.hs -o sparseKMeans
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o  TrainSparseKMeans.hs -o trainSparseKMeans 
-## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o  PredictSparseKMeans.hs -o predictSparseKMeans 
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o  PredictSparseKMeans.hs -o predictSparseKMeans
+
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeansModel.hs -o trainKMeansModel
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeans.hs -o trainKMeans
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictKMeans.hs -o predictKMeans

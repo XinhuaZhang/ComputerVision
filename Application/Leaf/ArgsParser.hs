@@ -23,6 +23,9 @@ data Flag
   | Stride Int
   | NumBin Int
   | GaussianScale [Double]
+  | KMeansFile String
+  | DataFile String
+  | FFTWWisdomFilePath FilePath 
   deriving (Show)
 
 data Params = Params
@@ -44,6 +47,9 @@ data Params = Params
   , stride           :: Int
   , numBin           :: Int
   , gaussianScale    :: [Double]
+  , kmeansFile       :: String
+  , dataFile         :: String
+  , fftwWisdomPath   :: FilePath
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -130,6 +136,9 @@ options =
              in GaussianScale . map (readDouble . reverse) $ go [] x)
          "[Double]")
       "Set the Gaussian scale list."
+  ,  Option ['z'] ["KMeansFile"] (ReqArg KMeansFile "FILE") "KMeans data file."
+  ,  Option ['z'] ["DataFile"] (ReqArg DataFile "FILE") "Data file, such as convolution result and vlad"
+  ,  Option ['z'] ["fftwPath"] (ReqArg FFTWWisdomFilePath "FILE") ""
   ]
 
 readInt :: String -> Int
@@ -176,6 +185,9 @@ parseFlag flags = go flags defaultFlag
       , stride = 1
       , numBin = 1
       , gaussianScale = [1]
+      , kmeansFile = "kmeans.dat"
+      , dataFile = "data.dat"
+      , fftwWisdomPath = "fftwWisdom.dat"
       }
     go [] params = params
     go (x:xs) params =
@@ -287,6 +299,24 @@ parseFlag flags = go flags defaultFlag
             xs
             (params
              { gaussianScale = v
+             })
+        KMeansFile str ->
+          go
+            xs
+            (params
+             { kmeansFile = str
+             })
+        DataFile str ->
+          go
+            xs
+            (params
+             { dataFile = str
+             })
+        FFTWWisdomFilePath str ->
+          go
+            xs
+            (params
+             { fftwWisdomPath = str
              })
 
 

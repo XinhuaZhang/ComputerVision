@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module Application.Leaf.Conduit where
 
 import           Application.Leaf.Pooling
@@ -6,13 +7,18 @@ import           Classifier.LibSVM
 import           Control.Arrow
 import           Control.Monad                as M
 import           Control.Monad.IO.Class
+import           Control.Monad.Parallel       as MP
 import           Control.Monad.Trans.Resource
 import           CV.FilterExpansion
+import           CV.Statistics.KMeans
 import           CV.Statistics.PCA
 import           CV.Utility.Parallel
+import           CV.Utility.Time
 import           CV.V4FilterConvolution
 import           Data.Array.Repa              as R
 import           Data.Binary
+import           Data.ByteString              as B
+import           Data.ByteString.Lazy         as BL
 import           Data.Complex
 import           Data.Conduit
 import           Data.Conduit.List            as CL
@@ -114,10 +120,26 @@ featurePtrConduit =
        featurePtr <- liftIO $ newArray . getFeature . Dense . VU.toList $ vec
        yield (label, featurePtr))
 
+featurePtrConduitP :: ParallelParams -> Conduit (a, VU.Vector Double) (ResourceT IO) (a, Ptr C'feature_node)
+featurePtrConduitP parallelParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do ys <-
+          liftIO $
+          MP.mapM
+            (\(label, vec) -> do
+               featurePtr <-
+                 liftIO $ newArray . getFeature . Dense . VU.toList $ vec
+               return (label, featurePtr))
+            xs
+        sourceList ys
+        featurePtrConduitP parallelParams)
+
 
 featureConduitP
   :: ParallelParams
-  -> Conduit (a,VU.Vector Double) (ResourceT IO) (a, [C'feature_node])
+  -> Conduit (a,VU.Vector Double) (IO) (a, [C'feature_node])
 featureConduitP parallelParams = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -126,8 +148,8 @@ featureConduitP parallelParams = do
               parMapChunk
                 parallelParams
                 rseq
-                (second $ getFeature . Dense . VU.toList) $
-              xs
+                (second $ getFeature . Dense . VU.toList)
+                xs
         CL.sourceList ys
         featureConduitP parallelParams)
 
@@ -175,7 +197,7 @@ orientationHistogramConduit parallelParams patchSize stride n = do
                 xs
         sourceList ys
         orientationHistogramConduit parallelParams patchSize stride n)
-        
+
 
 magnitudeConduit
   :: ParallelParams
@@ -185,7 +207,8 @@ magnitudeConduit parallelParams = do
   unless
     (L.null xs)
     (do let ys =
-              parMap
+              parMapChunk
+                parallelParams
                 rdeepseq
                 (\(label, filteredImages) ->
                     let y =
@@ -197,12 +220,13 @@ magnitudeConduit parallelParams = do
                                   FourierMellinTransformFilteredImageConvolution _ _ vecs ->
                                     L.concatMap L.concat vecs)
                             filteredImages
-                        z =
-                          L.map (normalizeVec . VU.fromList) .
+                        !z =
+                          L.map VU.fromList .
                           L.transpose . L.map (VU.toList . VU.map magnitude) $
                           y
                     in (label, z))
                 xs
+        liftIO printCurrentTime
         sourceList ys
         magnitudeConduit parallelParams)
 
@@ -210,7 +234,8 @@ magnitudeConduit parallelParams = do
 pcaSink
   :: ParallelParams
   -> FilePath
-  -> Int -> Int
+  -> Int
+  -> Int
   -> Sink (Double, [VU.Vector Double]) (ResourceT IO) (PCAMatrix Double, [[VU.Vector Double]])
 pcaSink parallelParams filePath numPrincipal numTrain = do
   xs <- CL.take numTrain
@@ -238,3 +263,32 @@ pcaConduit parallelParams pcaMat = do
                 xs
         sourceList ys
         pcaConduit parallelParams pcaMat)
+
+
+kmeansConduit
+  :: ParallelParams
+  -> KMeansModel
+  -> Conduit (Double, [VU.Vector Double]) (ResourceT IO) (Double, VU.Vector Double)
+kmeansConduit parallelParams model = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (second $ vlad (center model))
+                xs
+        sourceList ys
+        kmeansConduit parallelParams model)
+
+
+writeMagnitudeConduit :: Conduit (Double, [VU.Vector Double]) (ResourceT IO) B.ByteString
+writeMagnitudeConduit =
+  awaitForever
+    (\x ->
+        let y = toStrict . encode . second (L.map VU.toList) $ x
+        in yield y)
+
+readMagnitudeConduit :: Conduit B.ByteString (ResourceT IO) (Double, [VU.Vector Double])
+readMagnitudeConduit = awaitForever (\x -> undefined)

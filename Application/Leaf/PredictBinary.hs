@@ -2,6 +2,7 @@ import           Application.Leaf.Conduit
 import           Application.RecenterImage.Conduit
 import           Classifier.LibLinear
 import           Control.Arrow
+import           Control.Concurrent.MVar           (newMVar)
 import           Control.Monad                     as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.Image
@@ -23,16 +24,21 @@ import           System.Environment
 main = do
   (imageListPath:isColorStr:paramsFilePath:sizeStr:modelName:_) <- getArgs
   v4QuardTreeFilterParams <-
-    fmap (\x -> read x :: V4SeparableFilterParamsAxis) . readFile $
-    paramsFilePath
-  let parallelParams = ParallelParams {numThread = 12, batchSize = 120}
+    fmap (\x -> read x :: V4SeparableFilterParamsAxis) . readFile $ paramsFilePath
+  let parallelParams =
+        ParallelParams
+        { numThread = 14
+        , batchSize = 140
+        }
       (rows, cols) = read sizeStr :: (Int, Int)
       isColor = read isColorStr :: Bool
       gaussianFilterParams = GaussianFilterParams 32 rows cols
-      gaussianFilter = Gaussian.makeFilter gaussianFilterParams
+  lock <- newMVar ()
+  gaussianFilter <- Gaussian.makeFilter lock gaussianFilterParams
   runResourceT $
     CB.sourceFile imageListPath $$ readLabeledImagebinaryConduit =$=
     applyV4SeparableFilterLabeledArrayWithCenterConduit
+      lock
       parallelParams
       gaussianFilter
       v4QuardTreeFilterParams =$=
