@@ -1,19 +1,22 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module CV.Filter.GaussianFilter where
 
-import           Control.Monad
+import           Control.Concurrent.MVar      (MVar)
+import           Control.Monad                as M
+import           Control.Monad.IO.Class       (liftIO)
 import           Control.Monad.Trans.Resource
+import           CV.Utility.FFT
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
-import           Data.Array.CArray            as CA
 import           Data.Array.Repa              as R
 import           Data.Complex                 as C
 import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.List                    as L
-import           Math.FFT
+import           Data.Vector.Unboxed          as VU
+import           Data.Vector.Storable         as VS
+
 
 data GaussianFilterParams = GaussianFilterParams
   { getGaussianFilterSigma :: !Double
@@ -25,6 +28,9 @@ data GaussianFilter a = GaussianFilter
   { getGaussianFilterParams :: GaussianFilterParams
   , getGaussianFilter       :: a
   }
+
+instance Functor GaussianFilter where
+  fmap f (GaussianFilter p a) = GaussianFilter p $ f a
 
 {-# INLINE gaussian1D #-}
 
@@ -44,7 +50,7 @@ gaussian2D sd i j =
   1 / ((2 * pi) * sd * sd) * exp (-r / (2 * (sd ^ (2 :: Int))))
   where
     r = fromIntegral (i * i + j * j)
-    
+
 
 {-# INLINE gaussian2D' #-}
 gaussian2D'
@@ -66,12 +72,12 @@ gaussian2D''
     => Int -> a -> Int -> Int -> a
 gaussian2D'' freq sd i j -- =
   | r == 0 = 0
-  | sqrt r < sd = 1 / (sqrt r)
-  | otherwise = 0
+  -- | r < sd = 1 / r
+  | otherwise = 1 / r
   -- 1 / ((2 * pi) * sd * sd) *
   -- exp (-(sqrt r - r') ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
   where
-    r = fromIntegral (i * i + j * j)
+    r = sqrt $ fromIntegral (i * i + j * j)
     r' = ((1 - exp (-0.015 * fromIntegral (abs freq))) * 100 * sd) / pi
 
 {-# INLINE gaussian2DRing #-}
@@ -86,8 +92,6 @@ gaussian2DRing af rf sd i j
     exp (-(sqrt r - r0) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
   where r = fromIntegral (i * i + j * j)
         r0 = (6 * sd * (2 - exp (fromIntegral (-af) / 10))) / pi
-        
-
 
 {-# INLINE gaussian2DDouble #-}
 
@@ -97,76 +101,76 @@ gaussian2DDouble sd i j =
   where
     r = i * i + j * j
 
-makeFilter :: GaussianFilterParams
-           -> GaussianFilter (R.Array U DIM2 (Complex Double))
-makeFilter params@(GaussianFilterParams sigma nRows nCols) =
-  deepSeqArray dftFilterArr $! GaussianFilter params dftFilterArr
+makeFilter
+  :: FFTW
+  -> GaussianFilterParams
+  -> IO (GaussianFilter (VS.Vector (Complex Double)))
+makeFilter fftw params@(GaussianFilterParams sigma nRows nCols) =
+  fmap (GaussianFilter params) . dft2d fftw nRows nCols $ filterCArr
   where
-    !filterEleList = makeFilterList nRows nCols $ gaussian2D sigma
-    !filterCArr = listArray ((0, 0), (nRows - 1, nCols - 1)) . L.map (:+ 0) $ filterEleList
-    !dftFilterArr = computeS . twoDCArray2RArray $ dftN [0, 1] filterCArr
+    filterEleList = makeFilterList nRows nCols $ gaussian2D sigma
+    filterCArr = VS.fromListN (nRows * nCols) . L.map (:+ 0) $ filterEleList
+
+getFilter :: GaussianFilter a -> a
+getFilter (GaussianFilter _ x) = x
 
 applyFilterVariedSize
   :: (R.Source s Double)
-  => GaussianFilterParams -> R.Array s DIM3 Double -> R.Array D DIM3 Double
-applyFilterVariedSize (GaussianFilterParams sigma _ _) arr =
-  R.map magnitude .
-  threeDCArray2RArray .
-  idftN [1, 2] . threeDRArray2CArray . traverse2 imageArr dftFilterArr const $ \fImg fFilter idx@(Z :. _k :. j :. i) ->
-    fImg idx * fFilter (Z :. j :. i)
+  => FFTW
+  -> GaussianFilterParams
+  -> R.Array s DIM3 Double
+  -> IO (R.Array U DIM3 Double)
+applyFilterVariedSize fftw (GaussianFilterParams sigma _ _) arr = do
+  dftFilterArr <-
+    getGaussianFilter <$>
+    makeFilter fftw (GaussianFilterParams sigma nRows nCols)
+  imageArr <-
+    dftImageArr fftw (nRows, nCols) .
+    L.map (\i -> toUnboxed . computeS . R.slice arr $ (Z :. i :. All :. All)) $
+    [0 .. nf - 1]
+  fromUnboxed (extent arr) . VU.map magnitude . VS.convert . VS.concat <$>
+    M.mapM (idft2d fftw nRows nCols . VS.zipWith (*) dftFilterArr) imageArr
   where
-    !(Z :. _ :. nRows :. nCols) = extent arr
-    !imageArr = dftImageArr arr
-    !dftFilterArr =
-      getGaussianFilter $ makeFilter (GaussianFilterParams sigma nRows nCols)
+    (Z :. nf :. nRows :. nCols) = extent arr
 
 applyFilterFixedSize
   :: (R.Source s Double)
-  => GaussianFilter (R.Array U DIM2 (Complex Double))
+  => FFTW
+  -> GaussianFilter (VS.Vector (Complex Double))
   -> R.Array s DIM3 Double
-  -> R.Array D DIM3 Double
-applyFilterFixedSize (GaussianFilter _params dftFilterArr) arr =
-  R.map magnitude .
-  threeDCArray2RArray .
-  idftN [1, 2] .
-  threeDRArray2CArray . traverse2 (dftImageArr arr) dftFilterArr const $
-  \fImg fFilter idx@(Z :. _k :. j :. i) -> fImg idx * fFilter (Z :. j :. i)
-
+  -> IO (R.Array U DIM3 Double)
+applyFilterFixedSize fftw (GaussianFilter _params dftFilterArr) arr = do
+  imageArr <-
+    dftImageArr fftw (nRows, nCols) .
+    L.map (\i -> toUnboxed . computeS . R.slice arr $ (Z :. i :. All :. All)) $
+    [0 .. nf - 1]
+  fromUnboxed (extent arr) . VU.map magnitude . VS.convert . VS.concat <$>
+    M.mapM (idft2d fftw nRows nCols . VS.zipWith (*) dftFilterArr) imageArr
+  where
+    (Z :. nf :. nRows :. nCols) = extent arr
 
 gaussianVariedSizeConduit
   :: (R.Source s Double)
-  => ParallelParams
+  => FFTW
+  -> ParallelParams
   -> GaussianFilterParams
   -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
-gaussianVariedSizeConduit parallelParams filterParams = do
+gaussianVariedSizeConduit fftw parallelParams filterParams = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
-    (do let !ys =
-              parMapChunk
-                parallelParams
-                rseq
-                (\y ->
-                    let !arr =
-                          computeUnboxedS $ applyFilterVariedSize filterParams y
-                    in deepSeqArray arr arr)
-                xs
+    (do ys <- liftIO $ M.mapM (applyFilterVariedSize fftw filterParams) xs
         sourceList ys
-        gaussianVariedSizeConduit parallelParams filterParams)
+        gaussianVariedSizeConduit fftw parallelParams filterParams)
 
 {-# INLINE dftImageArr #-}
 
-dftImageArr
-  :: (R.Source s Double)
-  => R.Array s DIM3 Double -> R.Array D DIM3 (Complex Double)
-dftImageArr arr = threeDCArray2RArray dftCArr
-  where
-    !(Z :. nFeature :. nRows :. nCols) = extent arr
-    !cArr =
-      listArray ((0, 0, 0), (nFeature - 1, nRows - 1, nCols - 1)) .
-      L.map (:+ 0) . R.toList $
-      arr
-    !dftCArr = dftN [1, 2] cArr
+dftImageArr :: FFTW
+            -> (Int, Int)
+            -> [VU.Vector Double]
+            -> IO [VS.Vector (Complex Double)]
+dftImageArr fftw (nRows, nCols) =
+  M.mapM (dft2d fftw nRows nCols . VU.convert . VU.map (:+ 0)) 
 
 
 

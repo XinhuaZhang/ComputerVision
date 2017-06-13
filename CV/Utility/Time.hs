@@ -9,7 +9,7 @@ printCurrentTime = do
   print . localTimeOfDay . zonedTimeToLocalTime $ time
   
 
-getCurrentTimeInt :: IO Int
-getCurrentTimeInt = do
-  time <- getCurrentTime
-  return . fromIntegral . diffTimeToPicoseconds . utctDayTime $ time
+-- getCurrentTimeInt :: IO Int
+-- getCurrentTimeInt = do
+--   time <- getCurrentTime
+--   return . fromIntegral . diffTimeToPicoseconds . utctDayTime $ time

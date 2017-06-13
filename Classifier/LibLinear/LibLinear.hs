@@ -294,7 +294,7 @@ predict predictModel output =
              -> (Int,Int)
              -> (Double,MVec.IOVector C'feature_node)
              -> IO (Int,Int)
-        func model (correct,total) (t,vec) =
+        func model (correct,total) (!t,!vec) =
           do prediction <- MVec.unsafeWith vec $ \vec' -> c'predict model vec'
              if realToFrac t == prediction
                 then return (correct + 1,total + 1)

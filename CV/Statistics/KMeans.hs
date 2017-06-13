@@ -6,16 +6,15 @@ module CV.Statistics.KMeans
   , kmeans
   , computeSoftAssignment
   , computeSoftAssignmentP
+  , vlad
   ) where
 
-import           Control.Arrow       ((&&&))
 import           Control.Monad       as M
 import           CV.Utility.Parallel
 import           Data.Binary
 import           Data.List           as L
 import           Data.Vector         as V
 import           Data.Vector.Unboxed as VU
-import           GHC.Generics
 import           System.Random
 
 type ClusterCenter = V.Vector (VU.Vector Double)
@@ -41,7 +40,7 @@ randomClusterCenterPP
   -> Int
   -> [V.Vector (VU.Vector Double)]
   -> IO [VU.Vector Double]
-randomClusterCenterPP !centers !0 _ = return centers
+randomClusterCenterPP !centers 0 _ = return centers
 randomClusterCenterPP [] !n xs = do
   randomNumber <-
     M.replicateM (L.length xs) .
@@ -60,13 +59,12 @@ randomClusterCenterPP [] !n xs = do
     xs
 randomClusterCenterPP !centers !n xs = do
   randomNumber <-
-    M.replicateM (L.length xs) .
-    V.replicateM (V.length . L.head $ xs) . randomRIO $
+    M.replicateM (L.length xs) . V.replicateM (V.length . L.head $ xs) . randomRIO $
     ((0, 1) :: (Double, Double))
   let ys =
         parMap
           rdeepseq
-          (\vec' -> V.map (\x' -> L.minimum $ L.map (distFunc x') centers) vec')
+          (V.map (\x' -> L.minimum $ L.map (distFunc x') centers))
           xs
       zs = parMap rdeepseq V.sum ys
       s = L.sum zs
@@ -75,23 +73,23 @@ randomClusterCenterPP !centers !n xs = do
         parZipWith3
           rdeepseq
           (\xs' ys' rs' ->
-             V.map fst . V.filter snd $
-             V.zipWith3
-               (\x' y' r' ->
-                  if y' / s > r'
-                    then (x', True)
-                    else (x', False))
-               xs'
-               ys'
-               rs')
+              V.map fst . V.filter snd $
+              V.zipWith3
+                (\x' y' r' ->
+                    if y' / s > r'
+                      then (x', True)
+                      else (x', False))
+                xs'
+                ys'
+                rs')
           xs
           ys
           randomNumber
-      center =
+      center' =
         VU.map (/ fromIntegral (V.length as)) . V.foldl1' (VU.zipWith (+)) $ as
   if V.length as == 0
     then randomClusterCenterPP centers n xs
-    else randomClusterCenterPP (center : centers) (n - 1) xs
+    else randomClusterCenterPP (center' : centers) (n - 1) xs
 
 {-# INLINE computeAssignmentP #-}
 computeAssignmentP :: ClusterCenter
@@ -121,26 +119,26 @@ meanList2ClusterCenter
   :: [V.Vector (VU.Vector Double)]
   -> [V.Vector (VU.Vector Double)]
   -> IO ClusterCenter
-meanList2ClusterCenter vecs xss =
-  M.liftM V.fromList . randomClusterCenterPP zs (k - L.length zs) $ xss
+meanList2ClusterCenter vecs =
+  fmap V.fromList . randomClusterCenterPP zs (k - L.length zs)
   where
     xs =
       L.map
         (V.map
            (\x ->
-              if VU.any isNaN x
-                then (undefined, 0)
-                else (x, 1)))
+               if VU.any isNaN x
+                 then (undefined, 0)
+                 else (x, 1)))
         vecs
     ys =
       L.foldl'
         (V.zipWith
            (\(s, count) (vec, n) ->
-              if n == 0
-                then (s, count)
-                else (VU.zipWith (+) s vec, count + 1)))
-        (V.replicate k (VU.replicate nf 0, (0 :: Double))) $
-      xs
+               if n == 0
+                 then (s, count)
+                 else (VU.zipWith (+) s vec, count + 1)))
+        (V.replicate k (VU.replicate nf 0, 0 :: Double))
+        xs
     zs =
       V.toList .
       V.map (\(s, count) -> VU.map (/ count) s) .
@@ -158,19 +156,19 @@ computeClusterSize k xs =
 kmeans :: ParallelParams -> Int -> [VU.Vector Double] -> IO KMeansModel
 kmeans parallelParams k xs = do
   randomCenter <- randomClusterCenterPP [] k ys
-  go (V.fromListN k randomCenter) (fromIntegral (maxBound :: Int)) $ ys
+  go (V.fromListN k randomCenter) (fromIntegral (maxBound :: Int)) ys
   where
     nf = VU.length . L.head $ xs
-    ys =
-      L.map V.fromList .
+    ys =                                                            -- Because the data will be partitioned again and again,
+      L.map V.fromList .                                            -- it is better partitioning them first, then using parMap
       splitList (div (L.length xs) (numThread parallelParams)) $
       xs
-    go !center lastDistortion zs = do
-      let assignment = computeAssignmentP center zs
-          distortion = computeDistortionP center assignment zs
+    go !center' lastDistortion zs = do
+      let assignment = computeAssignmentP center' zs
+          distortion = computeDistortionP center' assignment zs
       print distortion
       if distortion >= lastDistortion
-        then return $! KMeansModel (computeClusterSize k assignment) center
+        then return $! KMeansModel (computeClusterSize k assignment) center'
         else do
           newCenter <-
             meanList2ClusterCenter (computeMeanP k nf assignment zs) zs
@@ -178,18 +176,18 @@ kmeans parallelParams k xs = do
 
 {-# INLINE computeSoftAssignment #-}
 computeSoftAssignment :: ClusterCenter -> VU.Vector Double -> VU.Vector Double
-computeSoftAssignment center x =
-  V.convert . V.map (\y -> max 0 (mean - y)) $ dist
+computeSoftAssignment center' x =
+  normalizeVec . V.convert . V.map (\y -> max 0 (mean - y)) $ dist
   where
-    dist = V.map (distFunc x) center
-    mean = V.sum dist / fromIntegral (V.length center)
+    dist = V.map (distFunc x) center'
+    mean = V.sum dist / fromIntegral (V.length center')
 
 computeSoftAssignmentP :: ParallelParams
                        -> ClusterCenter
                        -> [VU.Vector Double]
                        -> [VU.Vector Double]
-computeSoftAssignmentP parallelParams center =
-  parMapChunk parallelParams rdeepseq (computeSoftAssignment center)
+computeSoftAssignmentP parallelParams center' =
+  parMapChunk parallelParams rdeepseq (computeSoftAssignment center')
 
 {-# INLINE computeAssignment #-}
 computeAssignment :: ClusterCenter -> V.Vector (VU.Vector Double) -> Assignment
@@ -232,3 +230,28 @@ splitList _ [] = []
 splitList n ys = as : splitList n bs
   where
     (as, bs) = L.splitAt n ys
+
+{-# INLINE normalizeVec #-}
+
+normalizeVec :: VU.Vector Double -> VU.Vector Double
+normalizeVec vec
+  | s == 0 = VU.replicate (VU.length vec) 0
+  | otherwise = VU.map (/ s) vec
+  where
+    s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+
+{-# INLINE vlad #-}
+
+vlad :: ClusterCenter -> [VU.Vector Double] -> VU.Vector Double
+vlad center' =
+  normalizeVec .
+  VU.concat .
+  V.toList .
+  V.accum (VU.zipWith (+)) (V.replicate k (VU.replicate vecLen 0)) .
+  L.map
+    (\vec ->
+        let idx = V.minIndex . V.map (distFunc vec) $ center'
+        in (idx, VU.zipWith (-) vec (center' V.! idx)))
+  where
+    k = V.length center'
+    vecLen = VU.length . V.head $ center'

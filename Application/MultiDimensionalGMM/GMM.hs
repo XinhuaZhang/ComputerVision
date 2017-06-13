@@ -296,7 +296,6 @@ hGMMSink1
 hGMMSink1 parallelParams handle numM threshold numTrain =
   do xs' <- CL.take numTrain
      liftIO . print . VU.length . L.head . L.head $ xs'
-     
      let !ys = L.concat xs'
          !bound = getFeatureBound parallelParams ys
      liftIO . print . L.length $ ys
