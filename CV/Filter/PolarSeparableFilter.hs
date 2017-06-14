@@ -10,7 +10,6 @@ import           CV.Filter.GaussianFilter
 import           CV.FilterExpansion
 import           CV.Utility.Coordinates
 import           CV.Utility.RepaArrayUtility as RU
-import           Data.Array.CArray           as CA
 import           Data.Array.Repa             as R
 import           Data.Complex                as C
 import           Data.List                   as L

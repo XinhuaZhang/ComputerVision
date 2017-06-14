@@ -11,7 +11,6 @@ import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
 import           Data.Complex
-import           Data.Array.CArray            as CA
 import           Foreign.Storable
 
 -- factor = 2^n, n = 0,1,..
@@ -218,41 +217,6 @@ bicubicInterpolation ds (minVal, maxVal) (y, x)
       , [-6, 6, 6, -6, -4, -2, 4, 2, -3, 3, -3, 3, -2, -1, -2, -1]
       , [4, -4, -4, 4, 2, 2, -2, -2, 2, -2, 2, -2, 1, 1, 1, 1]
       ]
-
-{-# INLINE twoDCArray2RArray #-}
-
-twoDCArray2RArray
-  :: (Num a, Storable a)
-    => CArray (Int, Int) a -> R.Array D DIM2 a
-twoDCArray2RArray cArr =
-  fromFunction
-    (Z :. (ny' + 1) :. (nx' + 1))
-    (\(Z :. j :. i) -> cArr CA.! (j, i))
-  where
-    ((_, _), (ny', nx')) = bounds cArr
-
-{-# INLINE threeDRArray2CArray #-}
-
-threeDRArray2CArray
-  :: (Num a, Storable a, Source s a)
-    => R.Array s DIM3 a -> CArray (Int, Int, Int) a
-threeDRArray2CArray rArr =
-  listArray ((0, 0, 0), (nf - 1, ny - 1, nx - 1)) . R.toList $ rArr
-  where
-    (Z :. nf :. ny :. nx) = extent rArr
-
-{-# INLINE threeDCArray2RArray #-}
-
-threeDCArray2RArray
-  :: (Num a, Storable a)
-    => CArray (Int, Int, Int) a -> R.Array D DIM3 a
-threeDCArray2RArray cArr =
-  fromFunction
-    (Z :. (nf' + 1) :. (ny' + 1) :. (nx' + 1))
-    (\(Z :. k :. j :. i) -> cArr CA.! (k, j, i))
-  where
-    ((_, _, _), (nf', ny', nx')) = bounds cArr
-
 
 {-# INLINE makeFilterList #-}
 
