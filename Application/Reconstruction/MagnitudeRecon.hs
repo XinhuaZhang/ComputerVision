@@ -16,37 +16,34 @@ main = do
   (imagePath:imageSizeStr:_) <- getArgs
   let imageSize = read imageSizeStr :: Int
       m = 90
-      n = 32
+      n = 48
       filterParams =
         FourierMellinTransformParamsGrid
         { getFourierMellinTransformGridRows = imageSize
         , getFourierMellinTransformGridCols = imageSize
         , getFourierMellinTransformGridScale = [0]
-        , getFourierMellinTransformGridRadialFreq = [fromIntegral (-n), fromIntegral (-n) + 1.. fromIntegral n]
-        , getFourierMellinTransformGridAngularFreq = [-n,-n + 1 .. n]
+        , getFourierMellinTransformGridRadialFreq =
+          [0 .. fromIntegral n]
+        , getFourierMellinTransformGridAngularFreq = [0 .. n]
         }
       nullFilter = PolarSeparableFilter filterParams Null
       filters =
         (\(FourierMellinTransform _ vecs) -> L.concatMap L.concat vecs) . getFilterVectors $
         makeFilter nullFilter (div imageSize 2, div imageSize 2)
-      cFilterParams =
-        FourierMellinTransformParamsGridC
-        { getFourierMellinTransformGridCRows = imageSize
-        , getFourierMellinTransformGridCCols = imageSize
-        , getFourierMellinTransformGridCScale = [0]
-        , getFourierMellinTransformGridCRadialFreq = [fromIntegral (-n) .. fromIntegral n]
-        , getFourierMellinTransformGridCAngularFreq = [-n .. n]
-        }
-      cNullFilter = PolarSeparableFilter cFilterParams Null
-      cFilters =
-        (\(FourierMellinTransform _ vecs) -> L.concatMap L.concat vecs) . getFilterVectors $
-        makeFilter cNullFilter (div imageSize 2, div imageSize 2)
   (img:_) <-
     runResourceT $
     sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
-  let recon = computeRecon (R.map (\x  -> (x) :+ 0) img) filters -- cFilters
-      arr =
+  recon <-
+    magnitudeRecon
+      imageSize
+      imageSize
+      (1 * (0.1 ** 15))
+      0.001
+      (VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img)
+      filters
+  let arr =
         IM.arrayToImage .
-        listArray ((0, 0), (imageSize - 1, imageSize - 1)) . R.toList . R.map magnitude $
-        recon :: IM.GrayImage
-  IM.writeImage "FilterExpansionRecon.pgm" arr
+        listArray ((0, 0), (imageSize - 1, imageSize - 1)) . VU.toList $
+        recon :: IM.ComplexImage
+  IM.writeImage "MagnitudeReconComplex.pgm" arr
+  IM.writeImage "MagnitudeRecon.pgm" . IM.magnitude $ arr

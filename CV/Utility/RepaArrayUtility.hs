@@ -218,23 +218,6 @@ bicubicInterpolation ds (minVal, maxVal) (y, x)
       , [4, -4, -4, 4, 2, 2, -2, -2, 2, -2, 2, -2, 1, 1, 1, 1]
       ]
 
-{-# INLINE makeFilterList #-}
-
-makeFilterList :: Int -> Int -> (Int -> Int -> a) -> [a]
-makeFilterList rows cols f =
-  [ let !x =
-          if r < (rows `div` 2)
-            then r
-            else r - rows
-        !y =
-          if c < (cols `div` 2)
-            then c
-            else c - cols
-    in f x y
-  | r <- [0 .. rows - 1]
-  , c <- [0 .. cols - 1]
-  ]
-
 {-# INLINE rescale2D #-}
 
 rescale2D

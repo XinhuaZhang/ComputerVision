@@ -31,6 +31,7 @@ instance NFData CartesianGratingFilter where
 
 instance FilterExpansion CartesianGratingFilter where
   type FilterParameter CartesianGratingFilter = CartesianGratingFilterParams
+  type FilterType CartesianGratingFilter = V4SeparableFilter
   {-# INLINE makeFilter #-}
   makeFilter (CartesianGratingFilter params@(CartesianGratingFilterParams rows cols scales freqs angles) _) (centerR, centerC) =
     CartesianGratingFilter params . V4CartesianSeparableFilter freqs $

@@ -8,50 +8,18 @@ import CV.Utility.FFT.FFI
 
 import qualified Foreign.C.Types as C
 import Foreign.C.String (withCString, peekCString)
-import Foreign.Marshal.Array (copyArray, withArray, withArrayLen)
-import Foreign.ForeignPtr (withForeignPtr)
-import Foreign.Ptr (Ptr, nullPtr)
-import Foreign.Storable (Storable)
+
+import Foreign.Ptr (nullPtr)
 import System.IO.Unsafe (unsafePerformIO)
 
-import Control.Arrow (second)
 import Control.Monad (when)
-import Control.Applicative ((<$>))
-import Control.Exception (assert, finally)
+import Control.Exception (finally)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 
-import Data.Complex (Complex)
-import Data.Bits (Bits, complement, (.&.), (.|.))
-import Data.List (nub, (\\))
+import Data.Bits (Bits)
 import Data.Typeable ()
 
 
--- | Our API is polymorphic over the real data type.  FFTW, at least in
--- principle, supports single precision 'Float', double precision 'Double' and
--- long double 'CLDouble' (presumable?).
-class (Storable a, RealFloat a) => FFTWReal a where
-    plan_guru_dft   :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr (Complex a)
-                    -> Ptr (Complex a) -> FFTWSign -> FFTWFlag -> IO Plan
-    plan_guru_dft_r2c :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr a
-                      -> Ptr (Complex a) -> FFTWFlag -> IO Plan
-    plan_guru_dft_c2r :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr (Complex a)
-                      -> Ptr a -> FFTWFlag -> IO Plan
-    plan_guru_r2r :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr a
-                  -> Ptr a -> Ptr FFTWKind -> FFTWFlag -> IO Plan
-
--- | Using this instance requires linking with @-lfftw3f@.
-instance FFTWReal Float where
-    plan_guru_dft = cf_plan_guru_dft
-    plan_guru_dft_r2c = cf_plan_guru_dft_r2c
-    plan_guru_dft_c2r = cf_plan_guru_dft_c2r
-    plan_guru_r2r = cf_plan_guru_r2r
-
--- | Using this instance requires linking with @-lfftw3@.
-instance FFTWReal Double where
-    plan_guru_dft = c_plan_guru_dft
-    plan_guru_dft_r2c = c_plan_guru_dft_r2c
-    plan_guru_dft_c2r = c_plan_guru_dft_c2r
-    plan_guru_r2r = c_plan_guru_r2r
 
 -- | This lock must be taken during /planning/ of any transform.  The FFTW
 -- library is not thread-safe in the planning phase.  Thankfully, the lock is
@@ -180,9 +148,6 @@ unKind k = case k of
                RODFT01 -> c_rodft01
                RODFT10 -> c_rodft10
                RODFT11 -> c_rodft11
-
--- | Tuple of transform dimensions and non-transform dimensions of the array.
-type TSpec = ([IODim],[IODim])
 
 -- | Types of transforms.  Used to control 'dftShape'.
 data DFT = CC | RC | CR | CRO | RR

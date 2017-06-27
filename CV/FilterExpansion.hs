@@ -11,10 +11,11 @@ import           Data.Vector.Unboxed  as VU
 
 class FilterExpansion a  where
   type FilterParameter a :: *
+  type FilterType a :: *
   makeFilter :: a -> (Int, Int) -> a
   getFilterSize :: a -> Int
   getFilterParameter :: a -> FilterParameter a
-  getFilterVectors :: a -> V4SeparableFilter
+  getFilterVectors :: a -> FilterType a 
   changeSizeParameter :: Int -> Int -> a -> a
 
 
@@ -33,43 +34,6 @@ data V4SeparableFilter
 
 instance NFData V4SeparableFilter where
   rnf !_ = ()
-
-
-data V4SeparableFilterConvolution
-  = V4PolarSeparableFilterConvolutionAxis !(Int, Int)
-                                          ![Double]
-                                          ![[VS.Vector (Complex Double)]]
-  | FourierMellinTransformConvolution (Int, Int)
-                                      ([Double], [Double])
-                                      [[[VS.Vector (Complex Double)]]]
-
-instance NFData V4SeparableFilterConvolution where
-  rnf (V4PolarSeparableFilterConvolutionAxis a b c) = a `seq` b `seq` c `seq` ()
-  rnf (FourierMellinTransformConvolution a b c) = a `seq` b `seq` c `seq` ()
-
-data V4SeparableFilteredImageConvolution
-  = V4PolarSeparableFilteredImageConvolutionAxis !(Int, Int)
-                                                 ![Double]
-                                                 ![[VU.Vector (Complex Double)]]
-  | FourierMellinTransformFilteredImageConvolution (Int, Int)
-                                                   ([Double], [Double])
-                                                   [[[VU.Vector (Complex Double)]]]
-
-instance NFData V4SeparableFilteredImageConvolution where
-  rnf !_ = ()
-  -- rnf (V4PolarSeparableFilteredImageConvolutionAxis a b c) = ()
-  --   a `seq` b `seq` c `seq` ()
-  -- rnf (FourierMellinTransformFilteredImageConvolution a b c) =
-  --   a `seq` b `seq` c `seq` ()
-
-
-instance Show V4SeparableFilteredImageConvolution where
-  show (V4PolarSeparableFilteredImageConvolutionAxis a b c) =
-    (show a) L.++ "\n" L.++ (show b) L.++ "\n" L.++
-    (show . VU.length . L.head . L.head $ c)
-  show (FourierMellinTransformFilteredImageConvolution a b c) =
-    (show a) L.++ "\n" L.++ (show b) L.++ "\n" L.++
-    (show . VU.length . L.head . L.head . L.head $ c)
 
 
 

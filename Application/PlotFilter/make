@@ -1,7 +1,8 @@
 #!/bin/bash
-
-ghc -i../.. -j4 -O2 Main.hs -o main
+LIBS="-lstdc++ -llapack -lblas -lgomp -lfftw3 -lfftw3f -lfftw3l -lm" # 
+ghc -i../.. -j4 -O2 $LIBS Main.hs -o main
+ghc -i../.. -j4 -O2 $LIBS PlotGabor.hs -o plotGabor
 
 # ghc -i../.. -j4 -O2 PlotFilteredImage.hs -o plot
 
-ghc -i../.. -j4 -O2 PlotFTFilter.hs -o plotFTFilter
+#ghc -i../.. -j4 -O2 PlotFTFilter.hs -o plotFTFilter

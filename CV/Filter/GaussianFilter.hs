@@ -8,7 +8,6 @@ import           Control.Monad.IO.Class       (liftIO)
 import           Control.Monad.Trans.Resource
 import           CV.Utility.FFT
 import           CV.Utility.Parallel
-import           CV.Utility.RepaArrayUtility
 import           Data.Array.Repa              as R
 import           Data.Complex                 as C
 import           Data.Conduit
@@ -16,6 +15,7 @@ import           Data.Conduit.List            as CL
 import           Data.List                    as L
 import           Data.Vector.Unboxed          as VU
 import           Data.Vector.Storable         as VS
+import CV.FilterConvolution
 
 
 data GaussianFilterParams = GaussianFilterParams
@@ -71,7 +71,7 @@ gaussian2D''
   :: (Floating a, Ord a)
     => Int -> a -> Int -> Int -> a
 gaussian2D'' freq sd i j -- =
-  | r == 0 = 0
+  | r == 0 = 1
   -- | r < sd = 1 / r
   | otherwise = 1 / r
   -- 1 / ((2 * pi) * sd * sd) *
@@ -111,8 +111,8 @@ makeFilter fftw params@(GaussianFilterParams sigma nRows nCols) =
     filterEleList = makeFilterList nRows nCols $ gaussian2D sigma
     filterCArr = VS.fromListN (nRows * nCols) . L.map (:+ 0) $ filterEleList
 
-getFilter :: GaussianFilter a -> a
-getFilter (GaussianFilter _ x) = x
+-- getFilter :: GaussianFilter a -> a
+-- getFilter (GaussianFilter _ x) = x
 
 applyFilterVariedSize
   :: (R.Source s Double)
