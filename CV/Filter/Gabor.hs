@@ -106,3 +106,13 @@ gabor freq scale ori x y =
   where
     r = fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     x' = fromIntegral x * cos ori + fromIntegral y * sin ori
+
+{-# INLINE morletWavelet #-}
+
+morletWavelet :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
+morletWavelet freq scale ori a x y =
+  exp (0 :+ (freq * x' / a)) * (exp (-r / (2 * scale * scale) / (a * a)) :+ 0) /
+  (a :+ 0)
+  where
+    r = fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    x' = fromIntegral x * cos ori + fromIntegral y * sin ori
