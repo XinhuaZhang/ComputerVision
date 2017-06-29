@@ -7,21 +7,24 @@ import           Data.List              as L
 import           Data.Vector.Unboxed    as VU
 
 main = do
-  let n = 32
+  let n = 16
       m = 15
       filterParams =
         GaborFilterParams
         { gaborFilterRows = n
         , gaborFilterCols = n
-        , gaborFilterFreq = [0.05,0.075,0.1,0.15,0.2,0.3,0.375]
-        , gaborFilterScale = [2*pi]
-        , gaborFilterOrientation = [0,m .. 180 - m]
+        , gaborFilterFreq = [1 * pi / 64,3 * pi /4]
+        , gaborFilterScale = [0.25 * pi, 0.5*pi]
+        , gaborFilterOrientation = [0]
         }
       filters =
-        L.concatMap L.concat . (\(GaborFilterVectors x) -> x) . getFilterVectors $
-        (makeFilter (Filter filterParams GaborFilterNull) (div n 2, div n 2) :: GaborFilter)
+        getFilterExpansionList $
+        (makeFilterExpansion filterParams (div n 2) (div n 2) :: GaborFilterExpansion)
       imgList =
         L.map
           (IM.arrayToImage . listArray ((0, 0), (n - 1, n - 1)) . VU.toList)
           filters :: [IM.ComplexImage]
-  M.zipWithM_ (\i img -> IM.writeImage (show i L.++ ".pgm") $ IM.realPart img) [1 ..] imgList
+  M.zipWithM_
+    (\i img -> IM.writeImage (show i L.++ ".pgm") $ IM.realPart img)
+    [1 ..]
+    imgList

@@ -7,18 +7,18 @@ import           Data.List              as L
 import           Data.Vector.Unboxed    as VU
 
 main = do
-  let n = 32
+  let n = 128
       m = 15
       filterParams =
         MorletWaveletParams
         { morletWaveletRows = n
         , morletWaveletCols = n
         , morletWaveletFreq = 3 * pi / 4
-        , morletWaveletGaussianScale = pi
+        , morletWaveletGaussianScale = 1.3
         , morletWaveletOrientation =
           [ 0 -- ,m .. 180 - m
           ]
-        , morletWaveletScale = [1, 2, 3, 4]
+        , morletWaveletScale = [1..7]
         }
       filters =
         getFilterExpansionList
@@ -28,6 +28,6 @@ main = do
           (IM.arrayToImage . listArray ((0, 0), (n - 1, n - 1)) . VU.toList)
           filters :: [IM.ComplexImage]
   M.zipWithM_
-    (\i img -> IM.writeImage (show i L.++ ".pgm") $ IM.realPart img)
+    (\i img -> IM.writeImage (show i L.++ ".pgm") $ IM.imagPart img)
     [1 ..]
     imgList

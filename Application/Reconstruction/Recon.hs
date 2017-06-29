@@ -143,20 +143,20 @@ magnitudeReconConvolution fftw rows cols learningRate threshold img filters init
   --   (((VS.maximum . VS.map realPart $ img) > snd valueRange) ||
   --    ((VS.minimum . VS.map realPart $ img) < fst valueRange))
   --   (error "magnitudeRecon: pixel value range is not [0,255].")
-  print (VS.minimum . VS.map realPart $ img,VS.maximum . VS.map realPart $ img)
+  -- print (VS.minimum . VS.map realPart $ img,VS.maximum . VS.map realPart $ img)
   prediction <-
     case initRecon of
       InitRecon x -> return x
       NULL ->
         VS.fromListN (rows * cols) . L.map (:+ 0) <$>
-        M.replicateM (rows * cols) (normalIO' (0, 64)) -- (randomRIO valueRange)
+        M.replicateM (rows * cols) (normalIO' (0, 128)) -- (randomRIO valueRange)
   -- IM.writeImage "init.pgm" (IM.arrayToImage .
   --                           listArray ((0, 0), (rows - 1, cols - 1)) . VS.toList . VS.map realPart  $
   --                           prediction :: IM.GrayImage)
   imgVecF <- dft2d fftw rows cols img
   imgComplex <- M.mapM (idft2d fftw rows cols . VS.zipWith (*) imgVecF) filters
   let imgMags = L.map (VS.map magnitude) imgComplex
-  go imgComplex imgMags prediction (read "Infinity" :: Double)
+  go imgComplex imgMags ( prediction) (read "Infinity" :: Double)
   where
     valueRange = (0, 255) :: (Double, Double)
     go imgComplex' imgMags' !input lastErr = do

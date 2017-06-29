@@ -6,4 +6,5 @@ LIBS="-lstdc++ -llapack -lblas  -lgomp -lfftw3 -lfftw3f -lfftw3l -lm"
 ## cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeRecon.hs -o magnitudeRecon
 ## cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolution.hs -o magnitudeReconConvolution
 cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolutionGabor.hs -o magnitudeReconConvolutionGabor
-cabal exec -- ghc $FLAG $LIBS -i../../  GaborTransform.hs -o gaborTransform
+cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolutionMorletWavelet.hs -o magnitudeReconConvolutionMorletWavelet
+## cabal exec -- ghc $FLAG $LIBS -i../../  GaborTransform.hs -o gaborTransform
