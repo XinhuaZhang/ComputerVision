@@ -25,7 +25,6 @@ main = do
   filterParams <-
     fmap (\x -> read x :: FourierMellinTransformParamsGrid) . readFile $
     (paramsFileName params)
-  kmeansModel <- decodeFile (kmeansFile params)
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
@@ -40,23 +39,9 @@ main = do
   fftw <- initializefftw fftwWisdom
   filters <- makeFilterConvolution fftw filterParams Normal :: IO FourierMellinTransformConvolution
   gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
-  featurePtr <-
-    runResourceT $
+  runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
     filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
-    kmeansConduit parallelParams kmeansModel =$=
-    featurePtrConduitP parallelParams =$=
-    CL.consume
-  let trainParams =
-        TrainParams
-        { trainSolver = L2R_L2LOSS_SVC_DUAL
-        , trainC = (c params)
-        , trainNumExamples = L.length featurePtr
-        , trainFeatureIndexMax =
-          V.length (center kmeansModel) *
-          VU.length (V.head . center $ kmeansModel)
-        , trainModel = (modelName params)
-        }
-      (labels, features) = L.unzip featurePtr
-  print trainParams
-  train trainParams labels features
+    eigCovConduit parallelParams (numPrincipal params) =$=
+    featureConduit =$=
+    predict (modelName params) ((modelName params) L.++ ".out")

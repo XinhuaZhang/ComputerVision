@@ -1,34 +1,27 @@
 import           Application.Leaf.ArgsParser                  as AP
 import           Application.Leaf.Conduit
-import           Application.MultiDimensionalGMM.FisherKernel
-import           Application.MultiDimensionalGMM.GMM
 import           Classifier.LibLinear
-import           Control.Concurrent.MVar                      (newMVar)
 import           Control.Monad                                as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Filter.GaussianFilter                     as Gaussian
+import           CV.Filter.FourierMellinTransform
+import           CV.Filter.GaussianFilter
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
 import           CV.Utility.Parallel                          as Par
-import           CV.V4Filter
-import           CV.V4FilterConvolution
-import           Data.Array.Repa                              as R
 import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.Binary                          as CB
 import           Data.Conduit.List                            as CL
 import           Data.List                                    as L
 import           Data.Vector                                  as V
-import           Data.Vector.Unboxed                          as VU
 import           System.Environment
-import           System.IO
 
 main = do
   args <- getArgs
   params <- parseArgs args
   filterParams <-
-    fmap (\x -> read x :: V4SeparableFilterParamsAxisConvolution) . readFile $
+    fmap (\x -> read x :: FourierMellinTransformParamsGrid) . readFile $
     (paramsFileName params)
   kmeansModel <- decodeFile (kmeansFile params)
   let parallelParams =
@@ -37,25 +30,17 @@ main = do
         , Par.batchSize = AP.batchSize params
         }
       gFilterParams =
-        L.map
-          (\s -> GaussianFilterParams s (imageSize params) (imageSize params)) .
-        gaussianScale $
-        params
-      filters = generateV4SeparableFilterAxisConvolution filterParams
+        GaussianFilterParams
+          (gaussianScale params)
+          (imageSize params)
+          (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   fftw <- initializefftw fftwWisdom
-  filtersF <-
-    M.mapM (fourierTransformFilter fftw (imageSize params, imageSize params)) filters
-  gFilters <- M.mapM (fmap getFilter . Gaussian.makeFilter fftw) gFilterParams
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO FourierMellinTransformConvolution
+  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    applyV4SeparableFilterConvolutionLabeledArrayConduit
-      fftw
-      parallelParams
-      (stride params)
-      gFilters
-      filtersF =$=
-    magnitudeConduit parallelParams =$=
+    filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
     kmeansConduit parallelParams kmeansModel =$=
     featureConduit =$=
     predict (modelName params) ((modelName params) L.++ ".out")

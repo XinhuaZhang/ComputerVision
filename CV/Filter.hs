@@ -1,9 +1,11 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TypeFamilies #-}
 module CV.Filter where
 
-import           Control.DeepSeq (NFData, rnf)
-import           CV.Utility.FFT  (FFTW)
+import           Control.DeepSeq      (NFData, rnf)
+import           CV.Utility.FFT       (FFTW)
+import           Data.Complex
+import           Data.Vector.Storable as VS
+import           Data.Vector.Unboxed  as VU
 
 data Filter a b
   = Filter { getFilterParams :: !a
@@ -22,33 +24,24 @@ instance (NFData a, NFData b) =>
   rnf (Filter x y) = rnf x `seq` rnf y `seq` ()
 
 class FilterExpansion a  where
-  type FilterExpansionInputType a :: *
-  type FilterExpansionOutputType a :: *
   type FilterExpansionParameters a :: *
-  type FilterExpansionFilterType a :: *
   getFilterExpansionNum :: a -> Int
-  getFilterExpansionList :: a -> [FilterExpansionFilterType a]
+  getFilterExpansionList :: a -> [VU.Vector (Complex Double)]
   makeFilterExpansion :: FilterExpansionParameters a -> Int -> Int -> a
-  applyFilterExpansion :: a
-                       -> FilterExpansionInputType a
-                       -> FilterExpansionOutputType a
+  applyFilterExpansion :: a -> [VU.Vector (Complex Double)] -> [Complex Double]
 
 class FilterConvolution a  where
-  type FilterConvolutionInputType a :: *
-  type FilterConvolutionOutputType a :: *
   type FilterConvolutionParameters a :: *
-  type FilterConvolutionFilterType a :: *
   getFilterConvolutionNum :: a -> Int
-  getFilterConvolutionList :: a -> [FilterConvolutionFilterType a]
+  getFilterConvolutionList :: a -> [VS.Vector (Complex Double)]
   makeFilterConvolution :: FFTW
                         -> FilterConvolutionParameters a
                         -> ConvolutionalFilterType
                         -> IO a
-  applyFilterConvolution
-    :: FFTW
-    -> a
-    -> FilterConvolutionInputType a
-    -> IO (FilterConvolutionOutputType a)
+  applyFilterConvolution :: FFTW
+                         -> a
+                         -> [VS.Vector (Complex Double)]
+                         -> IO [VS.Vector (Complex Double)]
 
 {-# INLINE makeFilterExpansionList #-}
 
@@ -62,14 +55,24 @@ makeFilterExpansionList rows cols rCenter cCenter f =
 
 makeFilterConvolutionList :: Int -> Int -> (Int -> Int -> a) -> [a]
 makeFilterConvolutionList rows cols f =
-  [ let !x =
+  [ let x =
           if r < (rows `div` 2)
             then r
             else r - rows
-        !y =
+        y =
           if c < (cols `div` 2)
             then c
             else c - cols
     in f x y
   | r <- [0 .. rows - 1]
   , c <- [0 .. cols - 1] ]
+
+
+{-# INLINE conjugateFunc #-}
+
+conjugateFunc :: ConvolutionalFilterType
+              -> ([Complex Double] -> [Complex Double])
+conjugateFunc x =
+  case x of
+    Normal -> id
+    Conjugate -> Prelude.map conjugate

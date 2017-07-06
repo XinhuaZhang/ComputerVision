@@ -37,6 +37,16 @@ computeRemoveMean parallelParams xs =
   where
     !s = L.foldl1' (VU.zipWith (+)) xs
     !mean = VU.map (/ fromIntegral (L.length xs)) s
+    
+{-# INLINE computeRemoveMeanS #-}
+
+computeRemoveMeanS
+  :: (Num e, Unbox e, NFData e, Fractional e)
+  => [VU.Vector e] -> (VU.Vector e, [VU.Vector e])
+computeRemoveMeanS xs = (mean, L.map (removeMean mean) xs)
+  where
+    !s = L.foldl1' (VU.zipWith (+)) xs
+    !mean = VU.map (/ fromIntegral (L.length xs)) s
 
 
 {-# INLINE removeMean #-}
@@ -89,8 +99,8 @@ covarianceMatrixP parallelParams xs = do
         (\(i, j) ->
             ( (i, j)
             , (L.sum . L.map (\vec -> (vec VU.! i) * (vec VU.! j)) $ xs) /
-              (fromIntegral (L.length xs)))) -- .
-      -- L.filter (\(i, j) -> j >= i) $
+              (fromIntegral (L.length xs)))) .
+      L.filter (\(i, j) -> j >= i) $
       [ (i, j)
       | i <- [0 .. len - 1]
       , j <- [0 .. len - 1] ]
@@ -149,6 +159,24 @@ pcaSVD parallelParams n xs = (pcaMat, eigenValVec, reducedVecs)
     reducedVecs =
       parMapChunk parallelParams rdeepseq (pcaReduction pcaMat) meanRemovedVecs
 
+
+pcaSVDS
+  :: (Num e, Unbox e, NFData e, Fractional e, Field e)
+  => Int
+  -> [VU.Vector e]
+  -> (PCAMatrix e, VU.Vector Double, [VU.Vector e])
+pcaSVDS n xs = (pcaMat, eigenValVec, reducedVecs)
+  where
+    (mean, meanRemovedVecs) = computeRemoveMeanS xs
+    d'' = fromRows . L.map (LA.fromList . VU.toList) $ meanRemovedVecs
+    (_, vec', uni') = thinSVD d''
+    vec = L.map abs . LA.toList $ vec'
+    uni = L.map (VU.fromList . LA.toList) . toColumns $ uni'
+    pairs = L.unzip . L.take n . L.reverse $ sortOn fst $ L.zip vec uni
+    mat = V.fromList . snd $ pairs
+    eigenValVec = VU.fromList . fst $ pairs
+    pcaMat = PCAMatrix mean mat
+    reducedVecs = L.map (pcaReduction pcaMat) meanRemovedVecs
 
 -- perform pcaReduction on uncentered data
 {-# INLINE pcaReduction #-}

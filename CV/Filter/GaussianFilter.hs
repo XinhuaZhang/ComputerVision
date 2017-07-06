@@ -1,36 +1,35 @@
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module CV.Filter.GaussianFilter where
+module CV.Filter.GaussianFilter
+  ( module CV.Filter
+  , module CV.Filter.GaussianFilter
+  ) where
 
-import           Control.Concurrent.MVar      (MVar)
+import           Control.DeepSeq
 import           Control.Monad                as M
-import           Control.Monad.IO.Class       (liftIO)
-import           Control.Monad.Trans.Resource
+import           CV.Filter
 import           CV.Utility.FFT
 import           CV.Utility.Parallel
 import           Data.Array.Repa              as R
 import           Data.Complex                 as C
-import           Data.Conduit
-import           Data.Conduit.List            as CL
 import           Data.List                    as L
-import           Data.Vector.Unboxed          as VU
 import           Data.Vector.Storable         as VS
-import CV.FilterConvolution
+import           Data.Vector.Unboxed          as VU
 
 
 data GaussianFilterParams = GaussianFilterParams
-  { getGaussianFilterSigma :: !Double
+  { getGaussianFilterSigma :: ![Double]
   , getGaussianFilterRows  :: !Int
   , getGaussianFilterCols  :: !Int
   } deriving (Show)
 
-data GaussianFilter a = GaussianFilter
-  { getGaussianFilterParams :: GaussianFilterParams
-  , getGaussianFilter       :: a
-  }
+instance NFData GaussianFilterParams where
+  rnf (GaussianFilterParams x y z) = x `seq` y `seq` z `seq` ()
 
-instance Functor GaussianFilter where
-  fmap f (GaussianFilter p a) = GaussianFilter p $ f a
+type GaussianFilterConvolution = Filter GaussianFilterParams [VS.Vector (Complex Double)]
 
 {-# INLINE gaussian1D #-}
 
@@ -102,79 +101,6 @@ gaussian2DDouble sd i j =
   where
     r = i * i + j * j
 
-makeFilter
-  :: FFTW
-  -> GaussianFilterParams
-  -> IO (GaussianFilter (VS.Vector (Complex Double)))
-makeFilter fftw params@(GaussianFilterParams sigma nRows nCols) =
-  fmap (GaussianFilter params) . dft2d fftw nRows nCols $ filterCArr
-  where
-    filterEleList = makeFilterList nRows nCols $ gaussian2D sigma
-    filterCArr = VS.fromListN (nRows * nCols) . L.map (:+ 0) $ filterEleList
-
--- getFilter :: GaussianFilter a -> a
--- getFilter (GaussianFilter _ x) = x
-
-applyFilterVariedSize
-  :: (R.Source s Double)
-  => FFTW
-  -> GaussianFilterParams
-  -> R.Array s DIM3 Double
-  -> IO (R.Array U DIM3 Double)
-applyFilterVariedSize fftw (GaussianFilterParams sigma _ _) arr = do
-  dftFilterArr <-
-    getGaussianFilter <$>
-    makeFilter fftw (GaussianFilterParams sigma nRows nCols)
-  imageArr <-
-    dftImageArr fftw (nRows, nCols) .
-    L.map (\i -> toUnboxed . computeS . R.slice arr $ (Z :. i :. All :. All)) $
-    [0 .. nf - 1]
-  fromUnboxed (extent arr) . VU.map magnitude . VS.convert . VS.concat <$>
-    M.mapM (idft2d fftw nRows nCols . VS.zipWith (*) dftFilterArr) imageArr
-  where
-    (Z :. nf :. nRows :. nCols) = extent arr
-
-applyFilterFixedSize
-  :: (R.Source s Double)
-  => FFTW
-  -> GaussianFilter (VS.Vector (Complex Double))
-  -> R.Array s DIM3 Double
-  -> IO (R.Array U DIM3 Double)
-applyFilterFixedSize fftw (GaussianFilter _params dftFilterArr) arr = do
-  imageArr <-
-    dftImageArr fftw (nRows, nCols) .
-    L.map (\i -> toUnboxed . computeS . R.slice arr $ (Z :. i :. All :. All)) $
-    [0 .. nf - 1]
-  fromUnboxed (extent arr) . VU.map magnitude . VS.convert . VS.concat <$>
-    M.mapM (idft2d fftw nRows nCols . VS.zipWith (*) dftFilterArr) imageArr
-  where
-    (Z :. nf :. nRows :. nCols) = extent arr
-
-gaussianVariedSizeConduit
-  :: (R.Source s Double)
-  => FFTW
-  -> ParallelParams
-  -> GaussianFilterParams
-  -> Conduit (R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
-gaussianVariedSizeConduit fftw parallelParams filterParams = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do ys <- liftIO $ M.mapM (applyFilterVariedSize fftw filterParams) xs
-        sourceList ys
-        gaussianVariedSizeConduit fftw parallelParams filterParams)
-
-{-# INLINE dftImageArr #-}
-
-dftImageArr :: FFTW
-            -> (Int, Int)
-            -> [VU.Vector Double]
-            -> IO [VS.Vector (Complex Double)]
-dftImageArr fftw (nRows, nCols) =
-  M.mapM (dft2d fftw nRows nCols . VU.convert . VU.map (:+ 0)) 
-
-
-
 {-# INLINE disk #-}
 disk
   :: (Floating a, Ord a)
@@ -184,3 +110,24 @@ disk sd i j
   | otherwise = 0
   where
     r = sqrt $ fromIntegral (i * i + j * j)
+
+instance FilterConvolution GaussianFilterConvolution where
+  type FilterConvolutionParameters GaussianFilterConvolution = GaussianFilterParams
+  {-# INLINE getFilterConvolutionNum #-}
+  getFilterConvolutionNum (Filter (GaussianFilterParams x _ _) _) = L.length x
+  {-# INLINE getFilterConvolutionList #-}
+  getFilterConvolutionList (Filter _ filters) = filters
+  {-# INLINE makeFilterConvolution #-}
+  makeFilterConvolution fftw params@(GaussianFilterParams scales rows cols) filterType =
+    Filter params <$!>
+    M.mapM
+      (dft2d fftw rows cols .
+       VS.fromListN (rows * cols) .
+       conjugateFunc filterType .
+       L.map (:+ 0) . makeFilterConvolutionList rows cols . gaussian2D)
+      scales
+  {-# INLINE applyFilterConvolution #-}
+  applyFilterConvolution fftw (Filter (GaussianFilterParams _ rows cols) filters) xs = do
+    ys <- M.mapM (dft2d fftw rows cols) xs
+    L.concat <$>
+      M.mapM (\x -> M.mapM (idft2d fftw rows cols . VS.zipWith (*) x) filters) ys

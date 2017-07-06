@@ -31,14 +31,11 @@ type MorletWaveletExpansion = Filter MorletWaveletParams [[VU.Vector (Complex Do
 type MorletWaveletConvolution = Filter MorletWaveletParams [[VS.Vector (Complex Double)]]
 
 instance FilterExpansion MorletWaveletExpansion where
-  type FilterExpansionInputType MorletWaveletExpansion = [VU.Vector (Complex Double)]
-  type FilterExpansionOutputType MorletWaveletExpansion = [[[Complex Double]]]
   type FilterExpansionParameters MorletWaveletExpansion = MorletWaveletParams
-  type FilterExpansionFilterType MorletWaveletExpansion = VU.Vector (Complex Double)
   {-# INLINE makeFilterExpansion #-}
   makeFilterExpansion params@(MorletWaveletParams rows cols freq gScale oris scales) rCenter cCenter =
     Filter params $!
-    [ [ VU.fromListN (rows * cols) $!
+    [ [ VU.fromListN (rows * cols) $
        makeFilterExpansionList
          rows
          cols
@@ -52,15 +49,12 @@ instance FilterExpansion MorletWaveletExpansion where
     L.length scales * L.length oris
   {-# INLINE applyFilterExpansion #-}
   applyFilterExpansion (Filter _ filters) =
-    L.map (\x -> L.map (L.map (VU.sum . VU.zipWith (*) x)) filters)
+    L.concatMap (\x -> L.concatMap (L.map (VU.sum . VU.zipWith (*) x)) filters)
   {-# INLINE getFilterExpansionList #-}
   getFilterExpansionList = L.concat . getFilter
 
 instance FilterConvolution MorletWaveletConvolution where
-  type FilterConvolutionInputType MorletWaveletConvolution = [VS.Vector (Complex Double)]
-  type FilterConvolutionOutputType MorletWaveletConvolution = [[[VS.Vector (Complex Double)]]]
   type FilterConvolutionParameters MorletWaveletConvolution = MorletWaveletParams
-  type FilterConvolutionFilterType MorletWaveletConvolution = VS.Vector (Complex Double)
   {-# INLINE makeFilterConvolution #-}
   makeFilterConvolution fftw params@(MorletWaveletParams rows cols freq gScale oris scales) filterType =
     Filter params <$!>
@@ -77,20 +71,18 @@ instance FilterConvolution MorletWaveletConvolution where
              scales) .
        deg2Rad)
       oris
-    where
-      conjugateFunc x =
-        case x of
-          Normal -> id
-          Conjugate -> L.map conjugate
   {-# INLINE getFilterConvolutionNum #-}
   getFilterConvolutionNum (Filter (MorletWaveletParams _ _ _ _ oris scales) _) =
     L.length scales * L.length oris
   {-# INLINE applyFilterConvolution #-}
   applyFilterConvolution fftw (Filter (MorletWaveletParams rows cols _ _ _ _) filters) xs = do
     ys <- M.mapM (dft2d fftw rows cols) xs
-    M.mapM
-      (\x -> M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x)) filters)
-      ys
+    L.concat <$>
+      M.mapM
+        (\x ->
+            L.concat <$>
+            M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x)) filters)
+        ys
   {-# INLINE getFilterConvolutionList #-}
   getFilterConvolutionList = L.concat . getFilter
 

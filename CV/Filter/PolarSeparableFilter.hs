@@ -4,12 +4,15 @@
 
 module CV.Filter.PolarSeparableFilter
   ( module CV.Filter
-  , module CV.Filter.PolarSeparableFilter
+  , PolarSeparableFilterParamsGrid(..)
+  , PolarSeparableFilterGridExpansion
+  , PolarSeparableFilterGridConvolution
   ) where
 
 
-import           CV.Filter.GaussianFilter
+import           Control.Monad            as M
 import           CV.Filter
+import           CV.Filter.GaussianFilter
 import           CV.Utility.Coordinates
 import           CV.Utility.FFT
 import           Data.Array.Repa          as R
@@ -18,9 +21,7 @@ import           Data.List                as L
 import           Data.Set                 as Set
 import           Data.Vector.Storable     as VS
 import           Data.Vector.Unboxed      as VU
-import           Foreign.Storable
 import           Prelude                  as P
-import Control.Monad as M
 
 data PolarSeparableFilterName
   = Fans
@@ -87,22 +88,6 @@ data PolarSeparableFilterParamsGrid = PolarSeparableFilterParamsGrid
   , getPolarSeparableFilterGridScale       :: ![Double]
   , getPolarSeparableFilterGridRadialFreq  :: ![Int]
   , getPolarSeparableFilterGridAngularFreq :: ![Int]
-  } deriving (Show)
-
-data FourierMellinTransformParamsGrid = FourierMellinTransformParamsGrid
-  { getFourierMellinTransformGridRows        :: !Int
-  , getFourierMellinTransformGridCols        :: !Int
-  , getFourierMellinTransformGridScale       :: ![Double]
-  , getFourierMellinTransformGridRadialFreq  :: ![Double]
-  , getFourierMellinTransformGridAngularFreq :: ![Int]
-  } deriving (Show,Read)
-
-data FourierMellinTransformParamsGridC = FourierMellinTransformParamsGridC
-  { getFourierMellinTransformGridCRows        :: !Int
-  , getFourierMellinTransformGridCCols        :: !Int
-  , getFourierMellinTransformGridCScale       :: ![Double]
-  , getFourierMellinTransformGridCRadialFreq  :: ![Int]
-  , getFourierMellinTransformGridCAngularFreq :: ![Int]
   } deriving (Show)
 
 -- type PolarSeparableFilterExpansionAxis = PolarSeparableFilter PolarSeparableFilterParamsAxis V4SeparableFilter
@@ -526,10 +511,7 @@ makeFilter fftw params@(PolarSeparableFilterParams (ny, nx) downSampleFactor sca
 --   L.length scales * L.length freqs * (min (L.length rms) (L.length ams)) * 2
 
 instance FilterExpansion PolarSeparableFilterGridExpansion where
-  type FilterExpansionInputType PolarSeparableFilterGridExpansion = [VU.Vector (Complex Double)]
-  type FilterExpansionOutputType PolarSeparableFilterGridExpansion = [[[[Complex Double]]]]
   type FilterExpansionParameters PolarSeparableFilterGridExpansion = PolarSeparableFilterParamsGrid
-  type FilterExpansionFilterType PolarSeparableFilterGridExpansion = VU.Vector (Complex Double)
   {-# INLINE makeFilterExpansion #-}
   makeFilterExpansion params@(PolarSeparableFilterParamsGrid rows cols scales rfs afs) rCenter cCenter =
     Filter params $!
@@ -548,16 +530,14 @@ instance FilterExpansion PolarSeparableFilterGridExpansion where
     L.length scales * L.length rfs * L.length afs
   {-# INLINE applyFilterExpansion #-}
   applyFilterExpansion (Filter _ filters) =
-    L.map (\x -> L.map (L.map (L.map (VU.sum . VU.zipWith (*) x))) filters)
+    L.concatMap
+      (\x -> L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))) filters)
   {-# INLINE getFilterExpansionList #-}
   getFilterExpansionList = L.concatMap L.concat . getFilter
 
 
 instance FilterConvolution PolarSeparableFilterGridConvolution where
-  type FilterConvolutionInputType PolarSeparableFilterGridConvolution = [VS.Vector (Complex Double)]
-  type FilterConvolutionOutputType PolarSeparableFilterGridConvolution = [[[[VS.Vector (Complex Double)]]]]
   type FilterConvolutionParameters PolarSeparableFilterGridConvolution = PolarSeparableFilterParamsGrid
-  type FilterConvolutionFilterType PolarSeparableFilterGridConvolution = VS.Vector (Complex Double)
   {-# INLINE makeFilterConvolution #-}
   makeFilterConvolution fftw params@(PolarSeparableFilterParamsGrid rows cols scales rfs afs) filterType =
     Filter params <$!>
@@ -579,18 +559,14 @@ instance FilterConvolution PolarSeparableFilterGridConvolution where
   {-# INLINE applyFilterConvolution #-}
   applyFilterConvolution fftw (Filter (PolarSeparableFilterParamsGrid rows cols _ _ _) filters) xs = do
     ys <- M.mapM (dft2d fftw rows cols) xs
-    M.mapM
-      (\x ->
-          M.mapM (M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x))) filters)
-      ys
+    L.concat <$>
+      M.mapM
+        (\x ->
+            L.concat <$>
+            M.mapM
+              (fmap L.concat .
+               M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x)))
+              filters)
+        ys
   {-# INLINE getFilterConvolutionList #-}
   getFilterConvolutionList = L.concatMap L.concat . getFilter
-
-
-{-# INLINE conjugateFunc #-}
-conjugateFunc :: ConvolutionalFilterType
-              -> ([Complex Double] -> [Complex Double])
-conjugateFunc x =
-  case x of
-    Normal -> id
-    Conjugate -> L.map conjugate

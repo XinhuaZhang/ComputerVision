@@ -44,6 +44,7 @@ instance (Binary e, Unbox e, Shape sh) =>
 instance (Unbox e, Shape sh) =>
          NFData (LabeledArray sh e) where
   rnf (LabeledArray label arr) = seq label (deepSeqArray arr ())
+  
 
 readLabeledImagebinary :: FilePath -> IO [LabeledArray DIM3 Double]
 readLabeledImagebinary filePath =

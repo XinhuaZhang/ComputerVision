@@ -30,14 +30,11 @@ type GaborFilterExpansion = Filter GaborFilterParams [[[VU.Vector (Complex Doubl
 type GaborFilterConvolution = Filter GaborFilterParams [[[VS.Vector (Complex Double)]]]
 
 instance FilterExpansion GaborFilterExpansion where
-  type FilterExpansionInputType GaborFilterExpansion = [VU.Vector (Complex Double)]
-  type FilterExpansionOutputType GaborFilterExpansion = [[[[Complex Double]]]]
   type FilterExpansionParameters GaborFilterExpansion = GaborFilterParams
-  type FilterExpansionFilterType GaborFilterExpansion = VU.Vector (Complex Double)
   {-# INLINE makeFilterExpansion #-}
   makeFilterExpansion params@(GaborFilterParams rows cols freqs scales oris) rCenter cCenter =
     Filter params $!
-    [ [ [ VU.fromListN (rows * cols) $!
+    [ [ [ VU.fromListN (rows * cols) $
          makeFilterExpansionList
            rows
            cols
@@ -52,15 +49,13 @@ instance FilterExpansion GaborFilterExpansion where
     L.length freqs * L.length scales * L.length oris
   {-# INLINE applyFilterExpansion #-}
   applyFilterExpansion (Filter _ filters) =
-    L.map (\x -> L.map (L.map (L.map (VU.sum . VU.zipWith (*) x))) filters)
+    L.concatMap
+      (\x -> L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))) filters)
   {-# INLINE getFilterExpansionList #-}
   getFilterExpansionList = L.concatMap L.concat . getFilter
 
 instance FilterConvolution GaborFilterConvolution where
-  type FilterConvolutionInputType GaborFilterConvolution = [VS.Vector (Complex Double)]
-  type FilterConvolutionOutputType GaborFilterConvolution = [[[[VS.Vector (Complex Double)]]]]
   type FilterConvolutionParameters GaborFilterConvolution = GaborFilterParams
-  type FilterConvolutionFilterType GaborFilterConvolution = VS.Vector (Complex Double)
   {-# INLINE makeFilterConvolution #-}
   makeFilterConvolution fftw params@(GaborFilterParams rows cols freqs scales oris) filterType =
     Filter params <$!>
@@ -80,21 +75,21 @@ instance FilterConvolution GaborFilterConvolution where
              deg2Rad)
             oris)
       scales
-    where
-      conjugateFunc x =
-        case x of
-          Normal -> id
-          Conjugate -> L.map conjugate
   {-# INLINE getFilterConvolutionNum #-}
   getFilterConvolutionNum (Filter (GaborFilterParams _ _ freqs scales oris) _) =
     L.length freqs * L.length scales * L.length oris
   {-# INLINE applyFilterConvolution #-}
   applyFilterConvolution fftw (Filter (GaborFilterParams rows cols _ _ _) filters) xs = do
     ys <- M.mapM (dft2d fftw rows cols) xs
-    M.mapM
-      (\x ->
-          M.mapM (M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x))) filters)
-      ys
+    L.concat <$>
+      M.mapM
+        (\x ->
+            L.concat <$>
+            M.mapM
+              (fmap L.concat .
+               M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x)))
+              filters)
+        ys
   {-# INLINE getFilterConvolutionList #-}
   getFilterConvolutionList = L.concatMap L.concat . getFilter
 
@@ -102,17 +97,8 @@ instance FilterConvolution GaborFilterConvolution where
 
 gabor :: Double -> Double -> Double -> Int -> Int -> Complex Double
 gabor freq scale ori x y =
-  ((exp ((-r) / (2 * scale ^ (2 :: Int)))) :+ 0) * exp (0 :+ (-2) * pi * x' * freq)
-  where
-    r = fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
-    x' = fromIntegral x * cos ori + fromIntegral y * sin ori
-
-{-# INLINE morletWavelet #-}
-
-morletWavelet :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
-morletWavelet freq scale ori a x y =
-  exp (0 :+ (freq * x' / a)) * (exp (-r / (2 * scale * scale) / (a * a)) :+ 0) /
-  (a :+ 0)
+  (exp ((-r) / (2 * scale ^ (2 :: Int))) :+ 0) *
+  exp (0 :+ (-2) * pi * x' * freq)
   where
     r = fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     x' = fromIntegral x * cos ori + fromIntegral y * sin ori

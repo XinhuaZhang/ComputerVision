@@ -28,14 +28,11 @@ type FourierMellinTransformExpansion = Filter FourierMellinTransformParamsGrid [
 type FourierMellinTransformConvolution = Filter FourierMellinTransformParamsGrid [[VS.Vector (Complex Double)]]
 
 instance FilterExpansion FourierMellinTransformExpansion where
-  type FilterExpansionInputType FourierMellinTransformExpansion = [VU.Vector (Complex Double)]
-  type FilterExpansionOutputType FourierMellinTransformExpansion = [[[Complex Double]]]
   type FilterExpansionParameters FourierMellinTransformExpansion = FourierMellinTransformParamsGrid
-  type FilterExpansionFilterType FourierMellinTransformExpansion = VU.Vector (Complex Double)
   {-# INLINE makeFilterExpansion #-}
   makeFilterExpansion params@(FourierMellinTransformParamsGrid rows cols rfs afs) rCenter cCenter =
     Filter params $!
-    [ [ VU.fromListN (rows * cols) $!
+    [ [ VU.fromListN (rows * cols) $
        makeFilterExpansionList
          rows
          cols
@@ -49,16 +46,13 @@ instance FilterExpansion FourierMellinTransformExpansion where
     L.length rfs * L.length afs
   {-# INLINE applyFilterExpansion #-}
   applyFilterExpansion (Filter _ filters) =
-    L.map (\x -> L.map (L.map (VU.sum . VU.zipWith (*) x)) filters)
+    L.concatMap (\x -> L.concatMap (L.map (VU.sum . VU.zipWith (*) x)) filters)
   {-# INLINE getFilterExpansionList #-}
   getFilterExpansionList = L.concat . getFilter
 
 
 instance FilterConvolution FourierMellinTransformConvolution where
-  type FilterConvolutionInputType FourierMellinTransformConvolution = [VS.Vector (Complex Double)]
-  type FilterConvolutionOutputType FourierMellinTransformConvolution = [[[VS.Vector (Complex Double)]]]
   type FilterConvolutionParameters FourierMellinTransformConvolution = FourierMellinTransformParamsGrid
-  type FilterConvolutionFilterType FourierMellinTransformConvolution = VS.Vector (Complex Double)
   {-# INLINE makeFilterConvolution #-}
   makeFilterConvolution fftw params@(FourierMellinTransformParamsGrid rows cols rfs afs) filterType =
     Filter params <$!>
@@ -74,20 +68,18 @@ instance FilterConvolution FourierMellinTransformConvolution where
                   (fourierMellinTransform rf af))
             afs)
       rfs
-    where
-      conjugateFunc x =
-        case x of
-          Normal    -> id
-          Conjugate -> L.map conjugate
   {-# INLINE getFilterConvolutionNum #-}
   getFilterConvolutionNum (Filter (FourierMellinTransformParamsGrid _ _ rfs afs) _) =
     L.length rfs * L.length afs
   {-# INLINE applyFilterConvolution #-}
   applyFilterConvolution fftw (Filter (FourierMellinTransformParamsGrid rows cols _ _) filters) xs = do
     ys <- M.mapM (dft2d fftw rows cols) xs
-    M.mapM
-      (\x -> M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x)) filters)
-      ys
+    L.concat <$>
+      M.mapM
+        (\x ->
+            L.concat <$>
+            M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x)) filters)
+        ys
   {-# INLINE getFilterConvolutionList #-}
   getFilterConvolutionList = L.concat . getFilter
 

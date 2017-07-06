@@ -1,30 +1,27 @@
-import           Application.Leaf.ArgsParser      as AP
+import           Application.Leaf.ArgsParser                  as AP
 import           Application.Leaf.Conduit
 import           Classifier.LibLinear
-import           Control.Monad                    as M
+import           Control.Monad                                as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Filter.FourierMellinTransform
 import           CV.Filter.GaussianFilter
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
-import           CV.Utility.Parallel              as Par
-import           Data.Array.Repa
+import           CV.Utility.Parallel                          as Par
 import           Data.Binary
-import           Data.Complex
 import           Data.Conduit
-import           Data.Conduit.Binary              as CB
-import           Data.Conduit.List                as CL
-import           Data.List                        as L
-import           Data.Vector.Unboxed              as VU
+import           Data.Conduit.Binary                          as CB
+import           Data.Conduit.List                            as CL
+import           Data.List                                    as L
+import           Data.Vector                                  as V
+import           Data.Vector.Unboxed                          as VU
 import           System.Environment
-
 
 
 main = do
   args <- getArgs
   params <- parseArgs args
-  print params
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
@@ -46,27 +43,30 @@ main = do
           (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   writeFile (paramsFileName params) . show $ filterParams
-  fftwInit <- initializefftw FFTWWisdomNull
-  imgs <-
-    runResourceT $
-    CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    CL.map (\(LabeledArray _ arr) -> toUnboxed arr) =$=
-    CL.take 1
-  generateWisdom
-    fftwInit
-    (fftwWisdomPath params)
-    (imageSize params)
-    (imageSize params) .
-    VU.convert . VU.map (:+ 0) . L.head $
-    imgs
   fftw <- initializefftw fftwWisdom
   filters <- makeFilterConvolution fftw filterParams Normal :: IO FourierMellinTransformConvolution
   gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
-  xs <-
+  (feature1:_) <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
     filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
-    CL.take (numGMMExample params)
-  let (ls, ys) = L.unzip xs
-  kmeansModel <- kmeans parallelParams (numGaussian params) (L.concat ys)
-  encodeFile (kmeansFile params) kmeansModel
+    eigCovConduit parallelParams (numPrincipal params) =$=
+    CL.take 1
+  featurePtr <-
+    runResourceT $
+    CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+    filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
+    eigCovConduit parallelParams (numPrincipal params) =$=
+    featurePtrConduitP parallelParams =$=
+    CL.consume
+  let trainParams =
+        TrainParams
+        { trainSolver = L2R_L2LOSS_SVC_DUAL
+        , trainC = (c params)
+        , trainNumExamples = L.length featurePtr
+        , trainFeatureIndexMax = VU.length . snd $ feature1
+        , trainModel = (modelName params)
+        }
+      (labels, features) = L.unzip featurePtr
+  print trainParams
+  train trainParams labels features

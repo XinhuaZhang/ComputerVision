@@ -2,7 +2,11 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TypeFamilies #-}
-module CV.Filter.CartesianGratingFilter where
+module CV.Filter.CartesianGratingFilter
+  ( module CV.Filter
+  , CartesianGratingFilterParams(..)
+  , CartesianGratingFilterExpansion
+  ) where
 
 import           Control.DeepSeq
 import           CV.Filter.GaussianFilter
@@ -27,14 +31,11 @@ instance NFData CartesianGratingFilterParams where
 type CartesianGratingFilterExpansion = Filter CartesianGratingFilterParams [[[VU.Vector (Complex Double)]]]
 
 instance FilterExpansion CartesianGratingFilterExpansion where
-  type FilterExpansionInputType CartesianGratingFilterExpansion = [VU.Vector (Complex Double)]
-  type FilterExpansionOutputType CartesianGratingFilterExpansion = [[[[Complex Double]]]]
   type FilterExpansionParameters CartesianGratingFilterExpansion = CartesianGratingFilterParams
-  type FilterExpansionFilterType CartesianGratingFilterExpansion = VU.Vector (Complex Double)
   {-# INLINE makeFilterExpansion #-}
   makeFilterExpansion params@(CartesianGratingFilterParams rows cols scales freqs oris) rCenter cCenter =
     Filter params $!
-    [ [ [ VU.fromListN (rows * cols) $!
+    [ [ [ VU.fromListN (rows * cols) $
          makeFilterExpansionList
            rows
            cols
@@ -49,7 +50,8 @@ instance FilterExpansion CartesianGratingFilterExpansion where
     L.length scales * L.length freqs * L.length oris
   {-# INLINE applyFilterExpansion #-}
   applyFilterExpansion (Filter _ filters) =
-    L.map (\x -> L.map (L.map (L.map (VU.sum . VU.zipWith (*) x))) filters)
+    L.concatMap
+      (\x -> L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))) filters)
   {-# INLINE getFilterExpansionList #-}
   getFilterExpansionList = L.concatMap L.concat . getFilter    
 

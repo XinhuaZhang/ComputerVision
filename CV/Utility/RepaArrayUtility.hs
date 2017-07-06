@@ -287,3 +287,15 @@ extractFeatureMap arr' =
   L.map (\k -> R.toList . R.slice arr' $ (Z :. k :. All :. All)) [0 .. nf' - 1]
   where
     !(Z :. (nf' :: Int) :. _ :. _) = extent arr'
+
+{-# INLINE arrayToUnboxed #-}
+
+arrayToUnboxed
+  :: (R.Source s e, Unbox e)
+  => R.Array s DIM3 e -> [VU.Vector e]
+arrayToUnboxed arr' =
+  L.map
+    (\k -> toUnboxed . computeS . R.slice arr' $ (Z :. k :. All :. All))
+    [0 .. nf' - 1]
+  where
+    (Z :. (nf' :: Int) :. _ :. _) = extent arr'
