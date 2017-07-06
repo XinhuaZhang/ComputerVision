@@ -1,14 +1,17 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TypeFamilies #-}
 module CV.Filter.CartesianGratingFilter where
 
 import           Control.DeepSeq
 import           CV.Filter.GaussianFilter
-import           CV.FilterExpansion
+import           CV.Filter
 import           CV.Utility.Coordinates
 import           Data.Complex             as C
 import           Data.List                as L
 import           Data.Vector.Unboxed      as VU
+import           Data.Vector.Storable     as VS
 
 data CartesianGratingFilterParams = CartesianGratingFilterParams
   { getCartesianGratingFilterRows             :: !Int
@@ -21,50 +24,42 @@ data CartesianGratingFilterParams = CartesianGratingFilterParams
 instance NFData CartesianGratingFilterParams where
   rnf !_ = ()
 
-data CartesianGratingFilter = CartesianGratingFilter
-  { getCartesianGratingFilterParams :: CartesianGratingFilterParams
-  , getCartesianGratingFilter :: V4SeparableFilter
-  }
+type CartesianGratingFilterExpansion = Filter CartesianGratingFilterParams [[[VU.Vector (Complex Double)]]]
 
-instance NFData CartesianGratingFilter where
-  rnf !_ = ()
-
-instance FilterExpansion CartesianGratingFilter where
-  type FilterParameter CartesianGratingFilter = CartesianGratingFilterParams
-  type FilterType CartesianGratingFilter = V4SeparableFilter
-  {-# INLINE makeFilter #-}
-  makeFilter (CartesianGratingFilter params@(CartesianGratingFilterParams rows cols scales freqs angles) _) (centerR, centerC) =
-    CartesianGratingFilter params . V4CartesianSeparableFilter freqs $
-    [ [ VU.fromListN
-         (cols * rows)
-         [ cartesianGrating scale angle freq (x - centerC) (y - centerR)
-         | y <- [0 .. rows - 1]
-         , x <- [0 .. cols - 1] ]
-      | freq <- freqs ]
-    | angle <- radAngles
-    , scale <- scales ]
-    where
-      radAngles = L.map deg2Rad angles
-  getFilterSize (CartesianGratingFilter (CartesianGratingFilterParams _ _ scales fs as) _) =
-    L.product . L.map L.length $ [scales, fs, as]
-  getFilterParameter = getCartesianGratingFilterParams
-  {-# INLINE getFilterVectors #-}
-  getFilterVectors (CartesianGratingFilter _ vecs) = vecs
-  {-# INLINE changeSizeParameter #-}
-  changeSizeParameter rows cols (CartesianGratingFilter (CartesianGratingFilterParams _ _ scale freq angle) vecs) =
-    CartesianGratingFilter
-      (CartesianGratingFilterParams rows cols scale freq angle)
-      vecs
+instance FilterExpansion CartesianGratingFilterExpansion where
+  type FilterExpansionInputType CartesianGratingFilterExpansion = [VU.Vector (Complex Double)]
+  type FilterExpansionOutputType CartesianGratingFilterExpansion = [[[[Complex Double]]]]
+  type FilterExpansionParameters CartesianGratingFilterExpansion = CartesianGratingFilterParams
+  type FilterExpansionFilterType CartesianGratingFilterExpansion = VU.Vector (Complex Double)
+  {-# INLINE makeFilterExpansion #-}
+  makeFilterExpansion params@(CartesianGratingFilterParams rows cols scales freqs oris) rCenter cCenter =
+    Filter params $!
+    [ [ [ VU.fromListN (rows * cols) $!
+         makeFilterExpansionList
+           rows
+           cols
+           rCenter
+           cCenter
+           (cartesianGrating scale (deg2Rad ori) freq)
+        | freq <- freqs ]
+      | ori <- oris ]
+    | scale <- scales ]
+  {-# INLINE getFilterExpansionNum #-}
+  getFilterExpansionNum (Filter (CartesianGratingFilterParams _ _ scales freqs oris) _) =
+    L.length scales * L.length freqs * L.length oris
+  {-# INLINE applyFilterExpansion #-}
+  applyFilterExpansion (Filter _ filters) =
+    L.map (\x -> L.map (L.map (L.map (VU.sum . VU.zipWith (*) x))) filters)
+  {-# INLINE getFilterExpansionList #-}
+  getFilterExpansionList = L.concatMap L.concat . getFilter    
 
 {-# INLINE cartesianGrating #-}
 
 cartesianGrating :: Double -> Double -> Double -> Int -> Int -> Complex Double
 cartesianGrating scale theta freq x y =
-  (gaussian2D scale x y :+ 0) * exp (0 :+ pi * freq * u / scale)
+  -- (gaussian2D scale x y :+ 0) *
+  exp (0 :+  freq * u)
   where
     c = cos theta
     s = sin theta
     u = fromIntegral x * c - fromIntegral y * s
-    -- v = if abs u < 1
-    --        then 0
-    --        else log (abs u)

@@ -7,18 +7,18 @@ import           Data.List              as L
 import           Data.Vector.Unboxed    as VU
 
 main = do
-  let n = 128
+  let n = 32
       m = 15
       filterParams =
         MorletWaveletParams
         { morletWaveletRows = n
         , morletWaveletCols = n
         , morletWaveletFreq = 3 * pi / 4
-        , morletWaveletGaussianScale = 1.3
+        , morletWaveletGaussianScale = 0.85 --0.25 * pi
         , morletWaveletOrientation =
-          [ 0 -- ,m .. 180 - m
+          [ 135 -- ,m .. 180 - m
           ]
-        , morletWaveletScale = [1..7]
+        , morletWaveletScale = L.map (\x -> 2 ** x) [0 .. 4]
         }
       filters =
         getFilterExpansionList

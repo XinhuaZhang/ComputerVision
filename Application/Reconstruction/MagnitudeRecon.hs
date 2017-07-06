@@ -13,18 +13,18 @@ import           Data.Vector.Unboxed              as VU
 import           System.Environment
 
 main = do
-  (imagePath:imageSizeStr:_) <- getArgs
+  (imagePath:imageSizeStr:lrStr:writeStepStr:_) <- getArgs
   let imageSize = read imageSizeStr :: Int
       m = 90
-      n = 48
+      n = 8
       filterParams =
         FourierMellinTransformParamsGrid
         { getFourierMellinTransformGridRows = imageSize
         , getFourierMellinTransformGridCols = imageSize
         , getFourierMellinTransformGridScale = [0]
         , getFourierMellinTransformGridRadialFreq =
-          [0 .. fromIntegral n]
-        , getFourierMellinTransformGridAngularFreq = [0 .. n]
+          [fromIntegral (-n) .. fromIntegral n]
+        , getFourierMellinTransformGridAngularFreq = [ (-n) .. n]
         }
       nullFilter = PolarSeparableFilter filterParams Null
       filters =
@@ -37,10 +37,11 @@ main = do
     magnitudeRecon
       imageSize
       imageSize
-      (1 * (0.1 ** 15))
+      (1 * (0.1 ** (read lrStr :: Double)))
       0.001
-      (VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img)
+      (normalizeImageU (-1,1) . VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img)
       filters
+      (read writeStepStr :: Int)
   let arr =
         IM.arrayToImage .
         listArray ((0, 0), (imageSize - 1, imageSize - 1)) . VU.toList $

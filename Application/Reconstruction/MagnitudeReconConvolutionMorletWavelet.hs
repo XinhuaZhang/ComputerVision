@@ -1,7 +1,7 @@
 import           Application.Reconstruction.Recon
 import           Control.Monad                    as M
 import           Control.Monad.Trans.Resource
-import           CV.Filter.FourierMellinTransform
+import           CV.Filter.MorletWavelet
 import           CV.IO.ImageIO
 import           CV.Utility.FFT
 import           Data.Array                       as Arr
@@ -11,19 +11,24 @@ import           Data.Conduit
 import           Data.Conduit.List                as CL
 import qualified Data.Image                       as IM
 import           Data.List                        as L
+import           Data.Vector.Storable             as VS
 import           Data.Vector.Unboxed              as VU
 import           System.Environment
 
+
 main = do
-  (imagePath:imageSizeStr:thresholdStr:lrStr:writeStepStr:_) <- getArgs
+  (imagePath:initReconPath:imageSizeStr:thresholdStr:lrStr:writeStepStr:_) <- getArgs
   let imageSize = read imageSizeStr :: Int
-      n = 8
+      m = 45
+      n = (3 * pi / 4) / 7
       filterParams =
-        FourierMellinTransformParamsGrid
-        { getFourierMellinTransformGridRows = imageSize
-        , getFourierMellinTransformGridCols = imageSize
-        , getFourierMellinTransformGridRadialFreq = [fromIntegral (-n) .. fromIntegral n]
-        , getFourierMellinTransformGridAngularFreq = [(-n) .. n]
+        MorletWaveletParams
+        { morletWaveletRows = imageSize
+        , morletWaveletCols = imageSize
+        , morletWaveletFreq = 3 * pi / 4
+        , morletWaveletGaussianScale = 0.125 * pi
+        , morletWaveletOrientation = [0,m .. 180 - m]
+        , morletWaveletScale = L.map (\x -> 2 ** x) [0 .. 3]
         }
       fftwWisdomPath = "fftw.dat"
       fftwWisdom = FFTWWisdomPath fftwWisdomPath
@@ -36,10 +41,21 @@ main = do
   (img1:_) <-
     runResourceT $
     sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
-  let imgVec1 = normalizeImage (-1,1) . VU.convert . VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img1
-      imgVec2 = VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img1
+  let imgVec1 = normalizeImage (-1,1) .
+        VU.convert . VU.map (:+ 0)  . toUnboxed . computeUnboxedS $
+        img1
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO FourierMellinTransformConvolution
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO MorletWaveletConvolution
+  initRecon <-
+    if L.null initReconPath
+      then return NULL
+      else do
+        (img2:_) <-
+          runResourceT $
+          sourceList [initReconPath] $$ readImageConduit False =$= CL.take 1
+        return $!
+          InitRecon . normalizeImage (-1,1) . VU.convert . VU.map (:+ 0)  . toUnboxed . computeUnboxedS $
+          img2
   recon <-
     magnitudeReconConvolution
       fftw
@@ -49,11 +65,11 @@ main = do
       (read thresholdStr :: Double)
       imgVec1
       (getFilterConvolutionList filters)
-      NULL
+      initRecon
       (read writeStepStr :: Int)
   let arr =
         IM.arrayToImage .
-        listArray ((0, 0), (imageSize - 1, imageSize - 1)) . VU.toList $
+        listArray ((0, 0), (imageSize - 1, imageSize - 1)) .
+        VS.toList . normalizeImage (0, 255) . VU.convert $
         recon :: IM.ComplexImage
-  IM.writeImage "MagnitudeReconComplex.pgm" arr
-  IM.writeImage "MagnitudeRecon.pgm" . IM.magnitude $ arr
+  IM.writeImage "MagnitudeRecon.pgm" . IM.realPart $ arr

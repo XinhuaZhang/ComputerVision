@@ -98,8 +98,12 @@ instance FilterConvolution MorletWaveletConvolution where
 
 morletWavelet :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
 morletWavelet freq scale ori a x y =
-  exp (0 :+ (freq * x' / a)) * (exp (-r / (2 * scale * scale) / (a * a)) :+ 0) /
-  (a :+ 0)
+  alpha * (exp (0 :+ (freq * x' / a)) - beta) * (exp (-r / (2 * s2) / (a * a)) :+ 0) /
+  (sqrt a :+ 0)
   where
     r = fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     x' = fromIntegral x * cos ori + fromIntegral y * sin ori
+    s2 = scale * scale
+    alpha = 1 / scale :+ 0 --  / (2 * pi * s2) :+ 0  --2 * pi * s2 * exp ((freq * freq - 1) * s2 / 2) :+ 0
+    beta = 0 -- (exp (-s2 / 2)) / (2 * pi * s2)
+      :+ 0

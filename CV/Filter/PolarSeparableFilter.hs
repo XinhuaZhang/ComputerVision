@@ -2,12 +2,14 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies      #-}
 
-module CV.Filter.PolarSeparableFilter where
+module CV.Filter.PolarSeparableFilter
+  ( module CV.Filter
+  , module CV.Filter.PolarSeparableFilter
+  ) where
 
 
 import           CV.Filter.GaussianFilter
-import           CV.FilterConvolution
-import           CV.FilterExpansion
+import           CV.Filter
 import           CV.Utility.Coordinates
 import           CV.Utility.FFT
 import           Data.Array.Repa          as R
@@ -18,6 +20,7 @@ import           Data.Vector.Storable     as VS
 import           Data.Vector.Unboxed      as VU
 import           Foreign.Storable
 import           Prelude                  as P
+import Control.Monad as M
 
 data PolarSeparableFilterName
   = Fans
@@ -102,12 +105,11 @@ data FourierMellinTransformParamsGridC = FourierMellinTransformParamsGridC
   , getFourierMellinTransformGridCAngularFreq :: ![Int]
   } deriving (Show)
 
-type PolarSeparableFilterExpansionAxis = PolarSeparableFilter PolarSeparableFilterParamsAxis V4SeparableFilter
-type PolarSeparableFilterConvolutionAxis = PolarSeparableFilter PolarSeparableFilterParamsAxisConvolution V4SeparableFilterConvolution
-type PolarSeparableFilterExpansionAxisInteger = PolarSeparableFilter PolarSeparableFilterParamsAxisInteger V4SeparableFilter
-type PolarSeparableFilterExpansionGrid = PolarSeparableFilter PolarSeparableFilterParamsGrid V4SeparableFilter
-type FourierMellinTransformExpansionGrid = PolarSeparableFilter FourierMellinTransformParamsGrid V4SeparableFilter
-type FourierMellinTransformExpansionGridC =PolarSeparableFilter  FourierMellinTransformParamsGridC V4SeparableFilter
+-- type PolarSeparableFilterExpansionAxis = PolarSeparableFilter PolarSeparableFilterParamsAxis V4SeparableFilter
+-- type PolarSeparableFilterConvolutionAxis = PolarSeparableFilter PolarSeparableFilterParamsAxisConvolution V4SeparableFilterConvolution
+-- type PolarSeparableFilterExpansionAxisInteger = PolarSeparableFilter PolarSeparableFilterParamsAxisInteger V4SeparableFilter
+type PolarSeparableFilterGridExpansion = Filter PolarSeparableFilterParamsGrid [[[VU.Vector (Complex Double)]]]
+type PolarSeparableFilterGridConvolution = Filter PolarSeparableFilterParamsGrid [[[VS.Vector (Complex Double)]]]
 
 -- this function is to make sure that the params sequence is correct
 {-# INLINE generateParamsSet #-}
@@ -168,10 +170,9 @@ angularFunc freq x y =
 radialFunc :: Double -> Int -> Int -> (Int -> Int -> Complex Double)
 radialFunc scale af rFreq x y
   | r == 0 = 1
-  | otherwise = exp (0 :+  fromIntegral rFreq * (log r) )
-  -- ejx ((2 * pi) * fromIntegral rFreq * r / (3 * scale + r0)) -- /
-  -- ((2 * scale + r0) :+ 0) *
-  -- 2
+  | otherwise = exp (0 :+ fromIntegral rFreq * (log r) ) -- ejx ((2 * pi) * fromIntegral rFreq * r / (20 * scale + r0)) -- /
+-- ((2 * scale + r0) :+ 0) *
+-- 2
   where
     r = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     r0 = 0 --((1 - exp (-0.01 * fromIntegral (abs af))) * 75 * scale) / pi
@@ -197,7 +198,7 @@ pinwheels :: Double -> Int -> Int -> (Int -> Int -> Complex Double)
 pinwheels scale rf af x y
   | scale == 0 = angularFunc af x y * radialFunc scale af rf x y
   | otherwise =
-    -- real2Complex (gaussian2D' af rf scale x y) *
+    real2Complex (gaussian2D''  rf scale x y) *
     angularFunc af x y * radialFunc scale af rf x y
     -- real2Complex (gaussian2D scale x y) * angularFunc af x y * radialFunc scale af rf x y
 
@@ -299,7 +300,7 @@ makeFilter
 makeFilter fftw params@(PolarSeparableFilterParams (ny, nx) downSampleFactor scale rf af _name) =
   fmap (PolarSeparableFilter params . fromUnboxed (Z :. ny :. nx) . VS.convert) .
   dft2d fftw ny nx . VS.fromListN (ny * nx) $
-  makeFilterList ny' nx' (getFilterFunc params scale rf af)
+  makeFilterConvolutionList ny' nx' (getFilterFunc params scale rf af)
   where
     ny' = div ny downSampleFactor
     nx' = div nx downSampleFactor
@@ -433,90 +434,90 @@ makeFilter fftw params@(PolarSeparableFilterParams (ny, nx) downSampleFactor sca
 
 -- V4 Filter
 
-instance FilterExpansion PolarSeparableFilterExpansionAxis where
-  type FilterParameter PolarSeparableFilterExpansionAxis = PolarSeparableFilterParamsAxis
-  type FilterType PolarSeparableFilterExpansionAxis = V4SeparableFilter
-  {-# INLINE makeFilter #-}
-  makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsAxis rows cols pf scales freqs angles) _) (centerR, centerC) =
-    PolarSeparableFilter params .
-    V4PolarSeparableFilterAxis (L.map fromIntegral freqs) $
-    [ [ VU.fromListN (cols * rows) $
-       [ pinwheelsAngle scale freq angle pf (c - centerC) (r - centerR)
-       | r <- [0 .. rows - 1]
-       , c <- [0 .. cols - 1] ]
-      | freq <- freqs ]
-    | scale <- scales
-    , angle <- radAngles2 ]
-    where
-      radAngles = L.map deg2Rad angles
-      radAngles2 = radAngles L.++ L.map (+ (pi / 2)) radAngles
-  getFilterSize (PolarSeparableFilter params _) = undefined -- getFilterNumList params * 2
-  getFilterParameter (PolarSeparableFilter params _) = params
-  {-# INLINE getFilterVectors #-}
-  getFilterVectors (PolarSeparableFilter _ vecs) = vecs
-  {-# INLINE changeSizeParameter #-}
-  changeSizeParameter rows cols (PolarSeparableFilter (PolarSeparableFilterParamsAxis _ _ pf scaleSet freqs ams) vecs) =
-    PolarSeparableFilter
-      (PolarSeparableFilterParamsAxis rows cols pf scaleSet freqs ams)
-      vecs
+-- instance FilterExpansion PolarSeparableFilterExpansionAxis where
+--   type FilterParameter PolarSeparableFilterExpansionAxis = PolarSeparableFilterParamsAxis
+--   type FilterType PolarSeparableFilterExpansionAxis = V4SeparableFilter
+--   {-# INLINE makeFilter #-}
+--   makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsAxis rows cols pf scales freqs angles) _) (centerR, centerC) =
+--     PolarSeparableFilter params .
+--     V4PolarSeparableFilterAxis (L.map fromIntegral freqs) $
+--     [ [ VU.fromListN (cols * rows) $
+--        [ pinwheelsAngle scale freq angle pf (c - centerC) (r - centerR)
+--        | r <- [0 .. rows - 1]
+--        , c <- [0 .. cols - 1] ]
+--       | freq <- freqs ]
+--     | scale <- scales
+--     , angle <- radAngles2 ]
+--     where
+--       radAngles = L.map deg2Rad angles
+--       radAngles2 = radAngles L.++ L.map (+ (pi / 2)) radAngles
+--   getFilterSize (PolarSeparableFilter params _) = undefined -- getFilterNumList params * 2
+--   getFilterParameter (PolarSeparableFilter params _) = params
+--   {-# INLINE getFilterVectors #-}
+--   getFilterVectors (PolarSeparableFilter _ vecs) = vecs
+--   {-# INLINE changeSizeParameter #-}
+--   changeSizeParameter rows cols (PolarSeparableFilter (PolarSeparableFilterParamsAxis _ _ pf scaleSet freqs ams) vecs) =
+--     PolarSeparableFilter
+--       (PolarSeparableFilterParamsAxis rows cols pf scaleSet freqs ams)
+--       vecs
 
-instance FilterConvolution PolarSeparableFilterConvolutionAxis where
-  type FilterConvolutionParamsType PolarSeparableFilterConvolutionAxis = PolarSeparableFilterParamsAxisConvolution
-  {-# INLINE makeConvolutionFilter #-}
-  makeConvolutionFilter params@(PolarSeparableFilterParamsAxisConvolution rows cols pf scales freqs angles) =
-    PolarSeparableFilter params .
-    V4PolarSeparableFilterConvolutionAxis
-      (rows, cols)
-      (L.map fromIntegral freqs) $
-    [ [ VS.fromListN (cols * rows) $
-       makeFilterList rows cols (pinwheelsAngle scale freq angle pf)
-      | freq <- freqs ]
-    | scale <- scales
-    , angle <- radAngles2 ]
-    where
-      radAngles = L.map deg2Rad angles
-      radAngles2 = radAngles L.++ L.map (+ (pi / 2)) radAngles
-  getConvolutionFilterSize (PolarSeparableFilter _params _) = undefined -- getFilterNumList params * 2
-  {-# INLINE changeSizeParameterConvolution #-}
-  changeSizeParameterConvolution rows cols (PolarSeparableFilter (PolarSeparableFilterParamsAxisConvolution _ _ pf scaleSet freqs ams) vecs) =
-    PolarSeparableFilter
-      (PolarSeparableFilterParamsAxisConvolution rows cols pf scaleSet freqs ams)
-      vecs
+-- instance FilterConvolution PolarSeparableFilterConvolutionAxis where
+--   type FilterConvolutionParamsType PolarSeparableFilterConvolutionAxis = PolarSeparableFilterParamsAxisConvolution
+--   {-# INLINE makeConvolutionFilter #-}
+--   makeConvolutionFilter params@(PolarSeparableFilterParamsAxisConvolution rows cols pf scales freqs angles) =
+--     PolarSeparableFilter params .
+--     V4PolarSeparableFilterConvolutionAxis
+--       (rows, cols)
+--       (L.map fromIntegral freqs) $
+--     [ [ VS.fromListN (cols * rows) $
+--        makeFilterList rows cols (pinwheelsAngle scale freq angle pf)
+--       | freq <- freqs ]
+--     | scale <- scales
+--     , angle <- radAngles2 ]
+--     where
+--       radAngles = L.map deg2Rad angles
+--       radAngles2 = radAngles L.++ L.map (+ (pi / 2)) radAngles
+--   getConvolutionFilterSize (PolarSeparableFilter _params _) = undefined -- getFilterNumList params * 2
+--   {-# INLINE changeSizeParameterConvolution #-}
+--   changeSizeParameterConvolution rows cols (PolarSeparableFilter (PolarSeparableFilterParamsAxisConvolution _ _ pf scaleSet freqs ams) vecs) =
+--     PolarSeparableFilter
+--       (PolarSeparableFilterParamsAxisConvolution rows cols pf scaleSet freqs ams)
+--       vecs
 
 
-instance FilterExpansion PolarSeparableFilterExpansionAxisInteger where
-  type FilterParameter PolarSeparableFilterExpansionAxisInteger = PolarSeparableFilterParamsAxisInteger
-  type FilterType PolarSeparableFilterExpansionAxisInteger = V4SeparableFilter
-  {-# INLINE makeFilter #-}
-  makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsAxisInteger rows cols scales freqs rms ams) _) (centerR, centerC) =
-    PolarSeparableFilter params .
-    V4PolarSeparableFilterAxis (L.map fromIntegral freqs) $
-    [ [ VU.fromListN
-         (cols * rows)
-         [ conjugate $ pinwheelsAxis scale freq rm am (c - centerC) (r - centerR)
-         | r <- [0 .. rows - 1]
-         , c <- [0 .. cols - 1] ]
-      | freq <- freqs ]
-    | scale <- scales
-    , (rm, am) <- L.zip rms ams ]
-  getFilterSize (PolarSeparableFilter params _) = undefined --  getFilterNumList params * 2
-  getFilterParameter (PolarSeparableFilter params _) = params
-  {-# INLINE getFilterVectors #-}
-  getFilterVectors (PolarSeparableFilter _ vecs) = vecs
-  {-# INLINE changeSizeParameter #-}
-  changeSizeParameter rows cols (PolarSeparableFilter (PolarSeparableFilterParamsAxisInteger _ _ scaleSet freqs rms ams) vecs) =
-    PolarSeparableFilter
-      (PolarSeparableFilterParamsAxisInteger rows cols scaleSet freqs rms ams)
-      vecs
+-- instance FilterExpansion PolarSeparableFilterExpansionAxisInteger where
+--   type FilterParameter PolarSeparableFilterExpansionAxisInteger = PolarSeparableFilterParamsAxisInteger
+--   type FilterType PolarSeparableFilterExpansionAxisInteger = V4SeparableFilter
+--   {-# INLINE makeFilter #-}
+--   makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsAxisInteger rows cols scales freqs rms ams) _) (centerR, centerC) =
+--     PolarSeparableFilter params .
+--     V4PolarSeparableFilterAxis (L.map fromIntegral freqs) $
+--     [ [ VU.fromListN
+--          (cols * rows)
+--          [ conjugate $ pinwheelsAxis scale freq rm am (c - centerC) (r - centerR)
+--          | r <- [0 .. rows - 1]
+--          , c <- [0 .. cols - 1] ]
+--       | freq <- freqs ]
+--     | scale <- scales
+--     , (rm, am) <- L.zip rms ams ]
+--   getFilterSize (PolarSeparableFilter params _) = undefined --  getFilterNumList params * 2
+--   getFilterParameter (PolarSeparableFilter params _) = params
+--   {-# INLINE getFilterVectors #-}
+--   getFilterVectors (PolarSeparableFilter _ vecs) = vecs
+--   {-# INLINE changeSizeParameter #-}
+--   changeSizeParameter rows cols (PolarSeparableFilter (PolarSeparableFilterParamsAxisInteger _ _ scaleSet freqs rms ams) vecs) =
+--     PolarSeparableFilter
+--       (PolarSeparableFilterParamsAxisInteger rows cols scaleSet freqs rms ams)
+--       vecs
 
-{-# INLINE getFilterByName #-}
+-- {-# INLINE getFilterByName #-}
 
-getFilterByName
-  :: PolarSeparableFilterName
-  -> (Double -> Int -> Int -> (Int -> Int -> Complex Double))
-getFilterByName Fans      = fans
-getFilterByName Bullseye  = bullseye
-getFilterByName Pinwheels = pinwheels
+-- getFilterByName
+--   :: PolarSeparableFilterName
+--   -> (Double -> Int -> Int -> (Int -> Int -> Complex Double))
+-- getFilterByName Fans      = fans
+-- getFilterByName Bullseye  = bullseye
+-- getFilterByName Pinwheels = pinwheels
 
 -- {-# INLINE getFilterNumList #-}
 
@@ -524,123 +525,72 @@ getFilterByName Pinwheels = pinwheels
 -- getFilterNumList (PolarSeparableFilterParamsAxis _ _ scales freqs rms ) =
 --   L.length scales * L.length freqs * (min (L.length rms) (L.length ams)) * 2
 
-instance FilterExpansion PolarSeparableFilterExpansionGrid where
-  type FilterParameter PolarSeparableFilterExpansionGrid = PolarSeparableFilterParamsGrid
-  type FilterType PolarSeparableFilterExpansionGrid  = V4SeparableFilter
-  {-# INLINE makeFilter #-}
-  makeFilter (PolarSeparableFilter params@(PolarSeparableFilterParamsGrid rows cols scales rfs afs) _) (centerR, centerC) =
-    PolarSeparableFilter params .
-    V4PolarSeparableFilterGrid (L.map fromIntegral rfs, L.map fromIntegral afs) $
-    [ [ [ VU.fromListN
-      (cols * rows)
-      [ pinwheels scale rf af (c - centerC) (r - centerR)
-      | r <- [0 .. rows - 1]
-      , c <- [0 .. cols - 1]
-      ]
-    | af <- afs
-    ]
-    | rf <- rfs
-    ]
-    | scale <- scales
-    ]
-  getFilterSize (PolarSeparableFilter params _) = undefined
-  getFilterParameter (PolarSeparableFilter params _) = params
-  {-# INLINE getFilterVectors #-}
-  getFilterVectors (PolarSeparableFilter _ vecs) = vecs
-  {-# INLINE changeSizeParameter #-}
-  changeSizeParameter rows cols (PolarSeparableFilter (PolarSeparableFilterParamsGrid _ _ scaleSet rfSet afSet) vecs) =
-    PolarSeparableFilter
-      (PolarSeparableFilterParamsGrid rows cols scaleSet rfSet afSet)
-      vecs
-
-
-
-
--- Fourier-Mellin Transform
-
-{-# INLINE fourierMellinTransform #-}
-
-fourierMellinTransform :: Double -> Double -> Int -> Int -> Int -> Complex Double
-fourierMellinTransform scale rf af x y
-  | x == 0 && y == 0 = 0
-  | otherwise =
-    -- ((fromIntegral x :+ fromIntegral y) ** (fromIntegral (-af) :+ 0)) *
-    -- ((sqrt (fromIntegral x ^ (2 :: Int) + fromIntegral y ^ (2 :: Int))) **
-    --  (((fromIntegral af - 1) :+ (-rf)))) /
-    -- (2 * pi)
-       -- (0 :+ disk scale x y) *
-       (r ** ((-0.5) :+ (-rf))) *
-       -- exp (0 :+ ((-rf) * log r)) *
-       exp (0 :+ (fromIntegral (-af) * theta))
-       where
-         r = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
-         theta = angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)
-
-
-
-{-# INLINE fourierMellinTransformC #-}
-
-fourierMellinTransformC :: Double -> Int -> Int -> Int -> Int -> Complex Double
-fourierMellinTransformC scale rf af x y
-  | r == 0 = 0
-  | otherwise = -- (0 :+ disk scale x y) *
-    (r ** ((-0.5) :+ (fromIntegral (rf)))) *
-    exp (0 :+ (fromIntegral (af) * theta))
-  where
-    r = sqrt . P.fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
-    theta = angleFunctionRad (P.fromIntegral x) (P.fromIntegral y)
-
-
-instance FilterExpansion FourierMellinTransformExpansionGrid where
-  type FilterParameter FourierMellinTransformExpansionGrid = FourierMellinTransformParamsGrid
-  type FilterType FourierMellinTransformExpansionGrid  = V4SeparableFilter
-  {-# INLINE makeFilter #-}
-  makeFilter (PolarSeparableFilter params@(FourierMellinTransformParamsGrid rows cols scales rfs afs) _) (centerR, centerC) =
-    PolarSeparableFilter params .
-    FourierMellinTransform ( rfs, L.map fromIntegral afs) $
-    [ [ [ VU.fromListN
-           (cols * rows) $
-          --  makeFilterList rows cols (fourierMellinTransform scale rf af)
-           [ fourierMellinTransform scale rf af (c - centerC) (r - centerR)
-           | r <- [0 .. rows - 1]
-           , c <- [0 .. cols - 1] ]
+instance FilterExpansion PolarSeparableFilterGridExpansion where
+  type FilterExpansionInputType PolarSeparableFilterGridExpansion = [VU.Vector (Complex Double)]
+  type FilterExpansionOutputType PolarSeparableFilterGridExpansion = [[[[Complex Double]]]]
+  type FilterExpansionParameters PolarSeparableFilterGridExpansion = PolarSeparableFilterParamsGrid
+  type FilterExpansionFilterType PolarSeparableFilterGridExpansion = VU.Vector (Complex Double)
+  {-# INLINE makeFilterExpansion #-}
+  makeFilterExpansion params@(PolarSeparableFilterParamsGrid rows cols scales rfs afs) rCenter cCenter =
+    Filter params $!
+    [ [ [ VU.fromListN (rows * cols) $!
+         makeFilterExpansionList
+           rows
+           cols
+           rCenter
+           cCenter
+           (pinwheels scale rf af)
         | af <- afs ]
       | rf <- rfs ]
     | scale <- scales ]
-  getFilterSize (PolarSeparableFilter params _) = undefined
-  getFilterParameter (PolarSeparableFilter params _) = params
-  {-# INLINE getFilterVectors #-}
-  getFilterVectors (PolarSeparableFilter _ vecs) = vecs
-  {-# INLINE changeSizeParameter #-}
-  changeSizeParameter rows cols (PolarSeparableFilter (FourierMellinTransformParamsGrid _ _ scaleSet rfSet afSet) vecs) =
-    PolarSeparableFilter
-      (FourierMellinTransformParamsGrid rows cols scaleSet rfSet afSet)
-      vecs
+  {-# INLINE getFilterExpansionNum #-}
+  getFilterExpansionNum (Filter (PolarSeparableFilterParamsGrid _ _ scales rfs afs) _) =
+    L.length scales * L.length rfs * L.length afs
+  {-# INLINE applyFilterExpansion #-}
+  applyFilterExpansion (Filter _ filters) =
+    L.map (\x -> L.map (L.map (L.map (VU.sum . VU.zipWith (*) x))) filters)
+  {-# INLINE getFilterExpansionList #-}
+  getFilterExpansionList = L.concatMap L.concat . getFilter
 
 
-instance FilterExpansion FourierMellinTransformExpansionGridC where
-  type FilterParameter FourierMellinTransformExpansionGridC = FourierMellinTransformParamsGridC
-  type FilterType FourierMellinTransformExpansionGridC = V4SeparableFilter
-  {-# INLINE makeFilter #-}
-  makeFilter (PolarSeparableFilter params@(FourierMellinTransformParamsGridC rows cols scales rfs afs) _) (centerR, centerC) =
-    PolarSeparableFilter params .
-    FourierMellinTransform (L.map fromIntegral rfs, L.map fromIntegral afs) $
-    [ [ [ VU.fromListN
-           (cols * rows)
-           [ fourierMellinTransformC scale rf af (c - centerC) (r - centerR)
-           | r <- [0 .. rows - 1]
-           , c <- [0 .. cols - 1] ]
-        | af <- afs -- L.++ (L.map (\x -> -x) . L.tail $ afs)
-          ]
-      | rf <- rfs -- L.++ (L.map (\x -> -x) . L.tail $ rfs)
-        ]
-    | scale <- scales ]
-  getFilterSize (PolarSeparableFilter params _) = undefined
-  getFilterParameter (PolarSeparableFilter params _) = params
-  {-# INLINE getFilterVectors #-}
-  getFilterVectors (PolarSeparableFilter _ vecs) = vecs
-  {-# INLINE changeSizeParameter #-}
-  changeSizeParameter rows cols (PolarSeparableFilter (FourierMellinTransformParamsGridC _ _ scaleSet rfSet afSet) vecs) =
-    PolarSeparableFilter
-      (FourierMellinTransformParamsGridC rows cols scaleSet rfSet afSet)
-      vecs
+instance FilterConvolution PolarSeparableFilterGridConvolution where
+  type FilterConvolutionInputType PolarSeparableFilterGridConvolution = [VS.Vector (Complex Double)]
+  type FilterConvolutionOutputType PolarSeparableFilterGridConvolution = [[[[VS.Vector (Complex Double)]]]]
+  type FilterConvolutionParameters PolarSeparableFilterGridConvolution = PolarSeparableFilterParamsGrid
+  type FilterConvolutionFilterType PolarSeparableFilterGridConvolution = VS.Vector (Complex Double)
+  {-# INLINE makeFilterConvolution #-}
+  makeFilterConvolution fftw params@(PolarSeparableFilterParamsGrid rows cols scales rfs afs) filterType =
+    Filter params <$!>
+    M.mapM
+      (\scale ->
+          M.mapM
+            (\rf ->
+                M.mapM
+                  (dft2d fftw rows cols .
+                   VS.fromListN (rows * cols) .
+                   conjugateFunc filterType .
+                   makeFilterConvolutionList rows cols . pinwheels scale rf)
+                  afs)
+            rfs)
+      scales
+  {-# INLINE getFilterConvolutionNum #-}
+  getFilterConvolutionNum (Filter (PolarSeparableFilterParamsGrid _ _ scales rfs afs) _) =
+    L.length scales * L.length rfs * L.length afs
+  {-# INLINE applyFilterConvolution #-}
+  applyFilterConvolution fftw (Filter (PolarSeparableFilterParamsGrid rows cols _ _ _) filters) xs = do
+    ys <- M.mapM (dft2d fftw rows cols) xs
+    M.mapM
+      (\x ->
+          M.mapM (M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x))) filters)
+      ys
+  {-# INLINE getFilterConvolutionList #-}
+  getFilterConvolutionList = L.concatMap L.concat . getFilter
+
+
+{-# INLINE conjugateFunc #-}
+conjugateFunc :: ConvolutionalFilterType
+              -> ([Complex Double] -> [Complex Double])
+conjugateFunc x =
+  case x of
+    Normal -> id
+    Conjugate -> L.map conjugate

@@ -1,7 +1,7 @@
 import           Application.Reconstruction.Recon
 import           Control.Monad                    as M
 import           Control.Monad.Trans.Resource
-import           CV.Filter.FourierMellinTransform
+import           CV.Filter.PolarSeparableFilter
 import           CV.IO.ImageIO
 import           CV.Utility.FFT
 import           Data.Array                       as Arr
@@ -19,11 +19,12 @@ main = do
   let imageSize = read imageSizeStr :: Int
       n = 8
       filterParams =
-        FourierMellinTransformParamsGrid
-        { getFourierMellinTransformGridRows = imageSize
-        , getFourierMellinTransformGridCols = imageSize
-        , getFourierMellinTransformGridRadialFreq = [fromIntegral (-n) .. fromIntegral n]
-        , getFourierMellinTransformGridAngularFreq = [(-n) .. n]
+        PolarSeparableFilterParamsGrid
+        { getPolarSeparableFilterGridRows = imageSize
+        , getPolarSeparableFilterGridCols = imageSize
+        , getPolarSeparableFilterGridScale = [0.1]
+        , getPolarSeparableFilterGridRadialFreq = [0 .. 7]
+        , getPolarSeparableFilterGridAngularFreq = [0 .. 7]
         }
       fftwWisdomPath = "fftw.dat"
       fftwWisdom = FFTWWisdomPath fftwWisdomPath
@@ -36,10 +37,11 @@ main = do
   (img1:_) <-
     runResourceT $
     sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
-  let imgVec1 = normalizeImage (-1,1) . VU.convert . VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img1
-      imgVec2 = VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img1
+  let imgVec1 =
+        normalizeImage (-1, 1) . VU.convert . VU.map (:+ 0) . toUnboxed . computeUnboxedS $
+        img1
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO FourierMellinTransformConvolution
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO PolarSeparableFilterGridConvolution
   recon <-
     magnitudeReconConvolution
       fftw
@@ -51,6 +53,7 @@ main = do
       (getFilterConvolutionList filters)
       NULL
       (read writeStepStr :: Int)
+      ""
   let arr =
         IM.arrayToImage .
         listArray ((0, 0), (imageSize - 1, imageSize - 1)) . VU.toList $

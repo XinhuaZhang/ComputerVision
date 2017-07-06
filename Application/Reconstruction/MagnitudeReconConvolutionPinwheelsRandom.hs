@@ -1,7 +1,7 @@
 import           Application.Reconstruction.Recon
 import           Control.Monad                    as M
 import           Control.Monad.Trans.Resource
-import           CV.Filter.FourierMellinTransform
+import           CV.Filter.PolarSeparableFilter
 import           CV.IO.ImageIO
 import           CV.Utility.FFT
 import           Data.Array                       as Arr
@@ -13,33 +13,41 @@ import qualified Data.Image                       as IM
 import           Data.List                        as L
 import           Data.Vector.Unboxed              as VU
 import           System.Environment
+import System.Random
+
+generateImage :: Int -> Int -> Double -> Double -> IO (VU.Vector Double)
+generateImage rows cols minVal maxVal =
+  VU.fromListN (rows * cols) <$>
+  M.replicateM (rows * cols) (randomRIO (minVal, maxVal))
+
 
 main = do
-  (imagePath:imageSizeStr:thresholdStr:lrStr:writeStepStr:_) <- getArgs
+  (imageSizeStr:thresholdStr:lrStr:writeStepStr:_) <- getArgs
   let imageSize = read imageSizeStr :: Int
       n = 8
       filterParams =
-        FourierMellinTransformParamsGrid
-        { getFourierMellinTransformGridRows = imageSize
-        , getFourierMellinTransformGridCols = imageSize
-        , getFourierMellinTransformGridRadialFreq = [fromIntegral (-n) .. fromIntegral n]
-        , getFourierMellinTransformGridAngularFreq = [(-n) .. n]
+        PolarSeparableFilterParamsGrid
+        { getPolarSeparableFilterGridRows = imageSize
+        , getPolarSeparableFilterGridCols = imageSize
+        , getPolarSeparableFilterGridScale = [1]
+        , getPolarSeparableFilterGridRadialFreq = [0 .. 15]
+        , getPolarSeparableFilterGridAngularFreq = [0 .. 15]
         }
       fftwWisdomPath = "fftw.dat"
       fftwWisdom = FFTWWisdomPath fftwWisdomPath
-  (img:_) <-
-    runResourceT $
-    sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
-  let imgVec = VU.convert . VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img
+  img <- generateImage imageSize imageSize 0 255
+  let imgVec = VU.convert . VU.map (:+ 0) $ img
   fftwInit <- initializefftw FFTWWisdomNull
   generateWisdom fftwInit fftwWisdomPath imageSize imageSize imgVec -- This resets imgVec
-  (img1:_) <-
-    runResourceT $
-    sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
-  let imgVec1 = normalizeImage (-1,1) . VU.convert . VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img1
-      imgVec2 = VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img1
+  img1 <- generateImage imageSize imageSize 0 255
+  let imgVec1 = normalizeImage (-1, 1) . VU.convert . VU.map (:+ 0) $ img1
+      imgArr =
+        IM.arrayToImage .
+        listArray ((0, 0), (imageSize - 1, imageSize - 1)) . VU.toList $
+        img1 :: IM.GrayImage
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO FourierMellinTransformConvolution
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO PolarSeparableFilterGridConvolution
+  IM.writeImage "RandomImage.pgm" imgArr
   recon <-
     magnitudeReconConvolution
       fftw
@@ -51,9 +59,11 @@ main = do
       (getFilterConvolutionList filters)
       NULL
       (read writeStepStr :: Int)
+      "Random_"
   let arr =
         IM.arrayToImage .
         listArray ((0, 0), (imageSize - 1, imageSize - 1)) . VU.toList $
         recon :: IM.ComplexImage
-  IM.writeImage "MagnitudeReconComplex.pgm" arr
-  IM.writeImage "MagnitudeRecon.pgm" . IM.magnitude $ arr
+      
+  IM.writeImage "MagnitudeReconRandom.pgm" . IM.magnitude $ arr
+  

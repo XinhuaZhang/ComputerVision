@@ -3,6 +3,7 @@ LIBS="-lstdc++ -llapack -lblas -lfftw3 -lfftw3f -lfftw3l -lm" #
 # ghc -i../.. -j4 -O2 $LIBS Main.hs -o main
 ghc -i../.. -j4 -O2 $LIBS PlotGabor.hs -o plotGabor
 ghc -i../.. -j4 -O2 $LIBS PlotMorletWavelet.hs -o plotMorletWavelet
+ghc -i../.. -j4 -O2 $LIBS PlotPinwheels.hs -o plotPinwheels
 
 # ghc -i../.. -j4 -O2 PlotFilteredImage.hs -o plot
 
