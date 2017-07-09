@@ -1,19 +1,9 @@
 {-# LANGUAGE BangPatterns #-}
-module CV.Statistics.Histogram
-  ( KdHistParams(..)
-  , KdHist(..)
-  , build
-  , getNumDims
-  , intersection
-  , computeMarginalHistogram
-  , computeSVMKernel
-  , entropy
-  , mutualInformation
-  ) where
+
+module CV.Statistics.Histogram where
 
 import           Control.Arrow
 import           Control.DeepSeq
-import           CV.Utility.Parallel
 import           Data.Binary
 import           Data.Int
 import           Data.List           as L
@@ -25,8 +15,8 @@ type HistBinType = Word
 data KdHistParams = KdHistParams
   { numBins         :: !Int
   , binWidth        :: !Double
-  , negativeBinFlag :: !Bool     -- true: 2*numBins - 1 bins; false: numBins bins
-  , vecLen          :: !Int      -- the length of a (Verctor Int) that will be convert to an Int.
+  , negativeBinFlag :: !Bool -- true: 2*numBins - 1 bins; false: numBins bins
+  , vecLen          :: !Int -- the length of a (Verctor Int) that will be convert to an Int.
   } deriving (Show, Read)
 
 instance NFData KdHistParams where
@@ -164,9 +154,12 @@ merge =
   L.map (uncurry Bin . (L.head *** L.sum) . L.unzip) .
   L.groupBy (\x y -> fst x == fst y) . L.sortOn fst
 
--- Suppose the histogram is P(x1,x2..xn), given indexes [i1,i2..im]
--- where 1 <= i <= n, the result marginal distribution is
+
+-- Suppose the histogram is P(x0,x1..xn), given indexes [i1,i2..im]
+-- where 0 <= i <= n, the result marginal distribution is
 -- P(xi1,xi2..xim)
+{-# INLINE computeMarginalHistogram #-}
+
 computeMarginalHistogram
   :: (Num a)
   => KdHist a -> [Int] -> KdHist a
@@ -181,29 +174,3 @@ computeMarginalHistogram (KdHist p bins) index =
     _ ->
       error
         "computeMarginalHistogram: this histogram is compressed and hence cannot be used to compute mariginal histogram."
-
-computeSVMKernel
-  :: (Ord a, Num a, NFData a)
-  => ParallelParams -> [KdHist a] -> [[a]]
-computeSVMKernel parallelParams xs =
-  parMapChunk parallelParams rdeepseq (\x -> P.map (intersection x) xs) xs
-
-entropy
-  :: (Num a, Floating a)
-  => KdHist a -> a
-entropy (KdHist _ bins) = -1 * (L.sum . L.map ((\x -> x * log x) . (/ s)) $ xs)
-  where
-    xs = L.map (\(Bin _ n) -> n) bins
-    s = L.sum xs
-
--- Only works for 2 dimension histogram.
-mutualInformation :: KdHist Int -> Double
-mutualInformation hist
-  | getNumDims hist == 2 =
-    (L.sum . L.map (entropy . computeMarginalHistogram hist') $ indies) -
-    entropy hist'
-  | otherwise =
-    error "mutualInformation: the dimension of the histogram is not 2."
-  where
-    hist' = fmap fromIntegral hist
-    indies = [[0], [1]]

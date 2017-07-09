@@ -78,7 +78,7 @@ gaussian2D'' freq sd i j -- =
     exp (-(sqrt r - r') ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
   where
     r = sqrt $ fromIntegral (i * i + j * j)
-    r' = 5 -- ((1 - exp (-0.015 * fromIntegral (abs freq))) * 100 * sd) / pi
+    r' = 0 -- ((1 - exp (-0.015 * fromIntegral (abs freq))) * 100 * sd) / pi
 
 {-# INLINE gaussian2DRing #-}
 

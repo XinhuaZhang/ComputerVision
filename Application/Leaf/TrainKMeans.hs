@@ -4,7 +4,8 @@ import           Classifier.LibLinear
 import           Control.Monad                                as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Filter.FourierMellinTransform
+--import           CV.Filter.FourierMellinTransform
+import           CV.Filter.PolarSeparableFilter
 import           CV.Filter.GaussianFilter
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
@@ -23,7 +24,8 @@ main = do
   args <- getArgs
   params <- parseArgs args
   filterParams <-
-    fmap (\x -> read x :: FourierMellinTransformParamsGrid) . readFile $
+    fmap (\x -> read x :: PolarSeparableFilterParamsGrid -- FourierMellinTransformParamsGrid
+         ) . readFile $
     (paramsFileName params)
   kmeansModel <- decodeFile (kmeansFile params)
   let parallelParams =
@@ -38,12 +40,12 @@ main = do
           (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO FourierMellinTransformConvolution
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
   gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   featurePtr <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
+    filterConduit parallelParams fftw [filters] gFilters True (stride params) =$=
     kmeansConduit parallelParams kmeansModel =$=
     featurePtrConduitP parallelParams =$=
     CL.consume

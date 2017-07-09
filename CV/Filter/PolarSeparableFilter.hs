@@ -88,7 +88,7 @@ data PolarSeparableFilterParamsGrid = PolarSeparableFilterParamsGrid
   , getPolarSeparableFilterGridScale       :: ![Double]
   , getPolarSeparableFilterGridRadialFreq  :: ![Int]
   , getPolarSeparableFilterGridAngularFreq :: ![Int]
-  } deriving (Show)
+  } deriving (Show,Read)
 
 -- type PolarSeparableFilterExpansionAxis = PolarSeparableFilter PolarSeparableFilterParamsAxis V4SeparableFilter
 -- type PolarSeparableFilterConvolutionAxis = PolarSeparableFilter PolarSeparableFilterParamsAxisConvolution V4SeparableFilterConvolution

@@ -25,7 +25,7 @@ import           Data.Vector.Storable.Mutable as VSM
 data FFTWWisdom
   = FFTWWisdomPath String
   | FFTWWisdomNull
-
+  
 data FFTW = FFTW
   { fftwLock       :: !(MVar ())
   , fftwWisdomFlag :: !Bool

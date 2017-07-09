@@ -370,17 +370,26 @@ eigCovConduit
   => ParallelParams
   -> Int
   -> Conduit (a, [VU.Vector Double]) (ResourceT IO) (a, VU.Vector Double)
-eigCovConduit parallelParams numPrincipal = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\(label', vecs) ->
-                    let (PCAMatrix _ mat, _, _) = pcaSVDS numPrincipal vecs
-                    in (label', VU.concat . V.toList $ mat))
-                xs
-        sourceList ys
-        eigCovConduit parallelParams numPrincipal)
+eigCovConduit parallelParams numPrincipal =
+  awaitForever
+    (\(label', vecs) ->
+        let (PCAMatrix _ mat, _, _) = pcaSVD parallelParams numPrincipal vecs
+        in yield (label', VU.concat . V.toList $ mat))
+-- xs <- CL.take (batchSize parallelParams)
+-- unless
+--   (L.null xs)
+--   (do let ys =
+--             parMapChunk
+--               parallelParams
+--               rdeepseq
+--               (\(label', vecs) ->
+--                   let (PCAMatrix _ mat, _, _) = pcaSVDS numPrincipal vecs
+--                   in (label',VU.concat . V.toList $ mat))
+--               xs
+--       sourceList ys
+--       eigCovConduit parallelParams numPrincipal)
+-- where normalizeVec vec
+--         | s == 0 = VU.replicate (VU.length vec) 0
+--         | otherwise = VU.map (/ s) vec
+--         where
+--           s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
