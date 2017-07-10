@@ -119,3 +119,5 @@ foreign import ccall safe "fftw3.h fftw_destroy_plan" c_destroy_plan ::  Plan ->
 foreign import ccall safe "fftw3.h fftw_cleanup" c_cleanup :: IO ()
 
 foreign import ccall safe "fftw3.h fftw_plan_dft_2d" c_plan_dft_2d :: C.CInt -> C.CInt -> Ptr (Complex Double) -> Ptr (Complex Double) -> C.CInt -> FFTWFlag -> IO Plan
+
+foreign import ccall safe "fftw3.h fftw_plan_dft_r2c_1d" c_plan_dft_r2c_1d :: C.CInt -> Ptr C.CDouble -> Ptr (Complex Double) -> FFTWFlag -> IO Plan
