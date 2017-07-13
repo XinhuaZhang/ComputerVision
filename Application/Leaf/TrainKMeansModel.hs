@@ -5,7 +5,8 @@ import           Control.Monad                    as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 --import           CV.Filter.FourierMellinTransform
-import           CV.Filter.PolarSeparableFilter
+--import           CV.Filter.PolarSeparableFilter
+import           CV.Filter.PinwheelRing
 import           CV.Filter.GaussianFilter
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
@@ -33,13 +34,22 @@ main = do
         }
       n = 15
       filterParams =
-        PolarSeparableFilterParamsGrid
-        { getPolarSeparableFilterGridRows = imageSize params
-        , getPolarSeparableFilterGridCols = imageSize params
-        , getPolarSeparableFilterGridScale = [1]
-        , getPolarSeparableFilterGridRadialFreq = [0 .. n]
-        , getPolarSeparableFilterGridAngularFreq = [0 .. n]
-        }
+        PinwheelRingParams
+                     { pinwheelRingRows         = imageSize params
+                     , pinwheelRingCols         = imageSize params
+                     , pinwheelGaussianScale    = 0.1
+                     , pinwheelRingScale        = L.map (\x -> 2 ** x) [0..1]
+                     , pinwheelRingRadialFreqs  = 16
+                     , pinwheelRingAngularFreqs = [-15..15]
+                     , pinwheelRingRadius       = [1..4]
+                     } 
+        -- PolarSeparableFilterParamsGrid
+        -- { getPolarSeparableFilterGridRows = imageSize params
+        -- , getPolarSeparableFilterGridCols = imageSize params
+        -- , getPolarSeparableFilterGridScale = [1]
+        -- , getPolarSeparableFilterGridRadialFreq = [0 .. n]
+        -- , getPolarSeparableFilterGridAngularFreq = [0 .. n]
+        -- }
       --   FourierMellinTransformParamsGrid
       --   { getFourierMellinTransformGridRows = imageSize params
       --   , getFourierMellinTransformGridCols = imageSize params
@@ -68,12 +78,12 @@ main = do
     VU.convert . VU.map (:+ 0) . L.head $
     imgs
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelRingConvolution   -- PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
   gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   xs <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    filterConduit parallelParams fftw [filters] gFilters True (stride params) =$=
+    filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
     CL.take (numGMMExample params)
   let (ls, ys) = L.unzip xs
   kmeansModel <- kmeans parallelParams (numGaussian params) (L.concat ys)

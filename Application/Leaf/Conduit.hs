@@ -374,7 +374,12 @@ eigCovConduit parallelParams numPrincipal =
   awaitForever
     (\(label', vecs) ->
         let (PCAMatrix _ mat, _, _) = pcaSVD parallelParams numPrincipal vecs
-        in yield (label', VU.concat . V.toList $ mat))
+        in yield (label', normalizeVec . VU.concat . V.toList $ mat))
+  where normalizeVec vec
+          | s == 0 = VU.replicate (VU.length vec) 0
+          | otherwise = VU.map (/ s) vec
+          where
+            s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
 -- xs <- CL.take (batchSize parallelParams)
 -- unless
 --   (L.null xs)
@@ -388,8 +393,4 @@ eigCovConduit parallelParams numPrincipal =
 --               xs
 --       sourceList ys
 --       eigCovConduit parallelParams numPrincipal)
--- where normalizeVec vec
---         | s == 0 = VU.replicate (VU.length vec) 0
---         | otherwise = VU.map (/ s) vec
---         where
---           s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+

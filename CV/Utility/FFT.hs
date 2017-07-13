@@ -4,6 +4,8 @@ module CV.Utility.FFT
   , initializefftw
   , dft2d
   , idft2d
+  , dft1d
+  , idft1d
   , dftr2c
   , exportWisdomString
   , importWisdomString
@@ -126,6 +128,55 @@ dftr2c (FFTW lock' _) vec = do
        VSM.unsafeWith v $
        \op -> do
          p <- c_plan_dft_r2c_1d (fromIntegral n) ip op (unFlag estimate)
+         c_execute p
+         c_destroy_plan p
+  putMVar lock' x
+  VS.freeze v
+  where
+    n = VS.length vec
+
+{-# INLINE dft1d #-}
+
+dft1d :: FFTW -> VS.Vector (Complex Double) -> IO (VS.Vector (Complex Double))
+dft1d (FFTW lock' _) vec = do
+  v <- VSM.new n
+  x <- takeMVar lock'
+  VS.unsafeWith vec $
+    \ip ->
+       VSM.unsafeWith v $
+       \op -> do
+         p <-
+           c_plan_dft_1d
+             (fromIntegral n)
+             ip
+             op
+             (unSign DFTForward)
+             (unFlag estimate)
+         c_execute p
+         c_destroy_plan p
+  putMVar lock' x
+  VS.freeze v
+  where
+    n = VS.length vec
+    
+
+{-# INLINE idft1d #-}
+
+idft1d :: FFTW -> VS.Vector (Complex Double) -> IO (VS.Vector (Complex Double))
+idft1d (FFTW lock' _) vec = do
+  v <- VSM.new n
+  x <- takeMVar lock'
+  VS.unsafeWith vec $
+    \ip ->
+       VSM.unsafeWith v $
+       \op -> do
+         p <-
+           c_plan_dft_1d
+             (fromIntegral n)
+             ip
+             op
+             (unSign DFTBackward)
+             (unFlag estimate)
          c_execute p
          c_destroy_plan p
   putMVar lock' x

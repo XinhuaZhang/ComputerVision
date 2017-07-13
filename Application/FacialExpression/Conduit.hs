@@ -21,6 +21,9 @@ import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import           System.Random
 import CV.Utility.RepaArrayUtility
+import CV.Filter.PinwheelRing
+import CV.Filter.GaussianFilter
+import CV.Utility.FFT
 
 data CKImage =
   CKImage {imagePath     :: !String
@@ -267,6 +270,28 @@ filterExpansionConduit parallelParams filters = do
                 xs
         sourceList ys
         filterExpansionConduit parallelParams filters)
+  where
+    normalizeVec' vec
+      | s == 0 = VU.replicate (VU.length vec) 0
+      | otherwise = VU.map (/ s) vec
+      where
+        s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+
+pinwheelRingGaussianConvolutionConduit
+  :: FFTW
+  -> PinwheelRingExpansion
+  -> GaussianFilterConvolution1D
+  -> Conduit (R.Array U DIM3 Double) (ResourceT IO) (VU.Vector Double)
+pinwheelRingGaussianConvolutionConduit fftw pFilter gFilter =
+  awaitForever
+    (\img -> do
+       let imgVecs = arrayToUnboxed . R.map (:+ 0) $ img
+       x <-
+         liftIO $
+         fmap (normalizeVec' . VU.fromList . L.map magnitude) .
+         applyPinwheelRingExpansionGaussian fftw pFilter gFilter $
+         imgVecs
+       yield x)
   where
     normalizeVec' vec
       | s == 0 = VU.replicate (VU.length vec) 0
