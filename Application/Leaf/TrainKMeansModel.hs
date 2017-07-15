@@ -37,11 +37,11 @@ main = do
         PinwheelRingParams
                      { pinwheelRingRows         = imageSize params
                      , pinwheelRingCols         = imageSize params
-                     , pinwheelGaussianScale    = 0.1
-                     , pinwheelRingScale        = L.map (\x -> 2 ** x) [0..1]
-                     , pinwheelRingRadialFreqs  = 16
+                     , pinwheelGaussianScale    = 1
+                     , pinwheelRingScale        = L.map (\x -> sqrt 2 ** x) [0..3]
+                     , pinwheelRingRadialFreqs  = 3/4*pi
                      , pinwheelRingAngularFreqs = [-15..15]
-                     , pinwheelRingRadius       = [1..4]
+                     , pinwheelRingRadius       = [1..8]
                      } 
         -- PolarSeparableFilterParamsGrid
         -- { getPolarSeparableFilterGridRows = imageSize params
@@ -58,10 +58,8 @@ main = do
       --   , getFourierMellinTransformGridAngularFreq = [0 .. n]
       --   }
       gFilterParams =
-        GaussianFilterParams
-          (gaussianScale params)
-          (imageSize params)
-          (imageSize params)
+        GaussianFilter1DParams
+          (gaussianScale params) 8
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   writeFile (paramsFileName params) . show $ filterParams
   fftwInit <- initializefftw FFTWWisdomNull
@@ -79,11 +77,12 @@ main = do
     imgs
   fftw <- initializefftw fftwWisdom
   filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelRingConvolution   -- PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
-  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
+  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution1D
   xs <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
     filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
+    -- pinwheelRingGaussianConvolutionConduit parallelParams fftw filters gFilters (stride params) =$=
     CL.take (numGMMExample params)
   let (ls, ys) = L.unzip xs
   kmeansModel <- kmeans parallelParams (numGaussian params) (L.concat ys)

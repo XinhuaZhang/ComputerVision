@@ -13,11 +13,11 @@ main = do
         PinwheelRingParams
         { pinwheelRingRows = n
         , pinwheelRingCols = n
-        , pinwheelGaussianScale = 0.1
-        , pinwheelRingScale = L.map (\x -> 2 ** x) [0..1]
-        , pinwheelRingRadialFreqs = 16
+        , pinwheelGaussianScale = 1
+        , pinwheelRingScale = L.map (\x -> (sqrt 2) ** x) [0..0]
+        , pinwheelRingRadialFreqs = 3/4*pi
         , pinwheelRingAngularFreqs = [5 .. 5]
-        , pinwheelRingRadius = [1 .. 63]
+        , pinwheelRingRadius = [1 .. 8]
         }
       filters =
         getFilterExpansionList

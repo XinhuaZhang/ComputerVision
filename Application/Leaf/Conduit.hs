@@ -31,6 +31,7 @@ import           Data.Vector.Storable         as VS
 import           Data.Vector.Unboxed          as VU
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
+import CV.Filter.PinwheelRing
 
 
 {-# INLINE complexDistance #-}
@@ -394,3 +395,39 @@ eigCovConduit parallelParams numPrincipal =
 --       sourceList ys
 --       eigCovConduit parallelParams numPrincipal)
 
+
+
+pinwheelRingGaussianConvolutionConduit
+  :: ParallelParams
+  -> FFTW
+  -> PinwheelRingConvolution
+  -> GaussianFilterConvolution1D
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [VU.Vector Double])
+pinwheelRingGaussianConvolutionConduit parallelParams fftw pFilter gFilter stride = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do ys <-
+          liftIO $
+          M.mapM
+            (\(LabeledArray label x) -> do
+               let imgVecs =
+                     L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
+               zs <-
+                 applyPinwheelRingConvolutionGaussian
+                   fftw
+                   pFilter
+                   gFilter
+                   stride
+                   imgVecs
+               return
+                 (fromIntegral label, L.map (VU.map magnitude . VS.convert) zs))
+            xs
+        sourceList ys
+        pinwheelRingGaussianConvolutionConduit
+          parallelParams
+          fftw
+          pFilter
+          gFilter
+          stride)

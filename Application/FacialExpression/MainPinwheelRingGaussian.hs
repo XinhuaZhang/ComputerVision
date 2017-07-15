@@ -54,7 +54,7 @@ main = do
         { trainSolver = L2R_L2LOSS_SVC_DUAL
         , trainC = 512
         , trainNumExamples = L.length features
-        , trainFeatureIndexMax = getFilterExpansionNum pFilter
+        , trainFeatureIndexMax =  getFilterExpansionNum pFilter
         , trainModel = "SVM_model"
         }
   print trainParams

@@ -8,6 +8,7 @@ module CV.Filter.PinwheelRing
   , PinwheelRingExpansion
   , PinwheelRingConvolution
   , applyPinwheelRingExpansionGaussian
+  , applyPinwheelRingConvolutionGaussian
   ) where
 
 import           Control.Monad          as M
@@ -19,6 +20,10 @@ import           Data.List              as L
 import           Data.Vector.Storable   as VS
 import           Data.Vector.Unboxed    as VU
 import CV.Filter.GaussianFilter
+import CV.Utility.Parallel
+import Data.Array.Repa as R
+import CV.Utility.RepaArrayUtility
+import Control.Monad.IO.Class
 
 
 data PinwheelRingParams = PinwheelRingParams
@@ -109,8 +114,8 @@ pinwheelRing gScale scale rf af shift x y
       (0 :+ fromIntegral af * angleFunctionRad (fromIntegral x) (fromIntegral y)) *
     radialFunc rf r' r
   where
-    r = (log . sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) / scale
-    r' = log shift / scale 
+    r =  (sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) / scale
+    r' =  shift / scale 
 
 {-# INLINE radialFunc #-}
 
@@ -135,9 +140,14 @@ applyPinwheelRingExpansionGaussian fftw (Filter _ pFilters) gFilter imgVecs = do
   let xs =
         L.concatMap
           (\imgVec ->
-              L.concatMap
-                (L.map (VS.fromList . L.map (VU.sum . VU.zipWith (*) imgVec)))
-                pFilters)
+              L.concat .
+              parMap
+                rdeepseq
+                (L.map
+                   (VS.fromList .
+                    L.map
+                      ((\x -> magnitude x :+ 0) . VU.sum . VU.zipWith (*) imgVec))) $
+              pFilters)
           imgVecs
   ys <- applyFilterConvolution fftw gFilter xs
   return . L.concatMap VS.toList $ ys
@@ -147,20 +157,36 @@ applyPinwheelRingConvolutionGaussian
   :: FFTW
   -> PinwheelRingConvolution
   -> GaussianFilterConvolution1D
+  -> Int
   -> [VS.Vector (Complex Double)]
   -> IO [VS.Vector (Complex Double)]
-applyPinwheelRingConvolutionGaussian fftw (Filter (PinwheelRingParams rows cols _ _ _ _ _) pFilters) gFilters imgVecs = do
+applyPinwheelRingConvolutionGaussian fftw (Filter (PinwheelRingParams rows cols _ _ _ _ _) pFilters) gFilters stride imgVecs = do
   imgVecsF <- M.mapM (dft2d fftw rows cols) imgVecs
   xs <-
     M.mapM
       (\imgVec ->
-          L.concat <$>
           M.mapM
-            (fmap L.concat .
-             M.mapM
-               (fmap (L.map VS.fromList . L.transpose . L.map VS.toList) .
+            (M.mapM
+               (fmap
+                  (L.map (VS.fromList . L.map (\x -> magnitude x :+ 0)) .
+                   L.transpose .
+                   if stride == 1
+                     then L.map VS.toList
+                     else L.map
+                            (R.toList .
+                             downsample [stride, stride] .
+                             fromUnboxed (Z :. rows :. cols) . VS.convert)) .
                 M.mapM (idft2d fftw rows cols . VS.zipWith (*) imgVec)))
             pFilters)
-      imgVecsF
-  ys <- M.mapM (applyFilterConvolution fftw gFilters) xs
-  return . L.map VS.concat . L.transpose $ ys
+      imgVecsF :: IO [[[[VS.Vector (Complex Double)]]]]
+  ys <-
+    L.concat <$>
+    M.mapM
+      (fmap L.concat .
+       M.mapM
+         (fmap L.concat .
+          M.mapM
+            (fmap (L.transpose . L.map VS.toList) .
+             applyFilterConvolution fftw gFilters)))
+      xs 
+  return . L.map VS.fromList . L.transpose $ ys 

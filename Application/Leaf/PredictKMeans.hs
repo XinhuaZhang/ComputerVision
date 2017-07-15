@@ -33,17 +33,16 @@ main = do
         , Par.batchSize = AP.batchSize params
         }
       gFilterParams =
-        GaussianFilterParams
-          (gaussianScale params)
-          (imageSize params)
-          (imageSize params)
+        GaussianFilter1DParams
+          (gaussianScale params) 8
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   fftw <- initializefftw fftwWisdom
   filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelRingConvolution -- PolarSeparableFilterGridConvolution-- FourierMellinTransformConvolution
-  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
+  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution1D
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
     filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
+    -- pinwheelRingGaussianConvolutionConduit parallelParams fftw filters gFilters (stride params) =$=
     kmeansConduit parallelParams kmeansModel =$=
     featureConduit =$=
     predict (modelName params) ((modelName params) L.++ ".out")
