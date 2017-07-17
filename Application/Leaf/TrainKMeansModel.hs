@@ -6,7 +6,7 @@ import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 --import           CV.Filter.FourierMellinTransform
 --import           CV.Filter.PolarSeparableFilter
-import           CV.Filter.PinwheelRing
+import           CV.Filter.PinwheelWavelet
 import           CV.Filter.GaussianFilter
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
@@ -34,14 +34,15 @@ main = do
         }
       n = 15
       filterParams =
-        PinwheelRingParams
-                     { pinwheelRingRows         = imageSize params
-                     , pinwheelRingCols         = imageSize params
-                     , pinwheelGaussianScale    = 1
-                     , pinwheelRingScale        = L.map (\x -> sqrt 2 ** x) [0..3]
-                     , pinwheelRingRadialFreqs  = 3/4*pi
-                     , pinwheelRingAngularFreqs = [-15..15]
-                     , pinwheelRingRadius       = [1..8]
+        PinwheelWaveletParams
+                     { pinwheelWaveletRows         = imageSize params
+                     , pinwheelWaveletCols         = imageSize params
+                     , pinwheelWaveletGaussianScale    = 1
+                     , pinwheelWaveletScale        = L.map (\x -> sqrt 2 ** x) [0..3]
+                     , pinwheelWaveletRadialScale = L.map (\x -> (1 / sqrt 2) ** x) [0..0]
+                     , pinwheelWaveletRadialFreqs  = 3/4*pi
+                     , pinwheelWaveletAngularFreqs = [0..15]
+                     , pinwheelWaveletRadius       = [1..8]
                      } 
         -- PolarSeparableFilterParamsGrid
         -- { getPolarSeparableFilterGridRows = imageSize params
@@ -58,8 +59,8 @@ main = do
       --   , getFourierMellinTransformGridAngularFreq = [0 .. n]
       --   }
       gFilterParams =
-        GaussianFilter1DParams
-          (gaussianScale params) 8
+        GaussianFilterParams
+        (gaussianScale params) (imageSize params) (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   writeFile (paramsFileName params) . show $ filterParams
   fftwInit <- initializefftw FFTWWisdomNull
@@ -76,8 +77,8 @@ main = do
     VU.convert . VU.map (:+ 0) . L.head $
     imgs
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelRingConvolution   -- PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
-  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution1D
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelWaveletConvolution   -- PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
+  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   xs <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=

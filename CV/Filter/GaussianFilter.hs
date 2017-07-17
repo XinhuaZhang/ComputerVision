@@ -44,10 +44,10 @@ data GaussianFilterConvolution1D =
 
 gaussian1D
   :: (Floating a)
-  => a -> Int -> a
+  => a -> a -> a
 gaussian1D sd i =
   1 / (sqrt (2 * pi) * sd) *
-  exp (-1 * (fromIntegral i ^ (2 :: Int)) / (2 * (sd ^ (2 :: Int))))
+  exp (-1 * (i ^ (2 :: Int)) / (2 * (sd ^ (2 :: Int))))
 
 {-# INLINE gaussian2D #-}
 
@@ -144,13 +144,15 @@ instance FilterConvolution GaussianFilterConvolution where
 
 {-# INLINE makeFilterConvolution1DList #-}
 
-makeFilterConvolution1DList :: Int -> (Int -> a) -> [a]
+makeFilterConvolution1DList
+  :: (Num a)
+  => Int -> (a -> a) -> [a]
 makeFilterConvolution1DList n f =
   [ let x =
           if r < (n `div` 2)
             then r
             else r - n
-    in f x
+    in f . fromIntegral $ x
   | r <- [0 .. n - 1] ]
 
 

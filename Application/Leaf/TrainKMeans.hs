@@ -6,7 +6,7 @@ import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 --import           CV.Filter.FourierMellinTransform
 -- import           CV.Filter.PolarSeparableFilter
-import           CV.Filter.PinwheelRing
+import           CV.Filter.PinwheelWavelet
 import           CV.Filter.GaussianFilter
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
@@ -25,7 +25,7 @@ main = do
   args <- getArgs
   params <- parseArgs args
   filterParams <-
-    fmap (\x -> read x :: PinwheelRingParams -- PolarSeparableFilterParamsGrid -- FourierMellinTransformParamsGrid
+    fmap (\x -> read x :: PinwheelWaveletParams -- PolarSeparableFilterParamsGrid -- FourierMellinTransformParamsGrid
          ) . readFile $
     (paramsFileName params)
   kmeansModel <- decodeFile (kmeansFile params)
@@ -35,12 +35,12 @@ main = do
         , Par.batchSize = AP.batchSize params
         }
       gFilterParams =
-        GaussianFilter1DParams
-          (gaussianScale params) 8
+        GaussianFilterParams
+        (gaussianScale params) (imageSize params) (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelRingConvolution --  PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
-  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution1D
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelWaveletConvolution --  PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
+  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   featurePtr <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
