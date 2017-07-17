@@ -102,6 +102,7 @@ instance NFData HyperbolicSeparableFilter where
 
 instance FilterExpansion HyperbolicSeparableFilter where
   type FilterParameter HyperbolicSeparableFilter = HyperbolicSeparableFilterParams
+  type FilterType HyperbolicSeparableFilter = V4SeparableFilter
   {-# INLINE makeFilter #-}
   makeFilter (HyperbolicSeparableFilter params@(HyperbolicSeparableFilterParams rows cols scales uFreqs vFreqs angles) _) (centerR, centerC) =
     HyperbolicSeparableFilter params . V4HyperbolicSeparableFilter . L.concat $

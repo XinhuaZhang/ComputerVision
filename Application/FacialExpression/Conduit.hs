@@ -20,6 +20,10 @@ import           Data.Vector.Unboxed            as VU
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import           System.Random
+import CV.Utility.RepaArrayUtility
+import CV.Filter.PinwheelRing
+import CV.Filter.GaussianFilter
+import CV.Utility.FFT
 
 data CKImage =
   CKImage {imagePath     :: !String
@@ -241,3 +245,56 @@ applyFilterComplex imgVecs =
         L.concatMap
           (\imgVec -> L.map (VU.sum . VU.zipWith (*) imgVec) filterVecs) $
         imgVecs)
+
+
+filterExpansionConduit
+  :: (FilterExpansion a)
+  => ParallelParams
+  -> [a]
+  -> Conduit (R.Array U DIM3 Double) (ResourceT IO) (VU.Vector Double)
+filterExpansionConduit parallelParams filters = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\x ->
+                    let imgVecs = arrayToUnboxed . R.map (:+ 0) $ x
+                    in normalizeVec' .
+                       VU.fromList .
+                       L.map magnitude .
+                       L.concatMap (`applyFilterExpansion` imgVecs) $
+                       filters)
+                xs
+        sourceList ys
+        filterExpansionConduit parallelParams filters)
+  where
+    normalizeVec' vec
+      | s == 0 = VU.replicate (VU.length vec) 0
+      | otherwise = VU.map (/ s) vec
+      where
+        s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+
+pinwheelRingGaussianConvolutionConduit
+  :: FFTW
+  -> PinwheelRingExpansion
+  -> GaussianFilterConvolution1D
+  -> Conduit (R.Array U DIM3 Double) (ResourceT IO) (VU.Vector Double)
+pinwheelRingGaussianConvolutionConduit fftw pFilter gFilter =
+  awaitForever
+    (\img -> do
+       let imgVecs = arrayToUnboxed . R.map (:+ 0) $ img
+       x <-
+         liftIO $
+         fmap (normalizeVec' . VU.fromList . L.map magnitude) .
+         applyPinwheelRingExpansionGaussian fftw pFilter gFilter $
+         imgVecs
+       yield x)
+  where
+    normalizeVec' vec
+      | s == 0 = VU.replicate (VU.length vec) 0
+      | otherwise = VU.map (/ s) vec
+      where
+        s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec

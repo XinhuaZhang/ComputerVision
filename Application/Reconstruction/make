@@ -1,0 +1,13 @@
+FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000  -funbox-strict-fields" #-fllvm -optlo-O3 
+LIBS="-lstdc++ -llapack -lblas -lgomp -lfftw3 -lfftw3f -lfftw3l -lm"
+
+## cabal exec -- ghc $FLAG $LIBS -i../../  FilterExpansionRecon.hs -o filterExpansionRecon
+## cabal exec -- ghc $FLAG $LIBS -i../../  FilterExpansionAxisRecon.hs -o filterExpansionAxisRecon
+## cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeRecon.hs -o magnitudeRecon
+## cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolution.hs -o magnitudeReconConvolution
+## cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolutionGabor.hs -o magnitudeReconConvolutionGabor
+cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolutionPinwheels.hs -o magnitudeReconConvolutionPinwheels
+cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolutionPinwheelsRandom.hs -o magnitudeReconConvolutionPinwheelsRandom
+## cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolutionMorletWavelet.hs -o magnitudeReconConvolutionMorletWavelet
+## cabal exec -- ghc $FLAG $LIBS -i../../  GaborTransform.hs -o gaborTransform 
+## cabal exec -- ghc $FLAG $LIBS -i../../  MorletWaveletTransform.hs -o morletWaveletTransform

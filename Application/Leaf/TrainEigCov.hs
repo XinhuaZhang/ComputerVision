@@ -4,9 +4,7 @@ import           Classifier.LibLinear
 import           Control.Monad                                as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
---import           CV.Filter.FourierMellinTransform
--- import           CV.Filter.PolarSeparableFilter
-import           CV.Filter.PinwheelWavelet
+import           CV.Filter.FourierMellinTransform
 import           CV.Filter.GaussianFilter
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
@@ -24,29 +22,41 @@ import           System.Environment
 main = do
   args <- getArgs
   params <- parseArgs args
-  filterParams <-
-    fmap (\x -> read x :: PinwheelWaveletParams -- PolarSeparableFilterParamsGrid -- FourierMellinTransformParamsGrid
-         ) . readFile $
-    (paramsFileName params)
-  kmeansModel <- decodeFile (kmeansFile params)
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
         , Par.batchSize = AP.batchSize params
         }
+      n = 15
+      filterParams =
+        FourierMellinTransformParamsGrid
+        { getFourierMellinTransformGridRows = imageSize params
+        , getFourierMellinTransformGridCols = imageSize params
+        , getFourierMellinTransformGridRadialFreq =
+          [0 .. fromIntegral n]
+        , getFourierMellinTransformGridAngularFreq = [0 .. n]
+        }
       gFilterParams =
         GaussianFilterParams
-        (gaussianScale params) (imageSize params) (imageSize params)
+          (gaussianScale params)
+          (imageSize params)
+          (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
+  writeFile (paramsFileName params) . show $ filterParams
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelWaveletConvolution --  PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO FourierMellinTransformConvolution
   gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
+  (feature1:_) <-
+    runResourceT $
+    CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+    filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
+    eigCovConduit parallelParams (numPrincipal params) =$=
+    CL.take 1
   featurePtr <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
     filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
-    -- pinwheelRingGaussianConvolutionConduit parallelParams fftw filters gFilters (stride params) =$=
-    kmeansConduit parallelParams kmeansModel =$=
+    eigCovConduit parallelParams (numPrincipal params) =$=
     featurePtrConduitP parallelParams =$=
     CL.consume
   let trainParams =
@@ -54,9 +64,7 @@ main = do
         { trainSolver = L2R_L2LOSS_SVC_DUAL
         , trainC = (c params)
         , trainNumExamples = L.length featurePtr
-        , trainFeatureIndexMax =
-          V.length (center kmeansModel) *
-          VU.length (V.head . center $ kmeansModel)
+        , trainFeatureIndexMax = VU.length . snd $ feature1
         , trainModel = (modelName params)
         }
       (labels, features) = L.unzip featurePtr

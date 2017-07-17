@@ -11,7 +11,6 @@ import           Data.Vector                  as V
 import           Data.Vector.Unboxed          as VU
 import           Prelude                      as P
 import           Data.Complex
-import           Data.Array.CArray            as CA
 import           Foreign.Storable
 
 -- factor = 2^n, n = 0,1,..
@@ -219,58 +218,6 @@ bicubicInterpolation ds (minVal, maxVal) (y, x)
       , [4, -4, -4, 4, 2, 2, -2, -2, 2, -2, 2, -2, 1, 1, 1, 1]
       ]
 
-{-# INLINE twoDCArray2RArray #-}
-
-twoDCArray2RArray
-  :: (Num a, Storable a)
-    => CArray (Int, Int) a -> R.Array D DIM2 a
-twoDCArray2RArray cArr =
-  fromFunction
-    (Z :. (ny' + 1) :. (nx' + 1))
-    (\(Z :. j :. i) -> cArr CA.! (j, i))
-  where
-    ((_, _), (ny', nx')) = bounds cArr
-
-{-# INLINE threeDRArray2CArray #-}
-
-threeDRArray2CArray
-  :: (Num a, Storable a, Source s a)
-    => R.Array s DIM3 a -> CArray (Int, Int, Int) a
-threeDRArray2CArray rArr =
-  listArray ((0, 0, 0), (nf - 1, ny - 1, nx - 1)) . R.toList $ rArr
-  where
-    (Z :. nf :. ny :. nx) = extent rArr
-
-{-# INLINE threeDCArray2RArray #-}
-
-threeDCArray2RArray
-  :: (Num a, Storable a)
-    => CArray (Int, Int, Int) a -> R.Array D DIM3 a
-threeDCArray2RArray cArr =
-  fromFunction
-    (Z :. (nf' + 1) :. (ny' + 1) :. (nx' + 1))
-    (\(Z :. k :. j :. i) -> cArr CA.! (k, j, i))
-  where
-    ((_, _, _), (nf', ny', nx')) = bounds cArr
-
-
-{-# INLINE makeFilterList #-}
-
-makeFilterList :: Int -> Int -> (Int -> Int -> a) -> [a]
-makeFilterList rows cols f =
-  [ let !x =
-          if r < (rows `div` 2)
-            then r
-            else r - rows
-        !y =
-          if c < (cols `div` 2)
-            then c
-            else c - cols
-    in f x y
-  | r <- [0 .. rows - 1]
-  , c <- [0 .. cols - 1]
-  ]
-
 {-# INLINE rescale2D #-}
 
 rescale2D
@@ -340,3 +287,15 @@ extractFeatureMap arr' =
   L.map (\k -> R.toList . R.slice arr' $ (Z :. k :. All :. All)) [0 .. nf' - 1]
   where
     !(Z :. (nf' :: Int) :. _ :. _) = extent arr'
+
+{-# INLINE arrayToUnboxed #-}
+
+arrayToUnboxed
+  :: (R.Source s e, Unbox e)
+  => R.Array s DIM3 e -> [VU.Vector e]
+arrayToUnboxed arr' =
+  L.map
+    (\k -> toUnboxed . computeS . R.slice arr' $ (Z :. k :. All :. All))
+    [0 .. nf' - 1]
+  where
+    (Z :. (nf' :: Int) :. _ :. _) = extent arr'

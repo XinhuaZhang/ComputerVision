@@ -7,17 +7,10 @@ module CV.Utility.FFT.FFI where
 import qualified Foreign.C.Types as C
 import Foreign.C.String (CString)
 import Foreign.Ptr (Ptr)
-import Foreign.Storable
-          (Storable, sizeOf, alignment, peek, poke, peekByteOff, pokeByteOff)
-import Foreign.Storable.Complex ()
-
 import Data.Complex (Complex)
-import Data.Generics (Data, Typeable)
-import Data.Typeable ()
 
 
-
-{-# LINE 18 "FFI.hsc" #-}
+{-# LINE 11 "FFI.hsc" #-}
 
 
 type FFTWFlag = C.CUInt
@@ -39,7 +32,7 @@ c_patient          =  32
 c_estimate         :: FFTWFlag
 c_estimate         =  64
 
-{-# LINE 32 "FFI.hsc" #-}
+{-# LINE 25 "FFI.hsc" #-}
 
 
 type FFTWSign = C.CInt
@@ -49,7 +42,7 @@ c_forward  =  (-1)
 c_backward  :: FFTWSign
 c_backward  =  1
 
-{-# LINE 40 "FFI.hsc" #-}
+{-# LINE 33 "FFI.hsc" #-}
 
 
 type FFTWKind = C.CInt
@@ -77,36 +70,7 @@ c_rodft01  =  8
 c_rodft11  :: FFTWKind
 c_rodft11  =  10
 
-{-# LINE 57 "FFI.hsc" #-}
-
-
--- | Corresponds to the @fftw_iodim@ structure.  It completely describes the
--- layout of each dimension, before and after the transform.
-data IODim = IODim { nIODim :: Int  -- ^ Logical size of dimension
-                   , isIODim :: Int -- ^ Stride along dimension in input array
-                   , osIODim :: Int -- ^ Stride along dimension in output array
-                   }
-    deriving (Eq, Show, Data, Typeable)
-
-instance Storable IODim where
-    sizeOf _ = (12)
-{-# LINE 69 "FFI.hsc" #-}
-    alignment _ = alignment (undefined :: C.CInt)
-    peek p = do
-        n' <- (\hsc_ptr -> peekByteOff hsc_ptr 0) p
-{-# LINE 72 "FFI.hsc" #-}
-        is' <- (\hsc_ptr -> peekByteOff hsc_ptr 4) p
-{-# LINE 73 "FFI.hsc" #-}
-        os' <- (\hsc_ptr -> peekByteOff hsc_ptr 8) p
-{-# LINE 74 "FFI.hsc" #-}
-        return (IODim n' is' os')
-    poke p (IODim n' is' os') = do
-        (\hsc_ptr -> pokeByteOff hsc_ptr 0) p n'
-{-# LINE 77 "FFI.hsc" #-}
-        (\hsc_ptr -> pokeByteOff hsc_ptr 4) p is'
-{-# LINE 78 "FFI.hsc" #-}
-        (\hsc_ptr -> pokeByteOff hsc_ptr 8) p os'
-{-# LINE 79 "FFI.hsc" #-}
+{-# LINE 50 "FFI.hsc" #-}
 
 
 -- | A plan is an opaque foreign object.
@@ -116,47 +80,6 @@ type FFTWPlan = ()
 
 -- We use "safe" calls for anything which could take a while so that it won't block
 -- other Haskell threads.
-
--- | Plan a complex to complex transform using the guru interface.
-foreign import ccall safe "fftw3.h fftwf_plan_guru_dft" cf_plan_guru_dft
-    :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr (Complex Float)
-    -> Ptr (Complex Float) -> FFTWSign -> FFTWFlag -> IO Plan
-
--- | Plan a real to complex transform using the guru interface.
-foreign import ccall safe "fftw3.h fftwf_plan_guru_dft_r2c" cf_plan_guru_dft_r2c
-    :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr Float
-    -> Ptr (Complex Float) -> FFTWFlag -> IO Plan
-
--- | Plan a complex to real transform using the guru interface.
-foreign import ccall safe "fftw3.h fftwf_plan_guru_dft_c2r" cf_plan_guru_dft_c2r
-    :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr (Complex Float)
-    -> Ptr Float -> FFTWFlag -> IO Plan
-
--- | Plan a real to real transform using the guru interface.
-foreign import ccall safe "fftw3.h fftwf_plan_guru_r2r" cf_plan_guru_r2r
-    :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr Float
-    -> Ptr Float -> Ptr FFTWKind -> FFTWFlag -> IO Plan
-
-
--- | Plan a complex to complex transform using the guru interface.
-foreign import ccall safe "fftw3.h fftw_plan_guru_dft" c_plan_guru_dft
-    :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr (Complex Double)
-    -> Ptr (Complex Double) -> FFTWSign -> FFTWFlag -> IO Plan
-
--- | Plan a real to complex transform using the guru interface.
-foreign import ccall safe "fftw3.h fftw_plan_guru_dft_r2c" c_plan_guru_dft_r2c
-    :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr Double
-    -> Ptr (Complex Double) -> FFTWFlag -> IO Plan
-
--- | Plan a complex to real transform using the guru interface.
-foreign import ccall safe "fftw3.h fftw_plan_guru_dft_c2r" c_plan_guru_dft_c2r
-    :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr (Complex Double)
-    -> Ptr Double -> FFTWFlag -> IO Plan
-
--- | Plan a real to real transform using the guru interface.
-foreign import ccall safe "fftw3.h fftw_plan_guru_r2r" c_plan_guru_r2r
-    :: C.CInt -> Ptr IODim -> C.CInt -> Ptr IODim -> Ptr Double
-    -> Ptr Double -> Ptr FFTWKind -> FFTWFlag -> IO Plan
 
 -- | Simple plan execution
 foreign import ccall safe "fftw3.h fftw_execute" c_execute
@@ -196,3 +119,10 @@ foreign import ccall safe "fftw3.h fftw_destroy_plan" c_destroy_plan ::  Plan ->
 foreign import ccall safe "fftw3.h fftw_cleanup" c_cleanup :: IO ()
 
 foreign import ccall safe "fftw3.h fftw_plan_dft_2d" c_plan_dft_2d :: C.CInt -> C.CInt -> Ptr (Complex Double) -> Ptr (Complex Double) -> C.CInt -> FFTWFlag -> IO Plan
+
+foreign import ccall safe "fftw3.h fftw_plan_dft_1d" c_plan_dft_1d :: C.CInt -> Ptr (Complex Double) -> Ptr (Complex Double) -> C.CInt -> FFTWFlag -> IO Plan
+
+foreign import ccall safe "fftw3.h fftw_plan_dft_r2c_1d" c_plan_dft_r2c_1d :: C.CInt -> Ptr C.CDouble -> Ptr (Complex Double) -> FFTWFlag -> IO Plan
+
+
+

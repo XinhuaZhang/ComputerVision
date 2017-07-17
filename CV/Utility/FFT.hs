@@ -4,6 +4,9 @@ module CV.Utility.FFT
   , initializefftw
   , dft2d
   , idft2d
+  , dft1d
+  , idft1d
+  , dftr2c
   , exportWisdomString
   , importWisdomString
   , generateWisdom
@@ -21,6 +24,7 @@ import           Data.Complex
 import           Data.List                    as L
 import           Data.Vector.Storable         as VS
 import           Data.Vector.Storable.Mutable as VSM
+import           Foreign.C.Types
 
 data FFTWWisdom
   = FFTWWisdomPath String
@@ -43,7 +47,7 @@ initializefftw (FFTWWisdomPath path) = do
       lock <- newMVar ()
       return $ FFTW lock True
     else error $ "initializefftw: importWisdomString (" L.++ str L.++ ")"
-    
+
 generateWisdom :: FFTW
                -> FilePath
                -> Int
@@ -112,3 +116,70 @@ dft2dG lock' rows cols vec sign flag = do
          c_destroy_plan p
   putMVar lock' x
   VS.freeze v
+
+{-# INLINE dftr2c #-}
+
+dftr2c :: FFTW -> VS.Vector CDouble -> IO (VS.Vector (Complex Double))
+dftr2c (FFTW lock' _) vec = do
+  v <- VSM.new (div n 2 + 1)
+  x <- takeMVar lock'
+  VS.unsafeWith vec $
+    \ip ->
+       VSM.unsafeWith v $
+       \op -> do
+         p <- c_plan_dft_r2c_1d (fromIntegral n) ip op (unFlag estimate)
+         c_execute p
+         c_destroy_plan p
+  putMVar lock' x
+  VS.freeze v
+  where
+    n = VS.length vec
+
+{-# INLINE dft1d #-}
+
+dft1d :: FFTW -> VS.Vector (Complex Double) -> IO (VS.Vector (Complex Double))
+dft1d (FFTW lock' _) vec = do
+  v <- VSM.new n
+  x <- takeMVar lock'
+  VS.unsafeWith vec $
+    \ip ->
+       VSM.unsafeWith v $
+       \op -> do
+         p <-
+           c_plan_dft_1d
+             (fromIntegral n)
+             ip
+             op
+             (unSign DFTForward)
+             (unFlag estimate)
+         c_execute p
+         c_destroy_plan p
+  putMVar lock' x
+  VS.freeze v
+  where
+    n = VS.length vec
+    
+
+{-# INLINE idft1d #-}
+
+idft1d :: FFTW -> VS.Vector (Complex Double) -> IO (VS.Vector (Complex Double))
+idft1d (FFTW lock' _) vec = do
+  v <- VSM.new n
+  x <- takeMVar lock'
+  VS.unsafeWith vec $
+    \ip ->
+       VSM.unsafeWith v $
+       \op -> do
+         p <-
+           c_plan_dft_1d
+             (fromIntegral n)
+             ip
+             op
+             (unSign DFTBackward)
+             (unFlag estimate)
+         c_execute p
+         c_destroy_plan p
+  putMVar lock' x
+  VS.freeze v
+  where
+    n = VS.length vec

@@ -1,29 +1,26 @@
-import           Application.Leaf.ArgsParser                  as AP
+import           Application.Leaf.ArgsParser      as AP
 import           Application.Leaf.Conduit
-import           Application.MultiDimensionalGMM.FisherKernel
-import           Application.MultiDimensionalGMM.GMM
 import           Classifier.LibLinear
-import           Control.Concurrent.MVar                      (newMVar)
-import           Control.Monad                                as M
+import           Control.Monad                    as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Filter.GaussianFilter                     as Gaussian
+--import           CV.Filter.FourierMellinTransform
+--import           CV.Filter.PolarSeparableFilter
+import           CV.Filter.PinwheelWavelet
+import           CV.Filter.GaussianFilter
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
-import           CV.Utility.Parallel                          as Par
-import           CV.V4Filter
-import           CV.V4FilterConvolution
-import           Data.Array.Repa                              as R
+import           CV.Utility.Parallel              as Par
+import           Data.Array.Repa
 import           Data.Binary
 import           Data.Complex
 import           Data.Conduit
-import           Data.Conduit.Binary                          as CB
-import           Data.Conduit.List                            as CL
-import           Data.List                                    as L
-import           Data.Vector                                  as V
-import           Data.Vector.Unboxed                          as VU
+import           Data.Conduit.Binary              as CB
+import           Data.Conduit.List                as CL
+import           Data.List                        as L
+import           Data.Vector.Unboxed              as VU
 import           System.Environment
-import           System.IO
+
 
 
 main = do
@@ -35,41 +32,35 @@ main = do
         { Par.numThread = AP.numThread params
         , Par.batchSize = AP.batchSize params
         }
-      m = 10
+      n = 15
       filterParams =
-        V4SeparableFilterParamsAxisConvolution
-        { v4SeparableFilterParamsAxisConvolutionSeparableFilterRows =
-          imageSize params
-        , v4SeparableFilterParamsAxisConvolutionSeparableFilterCols =
-          imageSize params
-        , v4SeparableFilterParamsAxisConvolutionPolarSeparablePolarFactor = 1
-        , v4SeparableFilterParamsAxisConvolutionPolarSeparableScale = [56]
-        , v4SeparableFilterParamsAxisConvolutionPolarSeparableFreq = [1 .. 16]
-        , v4SeparableFilterParamsAxisConvolutionPolarSeparableAngle =
-          [0,m .. 90 - m]
-        , v4SeparableFilterParamsAxisConvolutionCartesianGratingScale =
-          [ 2 ** (i / 2)
-          | i <- [7 .. 10] ]
-        , v4SeparableFilterParamsAxisConvolutionCartesianGratingFreq =
-          L.take 8 [1 .. 8]
-        , v4SeparableFilterParamsAxisConvolutionCartesianGratingAngle =
-          [0,15 .. 360 - 15]
-        , v4SeparableFilterParamsAxisConvolutionHyperbolicSeparableScale =
-          [ 2 ** (i / 2)
-          | i <- [7 .. 10] ]
-        , v4SeparableFilterParamsAxisConvolutionHyperbolicSeparableUFreq =
-          [0 .. 3]
-        , v4SeparableFilterParamsAxisConvolutionHyperbolicSeparableVFreq =
-          [0 .. 3]
-        , v4SeparableFilterParamsAxisConvolutionHyperbolicSeparableAngle = 15
-        , v4SeparableFilterParamsAxisConvolutionSeparableFilterParams = P
-        }
+        PinwheelWaveletParams
+                     { pinwheelWaveletRows         = imageSize params
+                     , pinwheelWaveletCols         = imageSize params
+                     , pinwheelWaveletGaussianScale    = 1
+                     , pinwheelWaveletScale        = L.map (\x -> sqrt 2 ** x) [0..3]
+                     , pinwheelWaveletRadialScale = L.map (\x -> (1 / sqrt 2) ** x) [0..0]
+                     , pinwheelWaveletRadialFreqs  = 3/4*pi
+                     , pinwheelWaveletAngularFreqs = [0..15]
+                     , pinwheelWaveletRadius       = [1..8]
+                     } 
+        -- PolarSeparableFilterParamsGrid
+        -- { getPolarSeparableFilterGridRows = imageSize params
+        -- , getPolarSeparableFilterGridCols = imageSize params
+        -- , getPolarSeparableFilterGridScale = [1]
+        -- , getPolarSeparableFilterGridRadialFreq = [0 .. n]
+        -- , getPolarSeparableFilterGridAngularFreq = [0 .. n]
+        -- }
+      --   FourierMellinTransformParamsGrid
+      --   { getFourierMellinTransformGridRows = imageSize params
+      --   , getFourierMellinTransformGridCols = imageSize params
+      --   , getFourierMellinTransformGridRadialFreq =
+      --     [0 .. fromIntegral n]
+      --   , getFourierMellinTransformGridAngularFreq = [0 .. n]
+      --   }
       gFilterParams =
-        L.map
-          (\s -> GaussianFilterParams s (imageSize params) (imageSize params)) .
-        gaussianScale $
-        params
-      filters = generateV4SeparableFilterAxisConvolution filterParams
+        GaussianFilterParams
+        (gaussianScale params) (imageSize params) (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   writeFile (paramsFileName params) . show $ filterParams
   fftwInit <- initializefftw FFTWWisdomNull
@@ -86,19 +77,13 @@ main = do
     VU.convert . VU.map (:+ 0) . L.head $
     imgs
   fftw <- initializefftw fftwWisdom
-  filtersF <-
-    M.mapM (fourierTransformFilter fftw (imageSize params, imageSize params)) filters
-  gFilters <- M.mapM (fmap getFilter . Gaussian.makeFilter fftw) gFilterParams
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelWaveletConvolution   -- PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
+  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   xs <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    applyV4SeparableFilterConvolutionLabeledArrayConduit
-      fftw
-      parallelParams
-      (stride params)
-      gFilters
-      filtersF =$=
-    magnitudeConduit parallelParams =$=
+    filterConduit parallelParams fftw [filters] gFilters False (stride params) =$=
+    -- pinwheelRingGaussianConvolutionConduit parallelParams fftw filters gFilters (stride params) =$=
     CL.take (numGMMExample params)
   let (ls, ys) = L.unzip xs
   kmeansModel <- kmeans parallelParams (numGaussian params) (L.concat ys)

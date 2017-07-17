@@ -88,7 +88,7 @@ main = do
     imgs
   fftw <- initializefftw fftwWisdom
   filtersF <-
-    M.mapM (fourierTransformFilter fftwInit (imageSize params, imageSize params)) filters
+    M.mapM (fourierTransformFilter fftw (imageSize params, imageSize params)) filters
   gFilters <- M.mapM (fmap getFilter . Gaussian.makeFilter fftw) gFilterParams
   xs <-
     runResourceT $

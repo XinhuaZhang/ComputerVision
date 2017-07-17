@@ -9,12 +9,15 @@ import           Control.Monad                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Parallel       as MP
 import           Control.Monad.Trans.Resource
-import           CV.FilterExpansion
 import           CV.Statistics.KMeans
 import           CV.Statistics.PCA
 import           CV.Utility.Parallel
 import           CV.Utility.Time
-import           CV.V4FilterConvolution
+-- import           CV.V4FilterConvolution
+import           CV.Array.LabeledArray
+import           CV.Filter.GaussianFilter
+import           CV.Utility.FFT
+import           CV.Utility.RepaArrayUtility  (arrayToUnboxed, downsample)
 import           Data.Array.Repa              as R
 import           Data.Binary
 import           Data.ByteString              as B
@@ -24,9 +27,11 @@ import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.List                    as L
 import           Data.Vector                  as V
+import           Data.Vector.Storable         as VS
 import           Data.Vector.Unboxed          as VU
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
+import CV.Filter.PinwheelRing
 
 
 {-# INLINE complexDistance #-}
@@ -158,77 +163,77 @@ featureConduit :: Conduit (a, VU.Vector Double) (ResourceT IO) (a, [C'feature_no
 featureConduit = awaitForever (yield . second (getFeature . Dense . VU.toList))
 
 
-{-# INLINE getOrientationHistogram #-}
+-- {-# INLINE getOrientationHistogram #-}
 
-getOrientationHistogram :: Int
-                        -> Int
-                        -> Int
-                        -> V4SeparableFilteredImageConvolution
-                        -> [[VU.Vector Double]]
-getOrientationHistogram patchSize stride n (FourierMellinTransformFilteredImageConvolution (rows, cols) _ vecs) =
-  L.map (getDenseFeatures patchSize stride n . vector2Array (rows, cols)) .
-  L.concatMap L.concat $
-  vecs
-getOrientationHistogram patchSize stride n (V4PolarSeparableFilteredImageConvolutionAxis (rows, cols) _ vecs) =
-  L.map (getDenseFeatures patchSize stride n . vector2Array (rows, cols)) . L.concat $
-  vecs
+-- getOrientationHistogram :: Int
+--                         -> Int
+--                         -> Int
+--                         -> V4SeparableFilteredImageConvolution
+--                         -> [[VU.Vector Double]]
+-- getOrientationHistogram patchSize stride n (FourierMellinTransformFilteredImageConvolution (rows, cols) _ vecs) =
+--   L.map (getDenseFeatures patchSize stride n . vector2Array (rows, cols)) .
+--   L.concatMap L.concat $
+--   vecs
+-- getOrientationHistogram patchSize stride n (V4PolarSeparableFilteredImageConvolutionAxis (rows, cols) _ vecs) =
+--   L.map (getDenseFeatures patchSize stride n . vector2Array (rows, cols)) . L.concat $
+--   vecs
 
-orientationHistogramConduit
-  :: ParallelParams
-  -> Int
-  -> Int
-  -> Int
-  -> Conduit (Double, [V4SeparableFilteredImageConvolution]) (ResourceT IO) (Double, [VU.Vector Double])
-orientationHistogramConduit parallelParams patchSize stride n = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\(label, filteredImages) ->
-                    let y = L.map (getOrientationHistogram patchSize stride n) filteredImages
-                        z =
-                          L.map VU.concat .
-                          L.transpose . L.map (L.map VU.concat . L.transpose) $
-                          y
-                    in (label, z))
-                xs
-        sourceList ys
-        orientationHistogramConduit parallelParams patchSize stride n)
+-- orientationHistogramConduit
+--   :: ParallelParams
+--   -> Int
+--   -> Int
+--   -> Int
+--   -> Conduit (Double, [V4SeparableFilteredImageConvolution]) (ResourceT IO) (Double, [VU.Vector Double])
+-- orientationHistogramConduit parallelParams patchSize stride n = do
+--   xs <- CL.take (batchSize parallelParams)
+--   unless
+--     (L.null xs)
+--     (do let ys =
+--               parMapChunk
+--                 parallelParams
+--                 rdeepseq
+--                 (\(label, filteredImages) ->
+--                     let y = L.map (getOrientationHistogram patchSize stride n) filteredImages
+--                         z =
+--                           L.map VU.concat .
+--                           L.transpose . L.map (L.map VU.concat . L.transpose) $
+--                           y
+--                     in (label, z))
+--                 xs
+--         sourceList ys
+--         orientationHistogramConduit parallelParams patchSize stride n)
 
 
-magnitudeConduit
-  :: ParallelParams
-  -> Conduit (Double, [V4SeparableFilteredImageConvolution]) (ResourceT IO) (Double, [VU.Vector Double])
-magnitudeConduit parallelParams = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\(label, filteredImages) ->
-                    let y =
-                          L.concatMap
-                            (\img ->
-                                case img of
-                                  V4PolarSeparableFilteredImageConvolutionAxis _ _ vecs ->
-                                    L.concat vecs
-                                  FourierMellinTransformFilteredImageConvolution _ _ vecs ->
-                                    L.concatMap L.concat vecs)
-                            filteredImages
-                        !z =
-                          L.map VU.fromList .
-                          L.transpose . L.map (VU.toList . VU.map magnitude) $
-                          y
-                    in (label, z))
-                xs
-        liftIO printCurrentTime
-        sourceList ys
-        magnitudeConduit parallelParams)
+-- magnitudeConduit
+--   :: ParallelParams
+--   -> Conduit (Double, [V4SeparableFilteredImageConvolution]) (ResourceT IO) (Double, [VU.Vector Double])
+-- magnitudeConduit parallelParams = do
+--   xs <- CL.take (batchSize parallelParams)
+--   unless
+--     (L.null xs)
+--     (do let ys =
+--               parMapChunk
+--                 parallelParams
+--                 rdeepseq
+--                 (\(label, filteredImages) ->
+--                     let y =
+--                           L.concatMap
+--                             (\img ->
+--                                 case img of
+--                                   V4PolarSeparableFilteredImageConvolutionAxis _ _ vecs ->
+--                                     L.concat vecs
+--                                   FourierMellinTransformFilteredImageConvolution _ _ vecs ->
+--                                     L.concatMap L.concat vecs)
+--                             filteredImages
+--                         !z =
+--                           L.map VU.fromList .
+--                           L.transpose . L.map (VU.toList . VU.map magnitude) $
+--                           y
+--                     in (label, z))
+--                 xs
+--         liftIO printCurrentTime
+--         sourceList ys
+--         magnitudeConduit parallelParams)
 
 
 pcaSink
@@ -292,3 +297,137 @@ writeMagnitudeConduit =
 
 readMagnitudeConduit :: Conduit B.ByteString (ResourceT IO) (Double, [VU.Vector Double])
 readMagnitudeConduit = awaitForever (\x -> undefined)
+
+
+filterConduit
+  :: (FilterConvolution a)
+  => ParallelParams
+  -> FFTW
+  -> [a]
+  -> GaussianFilterConvolution
+  -> Bool
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [VU.Vector Double])
+filterConduit parallelParams fftw filters gFilter gaussianFlag stride = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let (Z :. _ :. rows :. cols) =
+              (\(LabeledArray _ x) -> extent x) . L.head $ xs
+        ys <-
+          M.mapM
+            (\(LabeledArray label x) -> do
+               let imgVecs =
+                     L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
+                   filterList = L.concatMap getFilterConvolutionList filters
+                   gFilterList = getFilterConvolutionList gFilter
+               filteredImages <-
+                 liftIO $
+                 if gaussianFlag
+                   then L.concat <$>
+                        M.mapM
+                          (\filter' ->
+                              L.concat <$>
+                              M.mapM
+                                (\gFilter' ->
+                                    M.mapM
+                                      (\imgVec ->
+                                          idft2d fftw rows cols $
+                                          VS.zipWith3
+                                            (\a b c' -> a * b * c')
+                                            imgVec
+                                            filter'
+                                            gFilter')
+                                      imgVecs)
+                                gFilterList)
+                          filterList
+                   else L.concat <$>
+                        M.mapM
+                          (\filter' -> applyFilterConvolution fftw filter' imgVecs)
+                          filters
+               return (fromIntegral label, filteredImages))
+            xs
+        let zs =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (second $
+                 L.map VU.fromList .
+                 L.transpose .
+                 if stride == 1
+                   then L.map (VS.toList . VS.map magnitude)
+                   else L.map
+                          (R.toList .
+                           R.map magnitude .
+                           downsample [stride, stride] .
+                           fromUnboxed (Z :. rows :. cols) . VS.convert))
+                ys
+        sourceList zs
+        filterConduit parallelParams fftw filters gFilter gaussianFlag stride)
+
+
+eigCovConduit
+  :: (NFData a)
+  => ParallelParams
+  -> Int
+  -> Conduit (a, [VU.Vector Double]) (ResourceT IO) (a, VU.Vector Double)
+eigCovConduit parallelParams numPrincipal =
+  awaitForever
+    (\(label', vecs) ->
+        let (PCAMatrix _ mat, _, _) = pcaSVD parallelParams numPrincipal vecs
+        in yield (label', normalizeVec . VU.concat . V.toList $ mat))
+  where normalizeVec vec
+          | s == 0 = VU.replicate (VU.length vec) 0
+          | otherwise = VU.map (/ s) vec
+          where
+            s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
+-- xs <- CL.take (batchSize parallelParams)
+-- unless
+--   (L.null xs)
+--   (do let ys =
+--             parMapChunk
+--               parallelParams
+--               rdeepseq
+--               (\(label', vecs) ->
+--                   let (PCAMatrix _ mat, _, _) = pcaSVDS numPrincipal vecs
+--                   in (label',VU.concat . V.toList $ mat))
+--               xs
+--       sourceList ys
+--       eigCovConduit parallelParams numPrincipal)
+
+
+
+pinwheelRingGaussianConvolutionConduit
+  :: ParallelParams
+  -> FFTW
+  -> PinwheelRingConvolution
+  -> GaussianFilterConvolution1D
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [VU.Vector Double])
+pinwheelRingGaussianConvolutionConduit parallelParams fftw pFilter gFilter stride = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do ys <-
+          liftIO $
+          M.mapM
+            (\(LabeledArray label x) -> do
+               let imgVecs =
+                     L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
+               zs <-
+                 applyPinwheelRingConvolutionGaussian
+                   fftw
+                   pFilter
+                   gFilter
+                   stride
+                   imgVecs
+               return
+                 (fromIntegral label, L.map (VU.map magnitude . VS.convert) zs))
+            xs
+        sourceList ys
+        pinwheelRingGaussianConvolutionConduit
+          parallelParams
+          fftw
+          pFilter
+          gFilter
+          stride)

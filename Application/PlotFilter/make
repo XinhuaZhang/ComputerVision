@@ -1,7 +1,12 @@
 #!/bin/bash
-
-ghc -i../.. -j4 -O2 Main.hs -o main
+LIBS="-lstdc++ -llapack -lblas -lfftw3 -lfftw3f -lfftw3l -lm" # 
+# ghc -i../.. -j4 -O2 $LIBS Main.hs -o main
+# ghc -i../.. -j4 -O2 $LIBS PlotGabor.hs -o plotGabor
+# ghc -i../.. -j4 -O2 $LIBS PlotMorletWavelet.hs -o plotMorletWavelet
+# ghc -i../.. -j4 -O2 $LIBS PlotPinwheels.hs -o plotPinwheels
+# ghc -i../.. -j4 -O2 $LIBS PlotPinwheelRing.hs -o plotPinwheelRing
+ghc -i../.. -j4 -O2 $LIBS PlotPinwheelWavelet.hs -o plotPinwheelWavelet
 
 # ghc -i../.. -j4 -O2 PlotFilteredImage.hs -o plot
 
-ghc -i../.. -j4 -O2 PlotFTFilter.hs -o plotFTFilter
+#ghc -i../.. -j4 -O2 PlotFTFilter.hs -o plotFTFilter

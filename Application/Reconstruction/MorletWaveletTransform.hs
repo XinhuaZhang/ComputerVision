@@ -1,0 +1,74 @@
+import           Application.Reconstruction.Recon
+import           Control.Monad                    as M
+import           Control.Monad.Parallel           as MP
+import           Control.Monad.Trans.Resource
+import           CV.Filter.MorletWavelet
+import           CV.IO.ImageIO
+import           CV.Utility.FFT
+import           Data.Array                       as Arr
+import           Data.Array.Repa                  as R
+import           Data.Complex
+import           Data.Conduit
+import           Data.Conduit.List                as CL
+import qualified Data.Image                       as IM
+import           Data.List                        as L
+import           Data.Vector.Storable             as VS
+import           Data.Vector.Unboxed              as VU
+import           System.Environment
+
+main = do
+  (imagePath:imageSizeStr:_) <- getArgs
+  let imageSize = read imageSizeStr :: Int
+      m = 30
+      filterParams =
+        MorletWaveletParams
+        { morletWaveletRows = imageSize
+        , morletWaveletCols = imageSize
+        , morletWaveletFreq = 3 * pi / 4
+        , morletWaveletGaussianScale = 0.125 * pi
+        , morletWaveletOrientation = [0,m..180-m]
+        , morletWaveletScale = L.map (\x -> 2 ** x) [0 .. 2]
+        }
+      fftwWisdomPath = "fftw.dat"
+      fftwWisdom = FFTWWisdomPath fftwWisdomPath
+  (img:_) <-
+    runResourceT $
+    sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
+  let imgVec = VU.convert . VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img
+  fftwInit <- initializefftw FFTWWisdomNull
+  generateWisdom fftwInit fftwWisdomPath imageSize imageSize imgVec -- This resets imgVec
+  (img1:_) <-
+    runResourceT $
+    sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
+  let imgVecs =
+        [normalizeImage (-1,1) . VU.convert . VU.map (:+ 0)  . toUnboxed . computeUnboxedS $ img1] :: [VS.Vector (Complex Double)]
+  fftw <- initializefftw fftwWisdom
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO MorletWaveletConvolution
+  conjugateFilters <- makeFilterConvolution fftw filterParams Conjugate :: IO MorletWaveletConvolution
+  filteredImages <- L.head <$> applyFilterConvolution fftw filters imgVecs
+  let cFilterList = getFilterConvolutionList conjugateFilters
+      filteredImageList = L.concat filteredImages
+  inversedFilteredImageList <-
+    M.zipWithM
+      (\x y -> do
+         y' <- dft2d fftw imageSize imageSize y
+         idft2d fftw imageSize imageSize $ VS.zipWith (*) x y')
+      cFilterList
+      filteredImageList
+  let recon = L.foldl1' (VS.zipWith (+)) inversedFilteredImageList
+      arr =
+        IM.arrayToImage .
+        listArray ((0, 0), (imageSize - 1, imageSize - 1)) . VS.toList . normalizeImage (0,255) $
+        recon :: IM.ComplexImage
+  IM.writeImage "MagnitudeReconComplex.pgm" arr
+  IM.writeImage "MagnitudeRecon.pgm" . IM.magnitude $ arr
+  -- MP.sequence $
+  --   L.zipWith
+  --     (\i img ->
+  --         IM.writeImage (show i L.++ ".pgm") . IM.magnitude $
+  --         (IM.arrayToImage .
+  --          listArray ((0, 0), (imageSize - 1, imageSize - 1)) . VS.toList $
+  --          img :: IM.ComplexImage))
+  --     [1 ..]
+  --     -- cFilterList
+  --     filteredImageList

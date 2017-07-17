@@ -3,7 +3,7 @@
 export OMP_NUM_THREADS=14
 FLAG="--make -O3 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000  -funbox-strict-fields" #-fllvm -optlo-O3
 OBJPATH="../../Classifier/LibLinear/"
-LIBS="-lstdc++ -llapack -lblas -lgomp"
+LIBS="-lstdc++ -llapack -lblas -lgomp -lfftw3 -lfftw3f -lfftw3l -lm"
 
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Main.hs -o main
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o MainPCA.hs -o mainPCA
@@ -13,4 +13,6 @@ LIBS="-lstdc++ -llapack -lblas -lgomp"
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Predict.hs -o predict
 
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o Test.hs -o test
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TestCrossValidation.hs -o testCrossValidation
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o TestCrossValidation.hs -o testCrossValidation
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o MainPinwheelRing.hs -o mainPinwheelRing
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o MainPinwheelRingGaussian.hs -o mainPinwheelRingGaussian
