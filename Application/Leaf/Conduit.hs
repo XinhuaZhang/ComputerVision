@@ -32,6 +32,7 @@ import           Data.Vector.Unboxed          as VU
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import CV.Filter.PinwheelRing
+import CV.Image
 
 
 {-# INLINE complexDistance #-}
@@ -431,3 +432,69 @@ pinwheelRingGaussianConvolutionConduit parallelParams fftw pFilter gFilter strid
           pFilter
           gFilter
           stride)
+
+
+filterConduit'
+  :: (FilterConvolution a)
+  => ParallelParams
+  -> FFTW
+  -> [a]
+  -> GaussianFilterConvolution
+  -> Bool
+  -> Int
+  -> Conduit (Double, ImageRepa) (ResourceT IO) (Double, [VU.Vector Double])
+filterConduit' parallelParams fftw filters gFilter gaussianFlag stride = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let (Z :. _ :. rows :. cols) = extent . imageContent . snd . L.head $ xs
+        ys <-
+          M.mapM
+            (\(label, Image _ x) -> do
+               let imgVecs =
+                     L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
+                   filterList = L.concatMap getFilterConvolutionList filters
+                   gFilterList = getFilterConvolutionList gFilter
+               filteredImages <-
+                 liftIO $
+                 if gaussianFlag
+                   then L.concat <$>
+                        M.mapM
+                          (\filter' ->
+                              L.concat <$>
+                              M.mapM
+                                (\gFilter' ->
+                                    M.mapM
+                                      (\imgVec ->
+                                          idft2d fftw rows cols $
+                                          VS.zipWith3
+                                            (\a b c' -> a * b * c')
+                                            imgVec
+                                            filter'
+                                            gFilter')
+                                      imgVecs)
+                                gFilterList)
+                          filterList
+                   else L.concat <$>
+                        M.mapM
+                          (\filter' -> applyFilterConvolution fftw filter' imgVecs)
+                          filters
+               return (label, filteredImages))
+            xs
+        let zs =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (second $
+                 L.map VU.fromList .
+                 L.transpose .
+                 if stride == 1
+                   then L.map (VS.toList . VS.map magnitude)
+                   else L.map
+                          (R.toList .
+                           R.map magnitude .
+                           downsample [stride, stride] .
+                           fromUnboxed (Z :. rows :. cols) . VS.convert))
+                ys
+        sourceList zs
+        filterConduit' parallelParams fftw filters gFilter gaussianFlag stride)
