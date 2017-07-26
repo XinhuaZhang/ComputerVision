@@ -24,6 +24,7 @@ import CV.Utility.RepaArrayUtility
 import CV.Filter.PinwheelRing
 import CV.Filter.GaussianFilter
 import CV.Utility.FFT
+import CV.IO.ImageIO
 
 data CKImage =
   CKImage {imagePath     :: !String
@@ -103,10 +104,9 @@ cropRescaleConduit parallelParams =
 
 
 cropSquareConduit
-  :: (R.Source s Double)
-  => ParallelParams
+  :: ParallelParams
   -> Int
-  -> Conduit (((Int, Int), (Int, Int)), R.Array s DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
+  -> Conduit (((Int, Int), (Int, Int)), ImageRepa) (ResourceT IO) ImageRepa
 cropSquareConduit parallelParams size' = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -116,23 +116,25 @@ cropSquareConduit parallelParams size' = do
                 parallelParams
                 rseq
                 (\(((xMin, yMin), (xLen, yLen)), arr) ->
-                    let (Z :. nf' :. _ :. _) = extent arr
-                        newXMin =
-                          if xLen >= yLen
-                            then xMin
-                            else xMin - div (yLen - xLen) 2
-                        newYMin =
-                          if yLen >= xLen
-                            then yMin
-                            else yMin - div (xLen - yLen) 2
-                        len = max xLen yLen
-                        croppedArr = 
-                          Utility.crop
-                            [newXMin, newYMin, 0 :: Int]
-                            [len, len, nf']
-                            arr
-                        rescaledArr = rescale25D (size', size') (0, 255) croppedArr
-                    in deepSeqArray rescaledArr rescaledArr)
+                   let (Z :. nf' :. _ :. _) = extent . imageContent $ arr
+                       newXMin =
+                         if xLen >= yLen
+                           then xMin
+                           else xMin - div (yLen - xLen) 2
+                       newYMin =
+                         if yLen >= xLen
+                           then yMin
+                           else yMin - div (xLen - yLen) 2
+                       len = max xLen yLen
+                       croppedArr =
+                         fmap
+                           (Utility.crop
+                              [newXMin, newYMin, 0 :: Int]
+                              [len, len, nf'])
+                           arr
+                       rescaledArr =
+                         fmap (rescale25D (size', size') (0, 255)) croppedArr
+                   in rescaledArr)
                 xs
         sourceList ys
         cropSquareConduit parallelParams size')

@@ -100,54 +100,54 @@ instance NFData HyperbolicSeparableFilter where
 
 
 
-instance FilterExpansion HyperbolicSeparableFilter where
-  type FilterParameter HyperbolicSeparableFilter = HyperbolicSeparableFilterParams
-  type FilterType HyperbolicSeparableFilter = V4SeparableFilter
-  {-# INLINE makeFilter #-}
-  makeFilter (HyperbolicSeparableFilter params@(HyperbolicSeparableFilterParams rows cols scales uFreqs vFreqs angles) _) (centerR, centerC) =
-    HyperbolicSeparableFilter params . V4HyperbolicSeparableFilter . L.concat $
-    [ L.concat
-       [ [ VU.fromListN
-            (cols * rows)
-            [ hyperbolicSeparable
-               scale
-               angle
-               uFreq
-               vFreq
-               (x - centerC)
-               (y - centerR)
-            | y <- [0 .. rows - 1]
-            , x <- [0 .. cols - 1] ]
-         | uFreq <- uFreqs ]
-       | vFreq <- vFreqs ] L.++
-     L.concat
-       [ [ VU.fromListN
-            (cols * rows)
-            [ hyperbolicSeparableC
-               scale
-               angle
-               uFreq
-               vFreq
-               (x - centerC)
-               (y - centerR)
-            | y <- [0 .. rows - 1]
-            , x <- [0 .. cols - 1] ]
-         | uFreq <- uFreqs ]
-       | vFreq <- vFreqs ]
-    | scale <- scales
-    , angle <- radAngles ]
-    where
-      radAngles = L.map deg2Rad angles
-  getFilterSize (HyperbolicSeparableFilter (HyperbolicSeparableFilterParams _ _ scales ufs vfs as) _) =
-    L.product [L.length scales, L.length ufs, L.length vfs, L.length as]
-  getFilterParameter = getHyperbolicSeparableFilterParams
-  {-# INLINE getFilterVectors #-}
-  getFilterVectors (HyperbolicSeparableFilter _ vecs) = vecs
-  {-# INLINE changeSizeParameter #-}
-  changeSizeParameter rows cols (HyperbolicSeparableFilter (HyperbolicSeparableFilterParams _ _ scale uFreq vFreq angle) vecs) =
-    HyperbolicSeparableFilter
-      (HyperbolicSeparableFilterParams rows cols scale uFreq vFreq angle)
-      vecs
+-- instance FilterExpansion HyperbolicSeparableFilter where
+--   type FilterParameter HyperbolicSeparableFilter = HyperbolicSeparableFilterParams
+--   type FilterType HyperbolicSeparableFilter = V4SeparableFilter
+--   {-# INLINE makeFilter #-}
+--   makeFilter (HyperbolicSeparableFilter params@(HyperbolicSeparableFilterParams rows cols scales uFreqs vFreqs angles) _) (centerR, centerC) =
+--     HyperbolicSeparableFilter params . V4HyperbolicSeparableFilter . L.concat $
+--     [ L.concat
+--        [ [ VU.fromListN
+--             (cols * rows)
+--             [ hyperbolicSeparable
+--                scale
+--                angle
+--                uFreq
+--                vFreq
+--                (x - centerC)
+--                (y - centerR)
+--             | y <- [0 .. rows - 1]
+--             , x <- [0 .. cols - 1] ]
+--          | uFreq <- uFreqs ]
+--        | vFreq <- vFreqs ] L.++
+--      L.concat
+--        [ [ VU.fromListN
+--             (cols * rows)
+--             [ hyperbolicSeparableC
+--                scale
+--                angle
+--                uFreq
+--                vFreq
+--                (x - centerC)
+--                (y - centerR)
+--             | y <- [0 .. rows - 1]
+--             , x <- [0 .. cols - 1] ]
+--          | uFreq <- uFreqs ]
+--        | vFreq <- vFreqs ]
+--     | scale <- scales
+--     , angle <- radAngles ]
+--     where
+--       radAngles = L.map deg2Rad angles
+--   getFilterSize (HyperbolicSeparableFilter (HyperbolicSeparableFilterParams _ _ scales ufs vfs as) _) =
+--     L.product [L.length scales, L.length ufs, L.length vfs, L.length as]
+--   getFilterParameter = getHyperbolicSeparableFilterParams
+--   {-# INLINE getFilterVectors #-}
+--   getFilterVectors (HyperbolicSeparableFilter _ vecs) = vecs
+--   {-# INLINE changeSizeParameter #-}
+--   changeSizeParameter rows cols (HyperbolicSeparableFilter (HyperbolicSeparableFilterParams _ _ scale uFreq vFreq angle) vecs) =
+--     HyperbolicSeparableFilter
+--       (HyperbolicSeparableFilterParams rows cols scale uFreq vFreq angle)
+--       vecs
 
 {-# INLINE hyperbolicSeparable #-}
 

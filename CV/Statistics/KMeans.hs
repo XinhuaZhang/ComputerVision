@@ -153,8 +153,8 @@ computeClusterSize k xs =
   where
     vec = V.concat xs
 
-kmeans :: ParallelParams -> Int -> FilePath -> [VU.Vector Double] -> IO KMeansModel
-kmeans parallelParams k filePath xs = do
+kmeans :: ParallelParams -> Int -> FilePath -> Double -> [VU.Vector Double] -> IO KMeansModel
+kmeans parallelParams k filePath threshold xs = do
   randomCenter <- randomClusterCenterPP [] k ys
   go (V.fromListN k randomCenter) (fromIntegral (maxBound :: Int)) ys
   where
@@ -166,8 +166,9 @@ kmeans parallelParams k filePath xs = do
     go !center' lastDistortion zs = do
       let assignment = computeAssignmentP center' zs
           distortion = computeDistortionP center' assignment zs
+          ratio = (lastDistortion - distortion) / distortion
       print distortion
-      if distortion >= lastDistortion
+      if distortion >= lastDistortion || ratio < threshold
         then return $! KMeansModel (computeClusterSize k assignment) center'
         else do
           newCenter <-
