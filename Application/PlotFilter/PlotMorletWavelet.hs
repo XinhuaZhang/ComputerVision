@@ -7,14 +7,14 @@ import           Data.List              as L
 import           Data.Vector.Unboxed    as VU
 
 main = do
-  let n = 32
+  let n = 16
       m = 15
       filterParams =
         MorletWaveletParams
         { morletWaveletRows = n
         , morletWaveletCols = n
         , morletWaveletFreq = 3 * pi / 4
-        , morletWaveletGaussianScale = 0.85 --0.25 * pi
+        , morletWaveletGaussianScale = 1 --0.25 * pi
         , morletWaveletOrientation =
           [ 135 -- ,m .. 180 - m
           ]

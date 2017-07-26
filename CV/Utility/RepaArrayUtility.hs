@@ -52,6 +52,12 @@ crop start len arr
     error $
     "Crop out of boundary!\n" L.++ show start L.++ "\n" L.++ show len L.++ "\n" L.++
     show dList
+  | L.length start /= L.length len || L.length start /= L.length dList =
+    error $
+    "crop: dimension error. \n start: " L.++ show (L.length start) L.++ " len:" L.++
+    show (L.length len) L.++
+    " arr:" L.++
+    show (L.length dList)
   | otherwise =
     R.backpermute
       (shapeOfList len)

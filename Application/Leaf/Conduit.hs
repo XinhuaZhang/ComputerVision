@@ -16,6 +16,7 @@ import           CV.Utility.Time
 -- import           CV.V4FilterConvolution
 import           CV.Array.LabeledArray
 import           CV.Filter.GaussianFilter
+import           CV.Filter.PinwheelWavelet
 import           CV.Utility.FFT
 import           CV.Utility.RepaArrayUtility  (arrayToUnboxed, downsample)
 import           Data.Array.Repa              as R
@@ -29,10 +30,12 @@ import           Data.List                    as L
 import           Data.Vector                  as V
 import           Data.Vector.Storable         as VS
 import           Data.Vector.Unboxed          as VU
+import           Data.Vector          as V
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import CV.Filter.PinwheelRing
 import CV.Image
+import Application.SymmetryDection.SymmetryDetection
 
 
 {-# INLINE complexDistance #-}
@@ -498,3 +501,81 @@ filterConduit' parallelParams fftw filters gFilter gaussianFlag stride = do
                 ys
         sourceList zs
         filterConduit' parallelParams fftw filters gFilter gaussianFlag stride)
+
+
+filterKeypointConduit
+  :: ParallelParams
+  -> FFTW
+  -> PinwheelWaveletConvolution
+  -> Int
+  -> Double
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [VU.Vector Double])
+filterKeypointConduit parallelParams fftw filters numPoints threshold = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do ys <-
+          liftIO $
+          M.mapM
+            (\(LabeledArray label x) -> do
+               let imgVecs =
+                     L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
+               zs <- applyPinwheelWaveletConvolution fftw filters imgVecs
+               return (fromIntegral label, zs))
+            xs
+        let labelKeypoints =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(label, filteredImages) ->
+                    let normalizedFilteredImages =
+                          L.map
+                            (L.map
+                               (L.map
+                                  (VS.map
+                                     (\x ->
+                                         if magnitude x < 10 ** (-6)
+                                           then 0 :+ 0
+                                           else x))))
+                            filteredImages
+                        rotation =
+                          L.map
+                            (L.map rotationSymmetryDegree .
+                             L.transpose . L.map VS.toList) .
+                          rotationSymmetry
+                            (pinwheelWaveletAngularFreqs . getFilterParams $ filters)
+                            numPoints $
+                          normalizedFilteredImages
+                        reflection =
+                          L.map
+                            (L.map reflectionSymmetryDegree .
+                             L.transpose . L.map VS.toList) .
+                          reflectionSymmetry
+                            (pinwheelWaveletAngularFreqs . getFilterParams $ filters)
+                            numPoints $
+                          normalizedFilteredImages
+                        degree = L.concat $ L.zipWith (L.zipWith (+)) rotation reflection
+                        points =
+                          findKeypoint threshold .
+                          R.fromListUnboxed
+                            (Z :.
+                             (L.length . pinwheelWaveletRadialScale . getFilterParams $
+                              filters) :.
+                             rows :.
+                             cols) $
+                          degree
+                        filteredImagesVec = V.fromList filteredImages
+                        keypoints =
+                          L.map
+                            (\(Keypoint s idx _) ->
+                                VU.fromList .
+                                L.map (\a -> magnitude $ a VS.! idx) . L.concat $
+                                (filteredImagesVec V.! s))
+                            points
+                    in (label, keypoints))
+                ys
+        sourceList labelKeypoints
+        filterKeypointConduit parallelParams fftw filters numPoints threshold)
+  where
+    rows = pinwheelWaveletRows . getFilterParams $ filters
+    cols = pinwheelWaveletCols . getFilterParams $ filters

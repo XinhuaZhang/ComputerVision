@@ -7,8 +7,7 @@ module CV.Filter.PinwheelWavelet
   , PinwheelWaveletParams(..)
   , PinwheelWaveletExpansion
   , PinwheelWaveletConvolution
-  -- , applyPinwheelWaveletExpansionGaussian
-  -- , applyPinwheelWaveletConvolutionGaussian
+  , applyPinwheelWaveletConvolution
   ) where
 
 import           Control.Monad               as M
@@ -52,8 +51,8 @@ instance FilterExpansion PinwheelWaveletExpansion where
              rCenter
              cCenter
              (pinwheelWavelet gScale radialScale waveletScale rf af radius)
-          | radius <- radiuses ]
-        | af <- afs ]
+          | af <- afs ]
+        | radius <- radiuses ]
       | waveletScale <- waveletScales ]
     | radialScale <- radialScales ]
   {-# INLINE getFilterExpansionNum #-}
@@ -79,9 +78,9 @@ instance FilterConvolution PinwheelWaveletConvolution where
           M.mapM
             (\waveletScale ->
                 M.mapM
-                  (\af ->
+                  (\radius ->
                       M.mapM
-                        (\radius ->
+                        (\af ->
                             dft2d fftw rows cols .
                             VS.fromListN (rows * cols) . conjugateFunc filterType $!
                             makeFilterConvolutionList
@@ -94,8 +93,8 @@ instance FilterConvolution PinwheelWaveletConvolution where
                                  rf
                                  af
                                  radius))
-                        radiuses)
-                  afs)
+                        afs)
+                  radiuses)
             waveletScales)
       radialScales
   {-# INLINE getFilterConvolutionNum #-}
@@ -121,15 +120,23 @@ instance FilterConvolution PinwheelWaveletConvolution where
 
 {-# INLINE pinwheelWavelet #-}
 
-pinwheelWavelet :: Double -> Double -> Double -> Double -> Int -> Double -> Int -> Int -> Complex Double
+pinwheelWavelet :: Double
+                -> Double
+                -> Double
+                -> Double
+                -> Int
+                -> Double
+                -> Int
+                -> Int
+                -> Complex Double
 pinwheelWavelet gaussianScale radialScale waveletScale rf af shift x y
   | x == 0 && y == 0 = 0
   | otherwise =
-    (radialScale / sqrt waveletScale :+ 0) *
+    (radialScale ** (3 / 2) :+ 0) / (2 * pi * sqrt waveletScale :+ 0) *
     (gaussian1D gaussianScale (r - r') :+ 0) *
     exp
       (0 :+ fromIntegral af * angleFunctionRad (fromIntegral x) (fromIntegral y)) *
-    radialFunc rf r r'
+    radialFunc rf  r r'
   where
     r =
       (sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * radialScale / waveletScale
@@ -137,7 +144,7 @@ pinwheelWavelet gaussianScale radialScale waveletScale rf af shift x y
 
 {-# INLINE radialFunc #-}
 
-radialFunc :: Double -> Double -> (Double -> Complex Double)
+radialFunc :: Double  -> Double -> (Double -> Complex Double)
 radialFunc rFreq r r' = exp (0 :+ rFreq * (r - r'))
 
 -- applyPinwheelWaveletExpansionGaussian
@@ -163,40 +170,21 @@ radialFunc rFreq r r' = exp (0 :+ rFreq * (r - r'))
 --   return . L.concatMap VS.toList $ ys
 
 
--- applyPinwheelWaveletConvolutionGaussian
---   :: FFTW
---   -> PinwheelWaveletConvolution
---   -> GaussianFilterConvolution1D
---   -> Int
---   -> [VS.Vector (Complex Double)]
---   -> IO [VS.Vector (Complex Double)]
--- applyPinwheelWaveletConvolutionGaussian fftw (Filter (PinwheelWaveletParams rows cols _ _ _ _ _) pFilters) gFilters stride imgVecs = do
---   imgVecsF <- M.mapM (dft2d fftw rows cols) imgVecs
---   xs <-
---     M.mapM
---       (\imgVec ->
---           M.mapM
---             (M.mapM
---                (fmap
---                   (L.map (VS.fromList . L.map (\x -> magnitude x :+ 0)) .
---                    L.transpose .
---                    if stride == 1
---                      then L.map VS.toList
---                      else L.map
---                             (R.toList .
---                              downsample [stride, stride] .
---                              fromUnboxed (Z :. rows :. cols) . VS.convert)) .
---                 M.mapM (idft2d fftw rows cols . VS.zipWith (*) imgVec)))
---             pFilters)
---       imgVecsF :: IO [[[[VS.Vector (Complex Double)]]]]
---   ys <-
---     L.concat <$>
---     M.mapM
---       (fmap L.concat .
---        M.mapM
---          (fmap L.concat .
---           M.mapM
---             (fmap (L.transpose . L.map VS.toList) .
---              applyFilterConvolution fftw gFilters)))
---       xs
---   return . L.map VS.fromList . L.transpose $ ys
+applyPinwheelWaveletConvolution
+  :: FFTW
+  -> PinwheelWaveletConvolution
+  -> [VS.Vector (Complex Double)]
+  -> IO [[[VS.Vector (Complex Double)]]]
+applyPinwheelWaveletConvolution fftw (Filter (PinwheelWaveletParams rows cols _ _ _ _ _ _) pFilters) imgVecs = do
+  imgVecsF <- M.mapM (dft2d fftw rows cols) imgVecs
+  M.mapM
+    (\filters ->
+        L.concat <$>
+        M.mapM
+          (\imgVec ->
+              L.concat <$>
+              M.mapM
+                (M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) imgVec)))
+                filters)
+          imgVecsF)
+    pFilters

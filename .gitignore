@@ -47,3 +47,12 @@ main
 *.pca
 *.bak
 run*
+train*
+predict*
+*Model*
+plot*
+*Params
+magnitude*
+*Data
+main*
+*Test

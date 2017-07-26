@@ -86,5 +86,5 @@ main = do
     -- pinwheelRingGaussianConvolutionConduit parallelParams fftw filters gFilters (stride params) =$=
     CL.take (numGMMExample params)
   let (ls, ys) = L.unzip xs
-  kmeansModel <- kmeans parallelParams (numGaussian params) (L.concat ys)
+  kmeansModel <- kmeans parallelParams (numGaussian params) (kmeansFile params) (L.concat ys)
   encodeFile (kmeansFile params) kmeansModel

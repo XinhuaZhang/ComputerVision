@@ -153,8 +153,8 @@ computeClusterSize k xs =
   where
     vec = V.concat xs
 
-kmeans :: ParallelParams -> Int -> [VU.Vector Double] -> IO KMeansModel
-kmeans parallelParams k xs = do
+kmeans :: ParallelParams -> Int -> FilePath -> [VU.Vector Double] -> IO KMeansModel
+kmeans parallelParams k filePath xs = do
   randomCenter <- randomClusterCenterPP [] k ys
   go (V.fromListN k randomCenter) (fromIntegral (maxBound :: Int)) ys
   where
@@ -172,6 +172,7 @@ kmeans parallelParams k xs = do
         else do
           newCenter <-
             meanList2ClusterCenter (computeMeanP k nf assignment zs) zs
+          encodeFile filePath (KMeansModel (computeClusterSize k assignment) newCenter)
           go newCenter distortion zs
 
 {-# INLINE computeSoftAssignment #-}
