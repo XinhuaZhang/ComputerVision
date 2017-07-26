@@ -54,11 +54,14 @@ generateWisdom :: FFTW
                -> Int
                -> VS.Vector (Complex Double)
                -> IO ()
-generateWisdom fftw path rows cols vec = do
-  _x <- dft2d fftw rows cols vec
-  _x <- idft2d fftw rows cols vec
+generateWisdom fftw@(FFTW lock' False) path rows cols vec = do
+  let vec' = VS.fromList . VS.toList $ vec
+  _x <- dft2d fftw rows cols vec'
+  vec'' <- dft2d (FFTW lock' True) rows cols vec
+  _x <- idft2d fftw rows cols vec''
   wisdom <- exportWisdomString
   writeFile path wisdom
+generateWisdom _ _ _ _ _ = error "generateWisdom: Flag is True."  
 
 {-# INLINE dft2d #-}
 
