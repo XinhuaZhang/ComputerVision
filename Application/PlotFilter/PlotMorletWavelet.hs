@@ -14,11 +14,11 @@ main = do
         { morletWaveletRows = n
         , morletWaveletCols = n
         , morletWaveletFreq = 3 * pi / 4
-        , morletWaveletGaussianScale = 1 --0.25 * pi
+        , morletWaveletGaussianScale = 0.85 --0.25 * pi
         , morletWaveletOrientation =
           [ 135 -- ,m .. 180 - m
           ]
-        , morletWaveletScale = L.map (\x -> 2 ** x) [0 .. 4]
+        , morletWaveletScale = L.map (\x -> 2 ** (x / 2)) [0 .. 8]
         }
       filters =
         getFilterExpansionList

@@ -35,13 +35,21 @@ instance FilterExpansion MorletWaveletExpansion where
   {-# INLINE makeFilterExpansion #-}
   makeFilterExpansion params@(MorletWaveletParams rows cols freq gScale oris scales) rCenter cCenter =
     Filter params $!
-    [ [ VU.fromListN (rows * cols) $
-       makeFilterExpansionList
-         rows
-         cols
-         rCenter
-         cCenter
-         (morletWavelet freq gScale ori a)
+    [ [ let beta =
+              (L.sum . makeFilterExpansionList rows cols rCenter cCenter $
+               betaFunction freq gScale ori a) /
+              (2 * pi * gScale ^ (2 :: Int) :+ 0)
+            alpha =
+              (sqrt a :+ 0) /
+              (sqrt . L.sum . makeFilterExpansionList rows cols rCenter cCenter $
+               alphaFunction freq gScale ori a beta)
+        in VU.fromListN (rows * cols) $
+           makeFilterExpansionList
+             rows
+             cols
+             rCenter
+             cCenter
+             (morletWavelet freq gScale ori a alpha beta)
       | a <- scales ]
     | ori <- L.map deg2Rad oris ]
   {-# INLINE getFilterExpansionNum #-}
@@ -62,12 +70,23 @@ instance FilterConvolution MorletWaveletConvolution where
       ((\ori ->
            M.mapM
              (\a ->
-                 dft2d fftw rows cols .
-                 VS.fromListN (rows * cols) . conjugateFunc filterType $!
-                 makeFilterConvolutionList
-                   rows
-                   cols
-                   (morletWavelet freq gScale ori a))
+                 let rCenter = div rows 2
+                     cCenter = div cols 2
+                     beta =
+                       (L.sum . makeFilterExpansionList rows cols rCenter cCenter $
+                        betaFunction freq gScale ori a) /
+                       (2 * pi * gScale ^ (2 :: Int) :+ 0)
+                     alpha =
+                       (sqrt a :+ 0) /
+                       (sqrt .
+                        L.sum . makeFilterExpansionList rows cols rCenter cCenter $
+                        alphaFunction freq gScale ori a beta)
+                 in dft2d fftw rows cols .
+                    VS.fromListN (rows * cols) . conjugateFunc filterType $!
+                    makeFilterConvolutionList
+                      rows
+                      cols
+                      (morletWavelet freq gScale ori a alpha beta))
              scales) .
        deg2Rad)
       oris
@@ -88,14 +107,40 @@ instance FilterConvolution MorletWaveletConvolution where
 
 {-# INLINE morletWavelet #-}
 
-morletWavelet :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
-morletWavelet freq scale ori a x y =
-  alpha * (exp (0 :+ (freq * x' / a)) - beta) * (exp (-r / (2 * s2) / (a * a)) :+ 0) /
+morletWavelet
+  :: Double
+  -> Double
+  -> Double
+  -> Double
+  -> Complex Double
+  -> Complex Double
+  -> Int
+  -> Int
+  -> Complex Double
+morletWavelet freq scale ori a alpha beta x y =
+  alpha * (exp (0 :+ (freq * x' / a)) - beta) *
+  (exp (-r / (2 * s2) / (a * a)) :+ 0) /
   (sqrt a :+ 0)
   where
     r = fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     x' = fromIntegral x * cos ori + fromIntegral y * sin ori
     s2 = scale * scale
-    alpha = 1 / scale :+ 0 --  / (2 * pi * s2) :+ 0  --2 * pi * s2 * exp ((freq * freq - 1) * s2 / 2) :+ 0
-    beta = 0 -- (exp (-s2 / 2)) / (2 * pi * s2)
-      :+ 0
+      
+{-# INLINE betaFunction #-}
+
+betaFunction :: Double -> Double -> Double -> Double -> Int -> Int -> Complex Double
+betaFunction freq sigma theta a x y =
+  (exp (-r / (2 * (a * sigma) ^ (2 :: Int))) :+ 0) * exp (0 :+ freq * x' / a)
+  where
+    r = fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    x' = fromIntegral x * cos theta + fromIntegral y * sin theta
+    
+{-# INLINE alphaFunction #-}
+
+alphaFunction :: Double -> Double -> Double -> Double -> Complex Double -> Int -> Int -> Complex Double
+alphaFunction freq sigma theta a beta x y =
+  (exp (-r / ((a * sigma) ^ (2 :: Int))) :+ 0) *
+  (1 + beta ^ (2 :: Int) - 2 * beta * (cos (freq * x' / a) :+ 0))
+  where
+    r = fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    x' = fromIntegral x * cos theta + fromIntegral y * sin theta
