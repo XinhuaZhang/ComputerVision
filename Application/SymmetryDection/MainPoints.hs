@@ -19,16 +19,16 @@ import           Text.Printf
 
 main = do
   (imagePath:prefixStr:_) <- getArgs
-  let n = 102 -- 32 --128
+  let n = 128 -- 32 --128
       filterParams =
         PinwheelWaveletParams
         { pinwheelWaveletRows = n
         , pinwheelWaveletCols = n
-        , pinwheelWaveletGaussianScale = 0.25
+        , pinwheelWaveletGaussianScale = 0.5
         , pinwheelWaveletScale = L.map (\x -> sqrt 2 ** x) [0 .. 3]
-        , pinwheelWaveletRadialScale = L.map (\x -> ((2 ** (-x / 2)))) [0 .. 4]
+        , pinwheelWaveletRadialScale = L.map (\x -> ((2 ** (-x / 2)))) [0 .. 3]
         , pinwheelWaveletRadialFreqs = 3 / 4 * pi
-        , pinwheelWaveletAngularFreqs = [-15 .. 15]
+        , pinwheelWaveletAngularFreqs = [-7 .. 7]
         , pinwheelWaveletRadius = [1 .. 4]
         }
       path = "fftw.dat"
@@ -76,7 +76,7 @@ main = do
         reflectionSymmetry (pinwheelWaveletAngularFreqs filterParams) numPoints $
         -- filteredImages
         normalizedFilteredImages
-      threshold = 20
+      threshold = 15
       degree = L.concat $ L.zipWith (L.zipWith (+)) rotation reflection
       points =
         L.groupBy (\a b -> keypointScaleIndex a == keypointScaleIndex b) .

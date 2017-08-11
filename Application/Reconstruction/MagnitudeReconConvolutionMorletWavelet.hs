@@ -19,7 +19,7 @@ import           System.Environment
 main = do
   (imagePath:initReconPath:imageSizeStr:thresholdStr:lrStr:writeStepStr:_) <- getArgs
   let imageSize = read imageSizeStr :: Int
-      m = 45
+      m = 15
       n = (3 * pi / 4) / 7
       filterParams =
         MorletWaveletParams
@@ -28,21 +28,21 @@ main = do
         , morletWaveletFreq = 3 * pi / 4
         , morletWaveletGaussianScale = 0.125 * pi
         , morletWaveletOrientation = [0,m .. 180 - m]
-        , morletWaveletScale = L.map (\x -> 2 ** x) [0 .. 3]
+        , morletWaveletScale = L.map (\x -> 2 ** (x)) [0 .. 2]
         }
       fftwWisdomPath = "fftw.dat"
       fftwWisdom = FFTWWisdomPath fftwWisdomPath
   (img:_) <-
     runResourceT $
     sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
-  let imgVec = VU.convert . VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img
+  let imgVec = VU.convert . VU.map (:+ 0) . toUnboxed . imageContent $ img
   fftwInit <- initializefftw FFTWWisdomNull
   generateWisdom fftwInit fftwWisdomPath imageSize imageSize imgVec -- This resets imgVec
   (img1:_) <-
     runResourceT $
     sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
-  let imgVec1 = normalizeImage (-1,1) .
-        VU.convert . VU.map (:+ 0)  . toUnboxed . computeUnboxedS $
+  let imgVec1 =
+        normalizeImage (-1, 1) . VU.convert . VU.map (:+ 0) . toUnboxed . imageContent $
         img1
   fftw <- initializefftw fftwWisdom
   filters <- makeFilterConvolution fftw filterParams Normal :: IO MorletWaveletConvolution
@@ -54,7 +54,8 @@ main = do
           runResourceT $
           sourceList [initReconPath] $$ readImageConduit False =$= CL.take 1
         return $!
-          InitRecon . normalizeImage (-1,1) . VU.convert . VU.map (:+ 0)  . toUnboxed . computeUnboxedS $
+          InitRecon .
+          normalizeImage (-1, 1) . VU.convert . VU.map (:+ 0) . toUnboxed . imageContent $
           img2
   recon <-
     magnitudeReconConvolution
@@ -65,8 +66,9 @@ main = do
       (read thresholdStr :: Double)
       imgVec1
       (getFilterConvolutionList filters)
-      initRecon
+      NULL
       (read writeStepStr :: Int)
+      ""
   let arr =
         IM.arrayToImage .
         listArray ((0, 0), (imageSize - 1, imageSize - 1)) .

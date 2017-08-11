@@ -18,7 +18,7 @@ main = do
         , morletWaveletOrientation =
           [ 135 -- ,m .. 180 - m
           ]
-        , morletWaveletScale = L.map (\x -> 2 ** (x / 2)) [0 .. 8]
+        , morletWaveletScale = L.map (\x -> 2 ** (x / 3)) [0 .. 3]
         }
       filters =
         getFilterExpansionList

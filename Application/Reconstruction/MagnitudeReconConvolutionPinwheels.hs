@@ -31,14 +31,14 @@ main = do
   (img:_) <-
     runResourceT $
     sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
-  let imgVec = VU.convert . VU.map (:+ 0) . toUnboxed . computeUnboxedS $ img
+  let imgVec = VU.convert . VU.map (:+ 0) . toUnboxed . imageContent $ img
   fftwInit <- initializefftw FFTWWisdomNull
   generateWisdom fftwInit fftwWisdomPath imageSize imageSize imgVec -- This resets imgVec
   (img1:_) <-
     runResourceT $
     sourceList [imagePath] $$ readImageConduit False =$= CL.take 1
   let imgVec1 =
-        normalizeImage (-1, 1) . VU.convert . VU.map (:+ 0) . toUnboxed . computeUnboxedS $
+        normalizeImage (-1, 1) . VU.convert . VU.map (:+ 0) . toUnboxed . imageContent $
         img1
   fftw <- initializefftw fftwWisdom
   filters <- makeFilterConvolution fftw filterParams Normal :: IO PolarSeparableFilterGridConvolution

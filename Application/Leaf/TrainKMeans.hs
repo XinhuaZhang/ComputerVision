@@ -7,6 +7,7 @@ import           CV.Array.LabeledArray
 --import           CV.Filter.FourierMellinTransform
 -- import           CV.Filter.PolarSeparableFilter
 import           CV.Filter.PinwheelWavelet
+import           CV.Filter.MorletWavelet
 import           CV.Filter.GaussianFilter
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
@@ -25,7 +26,7 @@ main = do
   args <- getArgs
   params <- parseArgs args
   filterParams <-
-    fmap (\x -> read x :: PinwheelWaveletParams -- PolarSeparableFilterParamsGrid -- FourierMellinTransformParamsGrid
+    fmap (\x -> read x :: PinwheelWaveletParams -- MorletWaveletParams -- PinwheelWaveletParams -- PolarSeparableFilterParamsGrid -- FourierMellinTransformParamsGrid
          ) . readFile $
     (paramsFileName params)
   kmeansModel <- decodeFile (kmeansFile params)
@@ -39,7 +40,7 @@ main = do
         (gaussianScale params) (imageSize params) (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelWaveletConvolution --  PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelWaveletConvolution -- MorletWaveletConvolution -- PinwheelWaveletConvolution --  PolarSeparableFilterGridConvolution -- FourierMellinTransformConvolution
   gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   featurePtr <-
     runResourceT $

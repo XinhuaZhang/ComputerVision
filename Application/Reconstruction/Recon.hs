@@ -2,6 +2,7 @@
 module Application.Reconstruction.Recon where
 
 import           Control.Monad                  as M
+import           CV.Filter.PinwheelWavelet
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.FFT
 import           CV.Utility.Parallel
@@ -111,7 +112,7 @@ magnitudeRecon rows cols learningRate threshold img filters writeStep
             (fromIntegral . L.length $ filters) -- L.sum . L.map abs $ diff
           ratio = (lastErr - err) / lastErr
       -- err > lastErr ||
-      if -- err > lastErr || 
+      if -- err > lastErr ||
         err < 0.000 -- ratio < threshold
         then return input
         else do
@@ -120,10 +121,10 @@ magnitudeRecon rows cols learningRate threshold img filters writeStep
                 parZipWith3
                   rdeepseq
                   (\d p f ->
-                      VU.map (\x -> realPart $ (x) * ((d :+ 0) *  p)) f)
+                      VU.map (\x -> realPart $ (x) * ((d :+ 0) *  conjugate p)) f)
                   diff
                   predictionComplex
-                  filters 
+                  filters
           putStrLn $ show err L.++ " " L.++ show ratio
           go
             (VU.zipWith (+) input . VU.map (\x -> x * learningRate :+ 0) $ delta)
@@ -138,11 +139,12 @@ magnitudeReconConvolution
   -> Double
   -> Double
   -> VS.Vector (Complex Double)
-  -> [VS.Vector (Complex Double)]
+  -> [VS.Vector (Complex Double)] -> [VS.Vector (Complex Double)]
   -> InitRecon
-  -> Int -> String
+  -> Int
+  -> String
   -> IO (VU.Vector (Complex Double))
-magnitudeReconConvolution fftw rows cols learningRate threshold img filters initRecon writeStep prefix = do
+magnitudeReconConvolution fftw rows cols learningRate threshold img filters filtersPI initRecon writeStep prefix = do
   prediction <-
     case initRecon of
       InitRecon x -> return x
@@ -156,7 +158,12 @@ magnitudeReconConvolution fftw rows cols learningRate threshold img filters init
   imgVecF <- dft2d fftw rows cols img
   imgComplex <- M.mapM (idft2d fftw rows cols . VS.zipWith (*) imgVecF) filters
   let imgMags = L.map (VS.map magnitude) imgComplex
-  go imgComplex imgMags (normalizeImage (-1,1) prediction) (read "Infinity" :: Double) (1 :: Int)
+  go
+    imgComplex
+    imgMags
+    (normalizeImage (-1, 1) prediction)
+    (read "Infinity" :: Double)
+    (1 :: Int)
   where
     valueRange = (0, 255) :: (Double, Double)
     go imgComplex' imgMags' !input lastErr timeStep
@@ -164,7 +171,11 @@ magnitudeReconConvolution fftw rows cols learningRate threshold img filters init
      = do
       when
         (mod timeStep writeStep == 0)
-        (writeImage (prefix L.++ show (div timeStep writeStep) L.++ ".pgm") rows cols input)
+        (writeImage
+           (prefix L.++ show (div timeStep writeStep) L.++ ".pgm")
+           rows
+           cols
+           input)
       predictionF <- dft2d fftw rows cols input
       predictionComplex <-
         M.mapM (idft2d fftw rows cols . VS.zipWith (*) predictionF) filters
@@ -191,7 +202,12 @@ magnitudeReconConvolution fftw rows cols learningRate threshold img filters init
                  imgComplex'
                  predictionComplex) /
             (fromIntegral . L.length $ filters)
-          dp = parZipWith rdeepseq (VS.zipWith (\d p -> (d :+ 0) * p)) diff predictionComplex
+          dp =
+            parZipWith
+              rdeepseq
+              (VS.zipWith (\d p -> (d :+ 0) * conjugate p))
+              diff
+              predictionComplex
       dpF <- M.mapM (dft2d fftw rows cols) dp
       if err < threshold -- || err > lastErr
         then return . VS.convert $ input :: IO (VU.Vector (Complex Double))
@@ -203,7 +219,7 @@ magnitudeReconConvolution fftw rows cols learningRate threshold img filters init
                   fmap (VS.map realPart) . idft2d fftw rows cols $
                   VS.zipWith (*) dp' f')
               dpF
-              filters
+              filtersPI
           putStrLn $ show err L.++ " " L.++ show errComplex
           go
             imgComplex'
@@ -211,34 +227,6 @@ magnitudeReconConvolution fftw rows cols learningRate threshold img filters init
             (VS.zipWith (+) input . VS.map (\x -> x * learningRate :+ 0) $! delta)
             err
             (timeStep + 1)
-
-
--- L.foldl1' (VS.zipWith (+)) $
--- parZipWith3
---   rdeepseq
---   (\d p (af, rf) ->
---       VS.generate
---         (rows * cols)
---         (\i ->
---             VS.sum $
---             VS.izipWith
---               (\j dj pj ->
---                   let (xi, yi) = idx VU.! i
---                       (xj, yj) = idx VU.! j
---                   in realPart $!
---                      (dj :+ 0) *
---                      fourierMellinTransform
---                        0
---                        rf
---                        af
---                        (xj - xi)
---                        (yj - yi) *
---                      conjugate pj)
---               d
---               p))
---   diff
---   predictionComplex
---   freqs
 
 {-# INLINE normalizeImage #-}
 
@@ -255,8 +243,8 @@ normalizeImage (minVal, maxVal) vec =
     vec' = VS.map realPart vec
     imgMinVal = VS.minimum vec'
     imgMaxVal = VS.maximum vec'
-    
-    
+
+
 
 {-# INLINE normalizeImageU #-}
 
@@ -296,3 +284,267 @@ writeImage filePath rows cols =
   IM.arrayToImage .
   listArray ((0, 0), (rows - 1, cols - 1)) .
   VS.toList . normalizeImage (0, 255) . VU.convert
+
+
+
+
+pinwheelWaveletMagnitudeRecon
+  :: Int
+  -> Int
+  -> Double
+  -> Double
+  -> VU.Vector (Complex Double)
+  -> PinwheelWaveletExpansion
+  -> PinwheelWaveletPIExpansion 
+  -> Int
+  -> IO (VU.Vector (Complex Double))
+pinwheelWaveletMagnitudeRecon rows cols learningRate threshold img filters (PinwheelWaveletPIExpansion inverseFilters) writeStep = do
+  prediction <-
+    VU.fromListN (rows * cols) . L.map (:+ 0) <$>
+    M.replicateM (rows * cols) (normalIO' (0, 128))
+  go (normalizeImageU (-1, 1) prediction) (read "Infinity" :: Double) (1 :: Int)
+  where
+    imgMags =
+      L.concatMap (L.map (L.map magnitude)) $
+      applyPinwheelWaveletExpansion filters [img]
+    go !input lastErr timeStep = do
+      when
+        (mod timeStep writeStep == 0)
+        (writeImage
+           (show (div timeStep writeStep) L.++ ".pgm")
+           rows
+           cols
+           (VU.convert input))
+      let predictionComplex =
+            L.concat $ applyPinwheelWaveletExpansion filters [input]
+          predictionMags = L.map (L.map magnitude) predictionComplex
+          err =
+            L.sum
+              (L.zipWith
+                 (\x y -> abs (x - y) / x)
+                 (L.concat imgMags)
+                 (L.concat predictionMags)) /
+            (fromIntegral . getFilterExpansionNum $ filters)
+          ratio = (lastErr - err) / lastErr
+      if err < 0.000
+        then return input
+        else do
+          let delta =
+                L.foldl1' (VU.zipWith (+)) $
+                parZipWith3
+                  rdeepseq
+                  (\im p f
+                         -- VU.map realPart .
+                         -- L.foldl1' (VU.zipWith (+)) .
+                         -- L.zipWith (\a b -> VU.map (\c  -> realPart $ (conjugate c) * b ) a) f $
+                         -- L.zipWith
+                         --   (\a b ->
+                         --       ((a ^ (2 :: Int) - magnitude b ^ (2 :: Int)) :+ 0) *
+                         --        b)
+                         --   im
+                         --   p
+                     ->
+                      let x =
+                            createImagefromR rows cols (div rows 2) (div cols 2) .
+                            L.zip
+                              (L.map round . pinwheelWaveletRadius . getFilterParams $
+                               filters) $
+                            L.zipWith
+                              (\a b ->
+                                  ((a ^ (2 :: Int) - magnitude b ^ (2 :: Int)) :+
+                                   0) *
+                                  conjugate b)
+                              im
+                              p
+                      in createImagefromRReal
+                           rows
+                           cols
+                           (div rows 2)
+                           (div cols 2) .
+                         L.zip
+                           (L.map round . pinwheelWaveletRadius . getFilterParams $
+                            filters) .
+                         L.map (realPart . VU.sum . VU.zipWith (*) x) $
+                         f)
+                  imgMags
+                  predictionComplex
+                  (L.concatMap L.concat . getFilter $ inverseFilters)
+          putStrLn $ show err L.++ " " L.++ show ratio
+          go
+            (VU.zipWith (+) input . VU.map (\x -> x * learningRate :+ 0) $ delta)
+            err
+            (timeStep + 1)
+
+
+-- pinwheelWaveletMagnitudeRecon
+--   :: Int
+--   -> Int
+--   -> Double
+--   -> Double
+--   -> VU.Vector (Complex Double)
+--   -> PinwheelWaveletExpansion
+--   -> Int
+--   -> IO (VU.Vector (Complex Double))
+-- pinwheelWaveletMagnitudeRecon rows cols learningRate threshold img filters writeStep = do
+--   prediction <-
+--     VU.fromListN (rows * cols) . L.map (:+ 0) <$>
+--     M.replicateM (rows * cols) (normalIO' (0, 128))
+--   go (normalizeImageU (-1, 1) prediction) (read "Infinity" :: Double) (1 :: Int)
+--   where
+--     filterList = L.concat . getFilter $ filters
+--     cFilterList = L.map (L.map (L.map (VU.map conjugate))) filterList
+--     imgMags =
+--       L.zipWith
+--         (L.zipWith
+--            (\x ->
+--                VU.map magnitude .
+--                L.foldl1' (VU.zipWith (+)) .
+--                L.zipWith
+--                  (\a b ->
+--                      let c = VU.sum $ VU.zipWith (*) a img
+--                      in VU.map (* c) b)
+--                  x))
+--         filterList
+--         cFilterList
+--     go !input lastErr timeStep = do
+--       when
+--         (mod timeStep writeStep == 0)
+--         (writeImage
+--            (show (div timeStep writeStep) L.++ ".pgm")
+--            rows
+--            cols
+--            (VU.convert input))
+--       let predictionComplex =
+--             L.zipWith
+--               (L.zipWith
+--                  (\x ->
+--                      L.foldl1' (VU.zipWith (+)) .
+--                      L.zipWith
+--                        (\a b ->
+--                            let c = VU.sum $ VU.zipWith (*) a input
+--                            in VU.map (* c) b)
+--                        x))
+--               filterList
+--               cFilterList
+--           predictionMags = L.map (L.map (VU.map magnitude)) predictionComplex
+--           err =
+--             L.sum
+--               (L.zipWith
+--                  (\x y -> (VU.sum . VU.map abs $ VU.zipWith (-) x y) / VU.sum x)
+--                  (L.concat imgMags)
+--                  (L.concat predictionMags)) /
+--             (fromIntegral . getFilterExpansionNum $ filters)
+--           ratio = (lastErr - err) / lastErr
+--       if err < 0.000
+--         then return input
+--         else do
+--           let delta =
+--                 L.foldl1' (VU.zipWith (+)) $
+--                 parZipWith3
+--                   rdeepseq
+--                   (\im p f ->
+--                       L.foldl1' (VU.zipWith (+)) .
+--                       L.zipWith
+--                         (\a b -> VU.map (\c -> realPart $ (conjugate c) * b) a)
+--                         f $
+--                       L.zipWith
+--                         (\a b ->
+--                             ((a ^ (2 :: Int) - magnitude b ^ (2 :: Int)) :+ 0) *
+--                             b)
+--                         im
+--                         p)
+--                   imgMags
+--                   predictionComplex
+--                   (L.concatMap L.concat . getFilter $ filters)
+--           putStrLn $ show err L.++ " " L.++ show ratio
+--           go
+--             (VU.zipWith (+) input . VU.map (\x -> x * learningRate :+ 0) $ delta)
+--             err
+--             (timeStep + 1)
+
+
+{-# INLINE createImagefromR #-}
+
+createImagefromR
+  :: Int
+  -> Int
+  -> Int
+  -> Int
+  -> [(Int, Complex Double)]
+  -> VU.Vector (Complex Double)
+createImagefromR rows cols rCenter cCenter xs =
+  VU.fromList $
+  makeFilterExpansionList
+    rows
+    cols
+    rCenter
+    cCenter
+    (linearInterpolation dataVec diffVec)
+  where
+    dataVec = VU.accum (+) (VU.replicate ((fst . L.last $ xs) + 1) 0) xs
+    diffVec =
+      VU.generate
+        (VU.length dataVec - 1)
+        (\i -> dataVec VU.! (i + 1) - dataVec VU.! i)
+
+
+
+{-# INLINE linearInterpolation #-}
+
+linearInterpolation
+  :: VU.Vector (Complex Double)
+  -> VU.Vector (Complex Double)
+  -> Int
+  -> Int
+  -> Complex Double
+linearInterpolation dataVec diffVec x y
+  | idx == VU.length dataVec - 1 = VU.last dataVec
+  | idx < VU.length dataVec - 1 =
+    dataVec VU.! idx +
+    ((r - fromIntegral idx) :+ (r - fromIntegral idx)) * diffVec VU.! idx
+  | otherwise = 0 :+ 0
+  where
+    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    idx = floor r
+
+
+{-# INLINE createImagefromRReal #-}
+
+createImagefromRReal :: Int
+                     -> Int
+                     -> Int
+                     -> Int
+                     -> [(Int, Double)]
+                     -> VU.Vector Double
+createImagefromRReal rows cols rCenter cCenter xs =
+  VU.fromList $
+  makeFilterExpansionList
+    rows
+    cols
+    rCenter
+    cCenter
+    (linearInterpolationReal dataVec diffVec)
+  where
+    dataVec = VU.accum (+) (VU.replicate ((fst . L.last $ xs) + 1) 0) xs
+    diffVec =
+      VU.generate
+        (VU.length dataVec - 1)
+        (\i -> dataVec VU.! (i + 1) - dataVec VU.! i)
+
+
+
+{-# INLINE linearInterpolationReal #-}
+
+linearInterpolationReal :: VU.Vector Double
+                        -> VU.Vector Double
+                        -> Int
+                        -> Int
+                        -> Double
+linearInterpolationReal dataVec diffVec x y
+  | idx == VU.length dataVec - 1 = VU.last dataVec
+  | idx < VU.length dataVec - 1 =
+    dataVec VU.! idx + (r - fromIntegral idx) * diffVec VU.! idx
+  | otherwise = 0
+  where
+    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    idx = floor r
