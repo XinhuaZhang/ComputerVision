@@ -42,14 +42,14 @@ main
 /Application/GMM/model
 *.pgm
 *.dat*
-*model
+*_model
 *.ppm
 *.pca
 *.bak
 run*
 train*
 predict*
-*Model*
+*_Model*
 plot*
 *Params
 magnitude*
