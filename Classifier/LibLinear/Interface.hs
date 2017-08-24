@@ -137,9 +137,9 @@ findParameterC (TrainParams solver c numExample maxIndex modelName) label featur
 
 trainNPredict
   :: TrainParams
-  -> [(Double, [C'feature_node])]
-  -> [(Double, [C'feature_node])]
-  -> IO Double
+  -> [(Double, Ptr C'feature_node)]
+  -> [(Double, Ptr C'feature_node)]
+  -> IO (Int,Int)
 trainNPredict (TrainParams solver c numExample maxIndex _modelName) trainLabelFeature testLabelFeature = do
   when
     (numExample /= P.length trainLabelFeature)
@@ -148,19 +148,20 @@ trainNPredict (TrainParams solver c numExample maxIndex _modelName) trainLabelFe
      ") in train parameters doesn't equal to the actual number (" P.++
      show (P.length trainLabelFeature) P.++
      ")")
-  when
-    ((maxIndex + 1) /= (P.length . snd . P.head $ trainLabelFeature))
-    (putStrLn $
-     "trainNPredict: maxIndex (" P.++ show maxIndex P.++
-     ") in train parameters doesn't equal to the actual number (" P.++
-     show (P.length . snd . P.head $ trainLabelFeature) P.++
-     ")\nDo you use PCA?\nAre features sparse?\n")
+  -- when
+  --   ((maxIndex + 1) /= (P.length . snd . P.head $ trainLabelFeature))
+  --   (putStrLn $
+  --    "trainNPredict: maxIndex (" P.++ show maxIndex P.++
+  --    ") in train parameters doesn't equal to the actual number (" P.++
+  --    show (P.length . snd . P.head $ trainLabelFeature) P.++
+  --    ")\nDo you use PCA?\nAre features sparse?\n")
   trainLabelPtr <- getLabelVecPtr . fst . L.unzip $ trainLabelFeature
-  trainFeaturePtr <- join . fmap newArray . M.mapM newArray . snd . L.unzip $ trainLabelFeature
+  trainFeaturePtr <- newArray . snd . L.unzip $ trainLabelFeature
   let p =
         C'problem
         { c'problem'l = fromIntegral . P.length $ trainLabelFeature
-        , c'problem'n = fromIntegral ((P.length . snd . P.head $ trainLabelFeature) - 1)--maxIndex
+        , c'problem'n =
+          fromIntegral maxIndex
         , c'problem'y = trainLabelPtr
         , c'problem'x = trainFeaturePtr
         , c'problem'bias = -1.0
@@ -169,7 +170,7 @@ trainNPredict (TrainParams solver c numExample maxIndex _modelName) trainLabelFe
   (numCorrect, numTotal) <-
     M.foldM
       (\(!correct, !total) (target, xs) -> do
-         prediction <- withArray xs (c'predict model)
+         prediction <- c'predict model xs
          let correctNew =
                if (round target :: Int) == round prediction
                  then correct + 1
@@ -185,4 +186,4 @@ trainNPredict (TrainParams solver c numExample maxIndex _modelName) trainLabelFe
       (0 :: Double, 0 :: Double)
       testLabelFeature
   putStrLn $ show (numCorrect / numTotal * 100) P.++ "%"
-  return $! numCorrect / numTotal
+  return $! (round numCorrect, round numTotal)

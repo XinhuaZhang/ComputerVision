@@ -8,17 +8,17 @@ import           Data.Vector.Unboxed    as VU
 import           Text.Printf
 
 main = do
-  let n = 32
+  let n = 96
       filterParams =
         PinwheelWaveletParams
         { pinwheelWaveletRows = n
         , pinwheelWaveletCols = n
         , pinwheelWaveletGaussianScale = 0.5 * pi 
-        , pinwheelWaveletScale = L.map (\x -> 2 ** (x / 1)) [0..0]
+        , pinwheelWaveletScale = L.map (\x -> 2 ** (x / 1)) [0..1]
         , pinwheelWaveletRadialScale = L.map (\x -> (1 / sqrt 2) ** x) [0..0]
-        , pinwheelWaveletRadialFreqs = L.map (\x  -> x / 8 * pi) [5..5]
-        , pinwheelWaveletAngularFreqs = [5 .. 5]
-        , pinwheelWaveletRadius = [0..20]
+        , pinwheelWaveletRadialFreqs = L.map (\x  -> x / 8 * pi) [3..3]
+        , pinwheelWaveletAngularFreqs = [7 .. 7]
+        , pinwheelWaveletRadius = [5,10..25]
         }
       filters =
         getFilterExpansionList

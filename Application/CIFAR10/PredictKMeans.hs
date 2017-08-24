@@ -5,8 +5,8 @@ import           Control.Monad                  as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Filter.GaussianFilter
---import           CV.Filter.PinwheelWavelet
-import           CV.Filter.MorletWavelet
+import           CV.Filter.PinwheelWavelet
+--import           CV.Filter.MorletWavelet
 import           CV.IO.ImageIO
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
@@ -23,7 +23,7 @@ main = do
   args <- getArgs
   params <- parseArgs args
   filterParams <-
-    fmap (\x -> read x :: MorletWaveletParams -- PinwheelWaveletParams
+    fmap (\x -> read x :: PinwheelWaveletParams -- MorletWaveletParams -- PinwheelWaveletParams
          ) . readFile $
     (paramsFileName params)
   kmeansModel <- decodeFile (kmeansFile params)
@@ -39,7 +39,7 @@ main = do
           (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO MorletWaveletConvolution -- PinwheelWaveletConvolution
+  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelWaveletConvolution -- MorletWaveletConvolution -- PinwheelWaveletConvolution
   gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   runResourceT $
     imagePathSource (inputFile params) $$ readImageConduit True =$=

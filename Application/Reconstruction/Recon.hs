@@ -2,6 +2,7 @@
 module Application.Reconstruction.Recon where
 
 import           Control.Monad                  as M
+import           CV.Filter.GaussianFilter
 import           CV.Filter.PinwheelWavelet
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.FFT
@@ -228,6 +229,123 @@ magnitudeReconConvolution fftw rows cols learningRate threshold img filters filt
             err
             (timeStep + 1)
 
+
+
+magnitudeSegmentation
+  :: FFTW
+  -> Int
+  -> Int
+  -> Double
+  -> Double
+  -> Double
+  -> VS.Vector (Complex Double)
+  -> [VS.Vector (Complex Double)]
+  -> [VS.Vector (Complex Double)]
+  -> GaussianFilterConvolution
+  -> InitRecon
+  -> Int
+  -> String
+  -> IO (VU.Vector (Complex Double))
+magnitudeSegmentation fftw rows cols lambda learningRate threshold img filters filtersPI gFilters initRecon writeStep prefix = do
+  prediction <-
+    case initRecon of
+      InitRecon x -> return x
+      NULL ->
+        VS.fromListN (rows * cols) . L.map (:+ 0) <$>
+        M.replicateM (rows * cols) (normalIO' (-1, 1 :: Double))
+  imgVecF <- dft2d fftw rows cols (normalizeImage (-1, 1) img)
+  imgComplex <- M.mapM (idft2d fftw rows cols . VS.zipWith (*) imgVecF) filters
+  let imgMags = L.map (VS.map magnitude) imgComplex
+  writeImage ("image.pgm") rows cols .
+    VS.map
+      (\(a :+ 0) ->
+          if a > 0
+            then 1 :+ 0
+            else (-1) :+ 0) .
+    normalizeImage (-1, 1) $
+    img
+  go
+    imgComplex
+    imgMags
+    -- normalizeImage (-1, 1)
+    (prediction)
+    (read "Infinity" :: Double)
+    (1 :: Int)
+  where
+    go imgComplex' imgMags' !input lastErr timeStep = do
+      when
+        (mod timeStep writeStep == 0)
+        (writeImage
+           (prefix L.++ show (div timeStep writeStep) L.++ ".pgm")
+           rows
+           cols .
+         VS.map
+           (\(a :+ 0) ->
+               if a > 0
+                 then 1 :+ 0
+                 else (-1) :+ 0) $
+         input)
+      predictionF <- dft2d fftw rows cols input
+      predictionComplex <-
+        M.mapM (idft2d fftw rows cols . VS.zipWith (*) predictionF) filters
+      predictionGaussian <- applyFilterConvolution fftw gFilters [ input]
+      let predictionMags = L.map (VS.map magnitude) predictionComplex
+          diff =
+            parZipWith
+              rdeepseq
+              (VS.zipWith (\x y -> x ^ (2 :: Int) - y ^ (2 :: Int)))
+              imgMags'
+              predictionMags
+          err =
+            (L.sum
+               (L.zipWith
+                  (\x y -> (VS.sum . VS.map abs $ VS.zipWith (-) x y) / VS.sum x)
+                  imgMags'
+                  predictionMags)) /
+            (fromIntegral . L.length $ filters) +
+            lambda *
+            (VS.sum . VS.map (\a -> (realPart a) ** (-2)) . L.head $ predictionGaussian)
+          errComplex =
+            L.sum
+              (L.zipWith
+                 (\x y ->
+                     (VS.sum . VS.map magnitude $ VS.zipWith (-) x y) /
+                     (VS.sum . VS.map magnitude $ x))
+                 imgComplex'
+                 predictionComplex) /
+            (fromIntegral . L.length $ filters)
+          dp =
+            parZipWith
+              rdeepseq
+              (VS.zipWith (\d p -> (d :+ 0) * conjugate p))
+              diff
+              predictionComplex
+          predictionGaussian1 = L.map (VS.map (\y -> y ** (-3))) predictionGaussian
+      dpF <- M.mapM (dft2d fftw rows cols) dp
+      predictionGaussian2 <- applyFilterConvolution fftw gFilters predictionGaussian1
+      if err < threshold -- || err > lastErr
+        then return . VS.convert $ input :: IO (VU.Vector (Complex Double))
+        else do
+          delta <-
+            L.foldl1' (VS.zipWith (+)) <$>
+            M.zipWithM
+              (\dp' f' ->
+                  fmap (VS.map realPart) . idft2d fftw rows cols $
+                  VS.zipWith (*) dp' f')
+              dpF
+              filtersPI
+          putStrLn $ show err L.++ " " L.++ show errComplex
+          go
+            imgComplex'
+            imgMags'
+            (normalizeImage (-1, 1) .
+             VS.zipWith (+) input .
+             VS.map (\x -> x * learningRate :+ 0) .
+             VS.zipWith (\a b -> a - lambda * realPart b) delta . L.head $
+             predictionGaussian2)
+            err
+            (timeStep + 1)
+
 {-# INLINE normalizeImage #-}
 
 normalizeImage :: (Double, Double)
@@ -295,7 +413,7 @@ pinwheelWaveletMagnitudeRecon
   -> Double
   -> VU.Vector (Complex Double)
   -> PinwheelWaveletExpansion
-  -> PinwheelWaveletPIExpansion 
+  -> PinwheelWaveletPIExpansion
   -> Int
   -> IO (VU.Vector (Complex Double))
 pinwheelWaveletMagnitudeRecon rows cols learningRate threshold img filters (PinwheelWaveletPIExpansion inverseFilters) writeStep = do

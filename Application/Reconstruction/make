@@ -11,5 +11,6 @@ LIBS="-lstdc++ -llapack -lblas -lgomp -lfftw3 -lfftw3f -lfftw3l -lm"
 ## cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolutionMorletWavelet.hs -o magnitudeReconConvolutionMorletWavelet
 ## cabal exec -- ghc $FLAG $LIBS -i../../  GaborTransform.hs -o gaborTransform 
 ## cabal exec -- ghc $FLAG $LIBS -i../../  MorletWaveletTransform.hs -o morletWaveletTransform
-cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconPinwheelWavelet.hs -o magnitudeReconPinwheelWavelet
-## cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolutionPinwheelWavelet.hs -o magnitudeReconConvolutionPinwheelWavelet
+## cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconPinwheelWavelet.hs -o magnitudeReconPinwheelWavelet
+cabal exec -- ghc $FLAG $LIBS -i../../  MagnitudeReconConvolutionPinwheelWavelet.hs -o magnitudeReconConvolutionPinwheelWavelet
+## cabal exec -- ghc $FLAG $LIBS -i../../  SegmentationPinwheelWavelet.hs -o segmentationPinwheelWavelet

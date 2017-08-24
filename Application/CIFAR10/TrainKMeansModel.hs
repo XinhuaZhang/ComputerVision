@@ -5,8 +5,8 @@ import           Control.Monad                  as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Filter.GaussianFilter
---import           CV.Filter.PinwheelWavelet
-import           CV.Filter.MorletWavelet
+import           CV.Filter.PinwheelWavelet
+--import           CV.Filter.MorletWavelet
 import           CV.IO.ImageIO
 import           CV.Statistics.KMeans
 import           CV.Utility.FFT
@@ -46,14 +46,25 @@ main = do
       --   , pinwheelWaveletRadius = [0 .. 4]
       --   }
       m = 18
-      filterParams =
-        MorletWaveletParams
-        { morletWaveletRows = imageSize params
-        , morletWaveletCols = imageSize params
-        , morletWaveletFreq = 3 * pi / 4
-        , morletWaveletGaussianScale = 0.85 --0.25 * pi
-        , morletWaveletOrientation = [m .. 180 - m]
-        , morletWaveletScale = L.map (\x -> 2 ** (x / 2)) [0 .. 7]
+      filterParams
+      -- MorletWaveletParams
+      -- { morletWaveletRows = imageSize params
+      -- , morletWaveletCols = imageSize params
+      -- , morletWaveletFreq = 3 * pi / 4
+      -- , morletWaveletGaussianScale = 0.85 --0.25 * pi
+      -- , morletWaveletOrientation = [m .. 180 - m]
+      -- , morletWaveletScale = L.map (\x -> 2 ** (x / 2)) [0 .. 7]
+      -- }
+       =
+        PinwheelWaveletParams
+        { pinwheelWaveletRows = imageSize params
+        , pinwheelWaveletCols = imageSize params
+        , pinwheelWaveletGaussianScale = 0.25 * pi
+        , pinwheelWaveletScale = L.map (\x -> 2 ** (x / 1)) [0 .. 1]
+        , pinwheelWaveletRadialScale = L.map (\x -> (1 / sqrt 2) ** x) [0 .. 0]
+        , pinwheelWaveletRadialFreqs = L.map (\x -> x / 8 * pi) [3, 5, 7]
+        , pinwheelWaveletAngularFreqs = [0 .. 7]
+        , pinwheelWaveletRadius = [3 .. 5]
         }
       gFilterParams =
         GaussianFilterParams
@@ -78,9 +89,8 @@ main = do
     imgs
   fftw <- initializefftw fftwWisdom
   filters <-
-    makeFilterConvolution fftw filterParams Normal :: IO MorletWaveletConvolution -- PinwheelWaveletConvolution
-  gFilters <-
-    makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
+    makeFilterConvolution fftw filterParams Normal :: IO PinwheelWaveletConvolution -- MorletWaveletConvolution -- PinwheelWaveletConvolution
+  gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   xs <-
     runResourceT $
     imagePathSource (inputFile params) $$ readImageConduit True =$=
@@ -88,5 +98,11 @@ main = do
     filterConduit' parallelParams fftw [filters] gFilters False (stride params) =$=
     CL.take (numGMMExample params)
   let (ls, ys) = L.unzip xs
-  kmeansModel <- kmeans parallelParams (numGaussian params) 0.005 (L.concat ys)
+  kmeansModel <-
+    kmeans
+      parallelParams
+      (numGaussian params)
+      (kmeansFile params)
+      0.005
+      (L.concat ys)
   encodeFile (kmeansFile params) kmeansModel
