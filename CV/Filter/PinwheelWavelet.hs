@@ -54,12 +54,14 @@ instance FilterExpansion PinwheelWaveletExpansion where
              cCenter
              (pinwheelWavelet gScale radialScale waveletScale rf af radius)
           | radius <- radiuses ]
-        | af <- afs  , rf <- rfs]
+        | af <- afs
+        , rf <- rfs ]
       | waveletScale <- waveletScales ]
     | radialScale <- radialScales ]
   {-# INLINE getFilterExpansionNum #-}
   getFilterExpansionNum (Filter (PinwheelWaveletParams _ _ _ scales radialScales rfs afs radiuses) _) =
-    L.length scales * L.length afs * L.length radiuses * L.length radialScales * L.length rfs
+    L.length scales * L.length afs * L.length radiuses * L.length radialScales *
+    L.length rfs
   {-# INLINE applyFilterExpansion #-}
   applyFilterExpansion (Filter _ filters) =
     L.concatMap
@@ -176,7 +178,7 @@ pinwheelWavelet gaussianScale radialScale waveletScale rf af shift x y
     radialFunc rf r r'
   where
     r =
-      (sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * radialScale / waveletScale
+      (log . sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * radialScale / waveletScale
     r' = shift --  / waveletScale
     
 
@@ -259,7 +261,7 @@ pinwheelWaveletPI gaussianScale radialScale waveletScale rf af shift x y
     radialFunc rf r r'
   where
     r =
-      (sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * radialScale / waveletScale
+      (log . sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) * radialScale / waveletScale
     r' = shift --  / waveletScale
 
 {-# INLINE radialFunc #-}

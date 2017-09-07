@@ -22,8 +22,8 @@ import           System.Environment
 main = do
   args <- getArgs
   params <- parseArgs args
-  filterParams <-
-    fmap (\x -> read x :: PinwheelWaveletParams -- MorletWaveletParams -- PinwheelWaveletParams
+  filterParamsList <-
+    fmap (\x -> read x :: [PinwheelWaveletParams] -- MorletWaveletParams -- PinwheelWaveletParams
          ) . readFile $
     (paramsFileName params)
   kmeansModel <- decodeFile (kmeansFile params)
@@ -39,12 +39,12 @@ main = do
           (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   fftw <- initializefftw fftwWisdom
-  filters <- makeFilterConvolution fftw filterParams Normal :: IO PinwheelWaveletConvolution -- MorletWaveletConvolution -- PinwheelWaveletConvolution
+  filters <- M.mapM (\filterParams -> makeFilterConvolution fftw filterParams Normal) filterParamsList :: IO [PinwheelWaveletConvolution] -- MorletWaveletConvolution -- PinwheelWaveletConvolution
   gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   runResourceT $
     imagePathSource (inputFile params) $$ readImageConduit False =$=
     mergeSource (labelSource (labelFile params)) =$=
-    filterConduit' parallelParams fftw [filters] gFilters False (stride params) =$=
+    filterConduit' parallelParams fftw filters gFilters False (stride params) =$=
     kmeansConduit parallelParams kmeansModel =$=
     featureConduit =$=
     predict (modelName params) ((modelName params) L.++ ".out")

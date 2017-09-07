@@ -11,3 +11,6 @@ cabal exec -- ghc $FLAG $LIBS -i../../  Convert.hs -o convert
 cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeansModel.hs -o trainKMeansModel
 cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeans.hs -o trainKMeans
 cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictKMeans.hs -o predictKMeans
+
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o Train.hs -o train
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o Predict.hs -o predict

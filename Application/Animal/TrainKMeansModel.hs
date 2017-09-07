@@ -33,46 +33,59 @@ main = do
         { Par.numThread = AP.numThread params
         , Par.batchSize = AP.batchSize params
         }
-      n = 15
-      -- filterParams =
-      --   PinwheelWaveletParams
-      --   { pinwheelWaveletRows = imageSize params
-      --   , pinwheelWaveletCols = imageSize params
-      --   , pinwheelWaveletGaussianScale = 0.1
-      --   , pinwheelWaveletScale = L.map (\x -> sqrt 2 ** x) [0 .. 2]
-      --   , pinwheelWaveletRadialScale = L.map (\x -> (1 / sqrt 2) ** x) [0 .. 0]
-      --   , pinwheelWaveletRadialFreqs = 3 / 4 * pi
-      --   , pinwheelWaveletAngularFreqs = [0 .. 15]
-      --   , pinwheelWaveletRadius = [0 .. 4]
-      --   }
-      m = 18
-      filterParams
-      -- MorletWaveletParams
-      -- { morletWaveletRows = imageSize params
-      -- , morletWaveletCols = imageSize params
-      -- , morletWaveletFreq = 3 * pi / 4
-      -- , morletWaveletGaussianScale = 0.85 --0.25 * pi
-      -- , morletWaveletOrientation = [m .. 180 - m]
-      -- , morletWaveletScale = L.map (\x -> 2 ** (x / 2)) [0 .. 7]
-      -- }
-       =
+      filterParams1 =
         PinwheelWaveletParams
         { pinwheelWaveletRows = imageSize params
         , pinwheelWaveletCols = imageSize params
-        , pinwheelWaveletGaussianScale = 0.5 * pi
-        , pinwheelWaveletScale = L.map (\x -> 2 ** (x / 1)) [0 .. 1]
+        , pinwheelWaveletGaussianScale = 0.1 * pi
+        , pinwheelWaveletScale = L.map (\x -> 2 ** (x / 1)) [0 .. 0]
         , pinwheelWaveletRadialScale = L.map (\x -> (1 / sqrt 2) ** x) [0 .. 0]
-        , pinwheelWaveletRadialFreqs = L.map (\x -> x / 8 * pi) [3, 5, 7]
-        , pinwheelWaveletAngularFreqs = [0 .. 7]
-        , pinwheelWaveletRadius = [5,10..20]
+        , pinwheelWaveletRadialFreqs = L.map (\x -> x * pi) [0 .. 2]
+        , pinwheelWaveletAngularFreqs = [0 .. 2]
+        , pinwheelWaveletRadius = [1]
         }
+      filterParams2 =
+        PinwheelWaveletParams
+        { pinwheelWaveletRows = imageSize params
+        , pinwheelWaveletCols = imageSize params
+        , pinwheelWaveletGaussianScale = 0.1 * pi
+        , pinwheelWaveletScale = L.map (\x -> 2 ** (x / 1)) [0 .. 0]
+        , pinwheelWaveletRadialScale = L.map (\x -> (1 / sqrt 2) ** x) [0 .. 0]
+        , pinwheelWaveletRadialFreqs = L.map (\x -> x * pi) [0 .. 4]
+        , pinwheelWaveletAngularFreqs = [0 .. 4]
+        , pinwheelWaveletRadius = [2]
+        }
+      filterParams3 =
+        PinwheelWaveletParams
+        { pinwheelWaveletRows = imageSize params
+        , pinwheelWaveletCols = imageSize params
+        , pinwheelWaveletGaussianScale = 0.1 * pi
+        , pinwheelWaveletScale = L.map (\x -> 2 ** (x / 1)) [0 .. 0]
+        , pinwheelWaveletRadialScale = L.map (\x -> (1 / sqrt 2) ** x) [0 .. 0]
+        , pinwheelWaveletRadialFreqs = L.map (\x -> x * pi) [0 .. 8]
+        , pinwheelWaveletAngularFreqs = [0 .. 8]
+        , pinwheelWaveletRadius = [3]
+        }
+      filterParams4 =
+        PinwheelWaveletParams
+        { pinwheelWaveletRows = imageSize params
+        , pinwheelWaveletCols = imageSize params
+        , pinwheelWaveletGaussianScale = 0.1 * pi
+        , pinwheelWaveletScale = L.map (\x -> 2 ** (x / 1)) [0 .. 0]
+        , pinwheelWaveletRadialScale = L.map (\x -> (1 / sqrt 2) ** x) [0 .. 0]
+        , pinwheelWaveletRadialFreqs = L.map (\x -> x * pi) [0 .. 16]
+        , pinwheelWaveletAngularFreqs = [0 .. 16]
+        , pinwheelWaveletRadius = [4]
+        }
+      filterParamsList =
+        [filterParams1, filterParams2, filterParams3, filterParams4]
       gFilterParams =
         GaussianFilterParams
           (gaussianScale params)
           (imageSize params)
           (imageSize params)
       fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
-  writeFile (paramsFileName params) . show $ filterParams
+  writeFile (paramsFileName params) . show $ filterParamsList
   fftwInit <- initializefftw FFTWWisdomNull
   imgs <-
     runResourceT $
@@ -88,13 +101,13 @@ main = do
     imgs
   fftw <- initializefftw fftwWisdom
   filters <-
-    makeFilterConvolution fftw filterParams Normal :: IO PinwheelWaveletConvolution -- MorletWaveletConvolution -- PinwheelWaveletConvolution
+    M.mapM (\filterParams -> makeFilterConvolution fftw filterParams Normal) filterParamsList :: IO [PinwheelWaveletConvolution] -- MorletWaveletConvolution -- PinwheelWaveletConvolution
   gFilters <- makeFilterConvolution fftw gFilterParams Normal :: IO GaussianFilterConvolution
   xs <-
     runResourceT $
     imagePathSource (inputFile params) $$ readImageConduit False =$=
     mergeSource (labelSource (labelFile params)) =$=
-    filterConduit' parallelParams fftw [filters] gFilters False (stride params) =$=
+    filterConduit' parallelParams fftw filters gFilters False (stride params) =$=
     CL.take (numGMMExample params)
   let (ls, ys) = L.unzip xs
   kmeansModel <-

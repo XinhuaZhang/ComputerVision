@@ -122,8 +122,9 @@ morletWavelet freq scale ori a alpha beta x y =
   (exp (-r / (2 * s2) / (a * a)) :+ 0) /
   (sqrt a :+ 0)
   where
-    r = fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    r = x' ^ (2 :: Int) + (1 * y') ^ (2 :: Int)
     x' = fromIntegral x * cos ori + fromIntegral y * sin ori
+    y' = fromIntegral (-x) * sin ori + fromIntegral y * cos ori
     s2 = scale * scale
       
 {-# INLINE betaFunction #-}

@@ -168,7 +168,6 @@ featurePtrConduit =
   awaitForever
     (\vec -> do
        featurePtr <- liftIO $ newArray . getFeature . Dense . VU.toList $ vec
-       liftIO printCurrentTime
        yield featurePtr)
 
 
