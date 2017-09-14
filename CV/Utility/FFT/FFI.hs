@@ -124,5 +124,6 @@ foreign import ccall safe "fftw3.h fftw_plan_dft_1d" c_plan_dft_1d :: C.CInt -> 
 
 foreign import ccall safe "fftw3.h fftw_plan_dft_r2c_1d" c_plan_dft_r2c_1d :: C.CInt -> Ptr C.CDouble -> Ptr (Complex Double) -> FFTWFlag -> IO Plan
 
+foreign import ccall safe "fftw3.h fftw_plan_many_dft" c_plan_many_dft :: C.CInt -> Ptr C.CInt -> C.CInt -> Ptr (Complex Double) -> Ptr C.CInt -> C.CInt -> C.CInt -> Ptr (Complex Double) -> Ptr C.CInt -> C.CInt -> C.CInt -> C.CInt -> FFTWFlag -> IO Plan
 
-
+foreign import ccall safe "fftw3.h fftw_plan_dft_r2c_2d" c_plan_dft_r2c_2d :: C.CInt -> C.CInt -> Ptr C.CDouble -> Ptr (Complex Double) -> FFTWFlag -> IO Plan

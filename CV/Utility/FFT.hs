@@ -7,6 +7,10 @@ module CV.Utility.FFT
   , dft1d
   , idft1d
   , dftr2c
+  , dft1dG
+  , idft1dG
+  , dftr2c2d
+  , idftr2c2d
   , exportWisdomString
   , importWisdomString
   , generateWisdom
@@ -25,10 +29,12 @@ import           Data.List                    as L
 import           Data.Vector.Storable         as VS
 import           Data.Vector.Storable.Mutable as VSM
 import           Foreign.C.Types
+import           Foreign.Marshal.Array
 
 data FFTWWisdom
   = FFTWWisdomPath String
   | FFTWWisdomNull
+  deriving (Show)
 
 data FFTW = FFTW
   { fftwLock       :: !(MVar ())
@@ -61,7 +67,7 @@ generateWisdom fftw@(FFTW lock' False) path rows cols vec = do
   _x <- idft2d fftw rows cols vec''
   wisdom <- exportWisdomString
   writeFile path wisdom
-generateWisdom _ _ _ _ _ = error "generateWisdom: Flag is True."  
+generateWisdom _ _ _ _ _ = error "generateWisdom: Flag is True."
 
 {-# INLINE dft2d #-}
 
@@ -138,6 +144,8 @@ dftr2c (FFTW lock' _) vec = do
   where
     n = VS.length vec
 
+
+
 {-# INLINE dft1d #-}
 
 dft1d :: FFTW -> VS.Vector (Complex Double) -> IO (VS.Vector (Complex Double))
@@ -161,7 +169,7 @@ dft1d (FFTW lock' _) vec = do
   VS.freeze v
   where
     n = VS.length vec
-    
+
 
 {-# INLINE idft1d #-}
 
@@ -186,3 +194,153 @@ idft1d (FFTW lock' _) vec = do
   VS.freeze v
   where
     n = VS.length vec
+
+
+
+-- This is a generalied 1d dft, the 1 dimension can be many dimensions
+-- which are ascending ordered and continued. For example, given a N
+-- dimension array, the generalized 1d dft dimension is
+-- either [0,1..M] or [M,M+1.. N-1], where 0 <= M and M <= N-1
+-- the dimension corresponding to the largest index spins the fastest. 
+
+{-# INLINE dft1dGGeneric #-}
+
+dft1dGGeneric
+  :: MVar ()
+  -> [Int]
+  -> [Int]
+  -> VS.Vector (Complex Double)
+  -> Sign
+  -> Flag
+  -> IO (VS.Vector (Complex Double))
+dft1dGGeneric lock' dims dftIndex vec sign flag
+  | L.and (L.zipWith (\a b -> a + 1 == b) dftIndex . L.tail $ dftIndex) &&
+      (not . L.null $ dftIndex) &&
+      (L.head dftIndex == 0 || L.last dftIndex == rank - 1) = do
+    v <- VSM.new . L.product $ dims
+    x <- takeMVar lock'
+    VS.unsafeWith vec $
+      \ip ->
+         VSM.unsafeWith v $
+         \op ->
+            withArray (L.map fromIntegral dftDims) $
+            \n -> do
+              let totalNum = L.product dims
+                  dftNum = L.product dftDims
+                  stride =
+                    if L.last dftIndex == rank - 1
+                      then 1
+                      else L.product . L.drop (1 + L.last dftIndex) $ dims
+                  dist =
+                    if L.last dftIndex == rank - 1
+                      then dftNum
+                      else 1
+              p <-
+                c_plan_many_dft
+                  (fromIntegral dftRank)
+                  n
+                  (fromIntegral $ div totalNum dftNum)
+                  ip
+                  n
+                  (fromIntegral stride)
+                  (fromIntegral dist)
+                  op
+                  n
+                  (fromIntegral stride)
+                  (fromIntegral dist)
+                  (unSign sign)
+                  (unFlag flag)
+              c_execute p
+              c_destroy_plan p
+    putMVar lock' x
+    VS.freeze v
+  | otherwise =
+    error
+      "dft1dG: dimension list doesn't satisify the restriction of generalized 1d dft."
+  where
+    rank = L.length dims
+    dftRank = L.length dftIndex
+    dftDims =
+      L.take (L.last dftIndex - L.head dftIndex + 1) . L.drop (L.head dftIndex) $
+      dims
+
+dft1dG
+  :: FFTW
+  -> [Int]
+  -> [Int]
+  -> VS.Vector (Complex Double)
+  -> IO (VS.Vector (Complex Double))
+dft1dG (FFTW lock' True) dims dftIndex vec =
+  dft1dGGeneric lock' dims dftIndex vec DFTForward (estimate .|. wisdomOnly)
+dft1dG (FFTW lock' False) dims dftIndex vec =
+  dft1dGGeneric lock' dims dftIndex vec DFTForward measure
+
+idft1dG
+  :: FFTW
+  -> [Int]
+  -> [Int]
+  -> VS.Vector (Complex Double)
+  -> IO (VS.Vector (Complex Double))
+idft1dG (FFTW lock' True) dims dftIndex vec =
+  dft1dGGeneric lock' dims dftIndex vec DFTBackward (estimate .|. wisdomOnly)
+idft1dG (FFTW lock' False) dims dftIndex vec =
+  dft1dGGeneric lock' dims dftIndex vec DFTBackward measure
+
+
+
+{-# INLINE dftr2c2d #-}
+
+dftr2c2d
+  :: FFTW
+  -> Int
+  -> Int
+  -> VS.Vector (Complex Double)
+  -> IO (VS.Vector (Complex Double))
+dftr2c2d (FFTW lock' True) rows cols vec =
+  dftr2c2dG lock' rows cols vec DFTForward (estimate .|. wisdomOnly)
+dftr2c2d (FFTW lock' False) rows cols vec = dftr2c2dG lock' rows cols vec DFTForward measure
+
+{-# INLINE idftr2c2d #-}
+
+idftr2c2d
+  :: FFTW
+  -> Int
+  -> Int
+  -> VS.Vector (Complex Double)
+  -> IO (VS.Vector (Complex Double))
+idftr2c2d (FFTW lock' True) rows cols vec =
+  VS.map (/ (fromIntegral $ rows * cols)) <$>
+  dftr2c2dG lock' rows cols vec DFTBackward (estimate .|. wisdomOnly)
+idftr2c2d (FFTW lock' False) rows cols vec =
+  VS.map (/ (fromIntegral $ rows * cols)) <$>
+  dftr2c2dG lock' rows cols vec DFTBackward measure
+
+{-# INLINE dftr2c2dG #-}
+
+dftr2c2dG
+  :: MVar ()
+  -> Int
+  -> Int
+  -> VS.Vector (Complex Double)
+  -> Sign
+  -> Flag
+  -> IO (VS.Vector (Complex Double))
+dftr2c2dG lock' rows cols vec sign flag = do
+  v <- VSM.new (rows * (div cols 2 + 1))
+  x <- takeMVar lock'
+  VS.unsafeWith vec $
+    \ip ->
+       VSM.unsafeWith v $
+       \op -> do
+         p <-
+           c_plan_dft_2d
+             (fromIntegral rows)
+             (fromIntegral cols)
+             ip
+             op
+             (unSign sign)
+             (unFlag flag)
+         c_execute p
+         c_destroy_plan p
+  putMVar lock' x
+  VS.freeze v
