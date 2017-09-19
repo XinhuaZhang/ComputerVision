@@ -99,7 +99,9 @@ pad newDims padVal arr
         (\a b ->
             if a - b <= 0
               then 0
-              else div (a - b) 2)
+              else if a - b == 1
+                     then 1
+                     else div (a - b) 2)
         newDims
         oldDimList
 
