@@ -5,6 +5,7 @@ module CV.Array.Image where
 import           Codec.Picture
 import           Control.Monad                as M
 import           Control.Monad.Trans.Resource
+import           CV.Image
 import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility  as RAU
@@ -17,7 +18,6 @@ import           Data.Vector.Unboxed          as VU
 import           Data.Word
 import           Prelude                      as P
 import           System.Random
-
 
 data ImageTransformationParams = ImageTransformationParams
   { imageTransformationParamsRows :: !Int
@@ -487,3 +487,106 @@ padTransformImage padVal transformationList arr =
   [0 .. nf' - 1]
   where
     (Z :. nf' :. _ :. _) = extent arr
+
+
+{-# INLINE cartesian2polar2D #-}
+
+cartesian2polar2D
+  :: (R.Source s Double)
+  => Int
+  -> Int
+  -> (Double, Double)
+  -> Double
+  -> (Double, Double)
+  -> R.Array s DIM2 Double
+  -> R.Array D DIM2 Double
+cartesian2polar2D rs ts (cRow, cCol) polarR valRange arr =
+  fromFunction
+    (Z :. rs :. ts)
+    (\(Z :. r :. t) ->
+        let row =
+              cRow +
+              (deltaR * fromIntegral r) * cos (deltaTheta * fromIntegral t)
+            col =
+              cCol +
+              (deltaR * fromIntegral r) * sin (deltaTheta * fromIntegral t)
+        in bicubicInterpolation ds valRange (row, col))
+  where
+    ds = computeDerivativeS . computeS . delay $ arr
+    deltaTheta = 2 * pi / fromIntegral ts
+    deltaR = polarR / fromIntegral rs
+
+{-# INLINE cartesian2logpolar2D #-}
+
+cartesian2logpolar2D
+  :: (R.Source s Double)
+  => Int
+  -> Int
+  -> (Double, Double)
+  -> Double
+  -> (Double, Double)
+  -> R.Array s DIM2 Double
+  -> R.Array D DIM2 Double
+cartesian2logpolar2D rs ts (cRow, cCol) polarR valRange arr =
+  fromFunction
+    (Z :. rs :. ts)
+    (\(Z :. r :. t) ->
+        let row =
+              cRow +
+              (deltaR * (exp . fromIntegral $ r)) *
+              cos (deltaTheta * fromIntegral t)
+            col =
+              cCol +
+              (deltaR * (exp . fromIntegral $ r)) *
+              sin (deltaTheta * fromIntegral t)
+        in bicubicInterpolation ds valRange (row, col))
+  where
+    ds = computeDerivativeS . computeS . delay $ arr
+    deltaTheta = 2 * pi / fromIntegral ts
+    deltaR = polarR / fromIntegral rs
+
+
+cartesian2polarImage :: Int
+                     -> Int
+                     -> (Double, Double)
+                     -> Double
+                     -> ImageCoordinates
+                     -> ImageCoordinates
+cartesian2polarImage rs ts (cRow, cCol) polarR (CartesianImage valueRange arr) =
+  PolarImage polarR valueRange .
+  fromUnboxed (Z :. nf :. rs :. ts) .
+  VU.concat .
+  L.map
+    (\i ->
+        toUnboxed .
+        computeS .
+        cartesian2polar2D rs ts (cRow, cCol) polarR valueRange . R.slice arr $
+        (Z :. i :. All :. All)) $
+  [0 .. nf - 1]
+  where
+    (Z :. nf :. _ :. _) = extent arr
+cartesian2polarImage _ _ _ _ _ =
+  error "cartesian2polarImage: input is not a CartesianImage."
+
+
+cartesian2logpolarImage :: Int
+                        -> Int
+                        -> (Double, Double)
+                        -> Double
+                        -> ImageCoordinates
+                        -> ImageCoordinates
+cartesian2logpolarImage rs ts (cRow, cCol) logpolarR (CartesianImage valueRange arr) =
+  LogpolarImage logpolarR valueRange .
+  fromUnboxed (Z :. nf :. rs :. ts) .
+  VU.concat .
+  L.map
+    (\i ->
+        toUnboxed .
+        computeS .
+        cartesian2logpolar2D rs ts (cRow, cCol) logpolarR valueRange . R.slice arr $
+        (Z :. i :. All :. All)) $
+  [0 .. nf - 1]
+  where
+    (Z :. nf :. _ :. _) = extent arr
+cartesian2logpolarImage _ _ _ _ _ =
+  error "cartesian2logpolarImage: input is not a CartesianImage."
