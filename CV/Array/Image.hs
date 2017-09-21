@@ -585,8 +585,49 @@ cartesian2logpolarImage rs ts (cRow, cCol) logpolarR (CartesianImage valueRange 
         computeS .
         cartesian2logpolar2D rs ts (cRow, cCol) logpolarR valueRange . R.slice arr $
         (Z :. i :. All :. All)) $
-  [0 .. nf - 1]
+   [0 .. nf - 1]
   where
     (Z :. nf :. _ :. _) = extent arr
 cartesian2logpolarImage _ _ _ _ _ =
-  error "cartesian2logpolarImage: input is not a CartesianImage."
+  error "cartesian2logpolarImage: input is not a CartesianImage."  
+
+{-# INLINE shiftGrayImage #-}
+
+shiftGrayImage
+  :: (R.Source s Double)
+  => Int -> Int -> Double -> R.Array s DIM2 Double -> R.Array U DIM2 Double
+shiftGrayImage rowShift colShift padVal arr
+  | abs rowShift >= rows || abs colShift >= cols =
+    error $
+    "shiftGrayImage: shift values are greater than sizes.\n" L.++
+    show (rows, cols) L.++
+    " vs " L.++
+    show (rowShift, colShift)
+  | otherwise =
+    computeUnboxedS .
+    RAU.pad [cols, rows] padVal .
+    RAU.crop
+      (L.map startPointFunc [colShift, rowShift])
+      [cols - abs colShift, rows - abs rowShift] $
+    arr
+  where
+    (Z :. rows :. cols) = extent arr
+    startPointFunc xShift =
+      if xShift > 0
+        then 0
+        else -xShift
+
+
+shiftImage
+  :: (R.Source s Double)
+  => Int -> Int -> Double -> R.Array s DIM3 Double -> R.Array U DIM3 Double
+shiftImage rowShift colShift padVal arr =
+  fromUnboxed (extent arr) .
+  VU.concat .
+  L.map
+    (\i ->
+        toUnboxed . shiftGrayImage rowShift colShift padVal . R.slice arr $
+        (Z :. i :. All :. All)) $
+  [0 .. nf - 1]
+  where
+    (Z :. nf :. _ :. _) = extent arr
