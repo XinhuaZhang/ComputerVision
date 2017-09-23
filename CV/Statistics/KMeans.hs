@@ -156,25 +156,25 @@ computeClusterSize k xs =
 kmeans :: ParallelParams -> Int -> FilePath -> Double -> [VU.Vector Double] -> IO KMeansModel
 kmeans parallelParams k filePath threshold xs = do
   randomCenter <- randomClusterCenterPP [] k ys
-  go (V.fromListN k randomCenter) (fromIntegral (maxBound :: Int)) ys
+  go (V.fromListN k randomCenter) (V.fromListN k randomCenter) (fromIntegral (maxBound :: Int)) ys
   where
     nf = VU.length . L.head $ xs
     ys =                                                            -- Because the data will be partitioned again and again,
       L.map V.fromList .                                            -- it is better partitioning them first, then using parMap
       splitList (div (L.length xs) (numThread parallelParams)) $
       xs
-    go !center' lastDistortion zs = do
+    go oldCenter !center' lastDistortion zs = do
       let assignment = computeAssignmentP center' zs
           distortion = computeDistortionP center' assignment zs
           ratio = (lastDistortion - distortion) / distortion
       print distortion
       if distortion >= lastDistortion || ratio < threshold
-        then return $! KMeansModel (computeClusterSize k assignment) center'
+        then return $! KMeansModel (computeClusterSize k assignment) oldCenter
         else do
           newCenter <-
             meanList2ClusterCenter (computeMeanP k nf assignment zs) zs
           encodeFile filePath (KMeansModel (computeClusterSize k assignment) newCenter)
-          go newCenter distortion zs
+          go center' newCenter distortion zs
 
 {-# INLINE computeSoftAssignment #-}
 computeSoftAssignment :: ClusterCenter -> VU.Vector Double -> VU.Vector Double

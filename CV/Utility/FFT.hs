@@ -271,9 +271,9 @@ dft1dG
   -> VS.Vector (Complex Double)
   -> IO (VS.Vector (Complex Double))
 dft1dG (FFTW lock' True) dims dftIndex vec =
-  dft1dGGeneric lock' dims dftIndex vec DFTForward (estimate .|. wisdomOnly)
+  dft1dGGeneric lock' dims dftIndex vec DFTForward estimate --(estimate .|. wisdomOnly)
 dft1dG (FFTW lock' False) dims dftIndex vec =
-  dft1dGGeneric lock' dims dftIndex vec DFTForward measure
+  dft1dGGeneric lock' dims dftIndex vec DFTForward estimate -- measure
 
 idft1dG
   :: FFTW
@@ -282,9 +282,9 @@ idft1dG
   -> VS.Vector (Complex Double)
   -> IO (VS.Vector (Complex Double))
 idft1dG (FFTW lock' True) dims dftIndex vec =
-  dft1dGGeneric lock' dims dftIndex vec DFTBackward (estimate .|. wisdomOnly)
+  dft1dGGeneric lock' dims dftIndex vec DFTBackward estimate --(estimate .|. wisdomOnly)
 idft1dG (FFTW lock' False) dims dftIndex vec =
-  dft1dGGeneric lock' dims dftIndex vec DFTBackward measure
+  dft1dGGeneric lock' dims dftIndex vec DFTBackward estimate -- measure
 
 
 

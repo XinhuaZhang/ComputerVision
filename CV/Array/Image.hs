@@ -500,10 +500,10 @@ cartesian2polar2D
   -> (Double, Double)
   -> R.Array s DIM2 Double
   -> R.Array D DIM2 Double
-cartesian2polar2D rs ts (cRow, cCol) polarR valRange arr =
+cartesian2polar2D ts rs (cRow, cCol) polarR valRange arr =
   fromFunction
-    (Z :. rs :. ts)
-    (\(Z :. r :. t) ->
+    (Z :. ts :. rs)
+    (\(Z :. t :. r) ->
         let row =
               cRow +
               (deltaR * fromIntegral r) * cos (deltaTheta * fromIntegral t)
@@ -527,24 +527,23 @@ cartesian2logpolar2D
   -> (Double, Double)
   -> R.Array s DIM2 Double
   -> R.Array D DIM2 Double
-cartesian2logpolar2D rs ts (cRow, cCol) polarR valRange arr =
+cartesian2logpolar2D ts rs (cRow, cCol) polarR valRange arr =
   fromFunction
-    (Z :. rs :. ts)
-    (\(Z :. r :. t) ->
+    (Z :. ts :. rs)
+    (\(Z :. t :. r) ->
         let row =
               cRow +
-              (deltaR * (exp . fromIntegral $ r)) *
-              cos (deltaTheta * fromIntegral t)
+              exp (deltaR * fromIntegral r) * cos (deltaTheta * fromIntegral t)
             col =
               cCol +
-              (deltaR * (exp . fromIntegral $ r)) *
-              sin (deltaTheta * fromIntegral t)
+              exp (deltaR * fromIntegral r) * sin (deltaTheta * fromIntegral t)
         in bicubicInterpolation ds valRange (row, col))
   where
     ds = computeDerivativeS . computeS . delay $ arr
     deltaTheta = 2 * pi / fromIntegral ts
     deltaR = polarR / fromIntegral rs
 
+{-# INLINE cartesian2polarImage #-}
 
 cartesian2polarImage :: Int
                      -> Int
@@ -552,15 +551,15 @@ cartesian2polarImage :: Int
                      -> Double
                      -> ImageCoordinates
                      -> ImageCoordinates
-cartesian2polarImage rs ts (cRow, cCol) polarR (CartesianImage valueRange arr) =
+cartesian2polarImage ts rs (cRow, cCol) polarR (CartesianImage valueRange arr) =
   PolarImage polarR valueRange .
-  fromUnboxed (Z :. nf :. rs :. ts) .
+  fromUnboxed (Z :. nf :. ts :. rs) .
   VU.concat .
   L.map
     (\i ->
         toUnboxed .
         computeS .
-        cartesian2polar2D rs ts (cRow, cCol) polarR valueRange . R.slice arr $
+        cartesian2polar2D ts rs (cRow, cCol) polarR valueRange . R.slice arr $
         (Z :. i :. All :. All)) $
   [0 .. nf - 1]
   where
@@ -568,6 +567,7 @@ cartesian2polarImage rs ts (cRow, cCol) polarR (CartesianImage valueRange arr) =
 cartesian2polarImage _ _ _ _ _ =
   error "cartesian2polarImage: input is not a CartesianImage."
 
+{-# INLINE cartesian2logpolarImage #-}
 
 cartesian2logpolarImage :: Int
                         -> Int
@@ -575,15 +575,15 @@ cartesian2logpolarImage :: Int
                         -> Double
                         -> ImageCoordinates
                         -> ImageCoordinates
-cartesian2logpolarImage rs ts (cRow, cCol) logpolarR (CartesianImage valueRange arr) =
+cartesian2logpolarImage ts rs (cRow, cCol) logpolarR (CartesianImage valueRange arr) =
   LogpolarImage logpolarR valueRange .
-  fromUnboxed (Z :. nf :. rs :. ts) .
+  fromUnboxed (Z :. nf :. ts :. rs) .
   VU.concat .
   L.map
     (\i ->
         toUnboxed .
         computeS .
-        cartesian2logpolar2D rs ts (cRow, cCol) logpolarR valueRange . R.slice arr $
+        cartesian2logpolar2D ts rs (cRow, cCol) logpolarR valueRange . R.slice arr $
         (Z :. i :. All :. All)) $
    [0 .. nf - 1]
   where
