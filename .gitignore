@@ -46,7 +46,6 @@ main
 *.ppm
 *.pca
 *.bak
-run*
 train*
 predict*
 *_Model*
