@@ -1,0 +1,14 @@
+#/bin/bash
+
+export OMP_NUM_THREADS=16
+FLAG="--make -O2 -j2 -threaded -rtsopts" #-fllvm -optlo-O3 -XBangPatterns
+OBJPATH="../../Classifier/LibLinear/"
+SVMPATH="../../Classifier/LibSVM/"
+LIBS="-lstdc++ -llapack -lblas  -lgomp -lfftw3 -lfftw3f -lfftw3l -lm" # -lfftw3 -lfftw3f -lfftw3l -lm
+LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
+
+## cabal exec -- ghc $FLAG $LIBS -i../../ ShiftImageTest.hs -o shiftImageTest
+## cabal exec -- ghc $FLAG $LIBS -i../../ SteerablePyramidTest.hs -o steerablePyramidTest
+## cabal exec -- ghc $FLAG $LIBS -i../../ LaplacianPyramidTest.hs -o laplacianPyramidTest
+## cabal exec -- ghc $FLAG $LIBS -i../../ FastWaveletTransformTest.hs -o fastWaveletTransformTest
+cabal exec -- ghc $FLAG $LIBS -i../../ StabilityTest.hs -o stabilityTest
