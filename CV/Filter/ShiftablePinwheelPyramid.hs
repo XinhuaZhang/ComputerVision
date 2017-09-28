@@ -315,7 +315,7 @@ h1 :: Double -> Complex Double
 h1 x
   | x >= 0.5 * pi = 1
   | x <= 0.25 * pi = 0
-  | otherwise = cos (0.5 * pi * logBase 2 (2 * (x :+ 0) / pi))
+  | otherwise = exp (0 :+ 0.5 * pi * logBase 2 (2 * x / pi))
 
 {-# INLINE l1 #-}
 
@@ -323,7 +323,7 @@ l1 :: Double -> Complex Double
 l1 x
   | x >= 0.5 * pi = 0
   | x <= 0.25 * pi = 2
-  | otherwise = 2 * cos (0.5 * pi * logBase 2 (4 * (x :+ 0) / pi))
+  | otherwise = 2 * exp (0 :+ 0.5 * pi * logBase 2 (4 * x / pi))
 
 {-# INLINE h0 #-}
 
@@ -340,10 +340,11 @@ l0 x = l1 (x / 2) / 2
 g1 :: Int -> Int -> Double -> Complex Double
 g1 num k theta
   | abs (theta - pi * fromIntegral k / fromIntegral num) < 0.5 * pi =
-    alpha * cos (theta - pi * fromIntegral k / fromIntegral num) ^ (num - 1) :+
-    0
+    alpha *
+    exp (0 :+ (theta - pi * fromIntegral k / fromIntegral num)) ^ (num - 1)
   | otherwise = 0
   where
     alpha =
       ((2 :: Double) ^ (num - 1)) * (fromIntegral . L.product $ [2 .. num - 1]) /
-      sqrt (fromIntegral $ num * L.product [2 .. 2 * (num - 1)])
+      sqrt (fromIntegral $ num * L.product [2 .. 2 * (num - 1)]) :+
+      0
