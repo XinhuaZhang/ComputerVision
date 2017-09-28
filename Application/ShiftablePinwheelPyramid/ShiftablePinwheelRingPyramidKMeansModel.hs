@@ -25,8 +25,8 @@ main = do
         }
       filterParams =
         ShiftablePinwheelPyramidParams
-        { shiftablePinwheelPyramidNumLayers = 4
-        , shiftablePinwheelPyramidNumCenters = 1
+        { shiftablePinwheelPyramidNumLayers = 3
+        , shiftablePinwheelPyramidNumCenters = L.length centers
         , shiftablePinwheelPyramidNumChannels = 3
         , shiftablePinwheelPyramidNumTheta = 128
         , shiftablePinwheelPyramidNumLogR = 128

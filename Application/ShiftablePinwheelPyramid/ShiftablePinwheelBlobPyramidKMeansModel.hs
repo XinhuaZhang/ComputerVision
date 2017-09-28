@@ -26,10 +26,10 @@ main = do
       filterParams =
         ShiftablePinwheelBlobPyramidParams
         { shiftablePinwheelBlobPyramidNumLayers = 3
-        , shiftablePinwheelBlobPyramidNumCenters = 1
+        , shiftablePinwheelBlobPyramidNumCenters = L.length centers
         , shiftablePinwheelBlobPyramidNumChannels = 3
-        , shiftablePinwheelBlobPyramidNumTheta = 64
-        , shiftablePinwheelBlobPyramidNumLogR = 64
+        , shiftablePinwheelBlobPyramidNumTheta = 128
+        , shiftablePinwheelBlobPyramidNumLogR = 128
         , shiftablePinwheelBlobPyramidK = 3
         }
       filters = generateShiftablePinwheelBlobPyramidFilters filterParams
