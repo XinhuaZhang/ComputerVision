@@ -64,15 +64,21 @@ logpolarImageConduit parallelParams ts rs centers polarR logpolarFlag = do
         logpolarImageConduit parallelParams ts rs centers polarR logpolarFlag)
 
 shiftablePinwheelRingPyramidConduit
-  :: FFTW
+  :: ParallelParams
+  -> FFTW
   -> ShiftablePinwheelRingPyramidFilters
   -> Conduit (Double, ShiftablePinwheelPyramidInputArray) (ResourceT IO) (Double, [[VU.Vector Double]])
-shiftablePinwheelRingPyramidConduit fftw filter' =
+shiftablePinwheelRingPyramidConduit parallelParams fftw filter' =
   awaitForever
     (\(label', x) -> do
        features <-
          liftIO $
-         shiftablePinwheelRingPyramid fftw filter' featureExtractionRing x
+         shiftablePinwheelRingPyramid
+           fftw
+           parallelParams
+           filter'
+           featureExtractionRing
+           x
        yield (label', features))
        
 

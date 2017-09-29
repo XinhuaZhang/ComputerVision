@@ -48,7 +48,7 @@ main = do
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelRingPyramidConduit fftw filters =$=
+    shiftablePinwheelRingPyramidConduit parallelParams fftw filters =$=
     CL.take (numGMMExample params)
   let (ls, ys) = L.unzip xs
   kmeansModel <-

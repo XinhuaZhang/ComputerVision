@@ -84,11 +84,12 @@ generateShiftablePinwheelRingPyramidFilters params@(ShiftablePinwheelPyramidPara
 
 shiftablePinwheelRingPyramid
   :: FFTW
+  -> ParallelParams
   -> ShiftablePinwheelRingPyramidFilters
-  -> (ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
+  -> (ParallelParams -> ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
   -> ShiftablePinwheelPyramidInputArray
   -> IO [[VU.Vector Double]]
-shiftablePinwheelRingPyramid fftw (ShiftablePinwheelRingPyramidFilters params@(ShiftablePinwheelPyramidParams _ nCenter nChannel nT nR) h0' l0' h1' l1') f arr = do
+shiftablePinwheelRingPyramid fftw parallelParams (ShiftablePinwheelRingPyramidFilters params@(ShiftablePinwheelPyramidParams _ nCenter nChannel nT nR) h0' l0' h1' l1') f arr = do
   vec <-
     dft1dG fftw [nCenter, nChannel, nT, nR] [2, 3] .
     VS.convert . toUnboxed . computeS . R.map (:+ 0) $
@@ -97,34 +98,39 @@ shiftablePinwheelRingPyramid fftw (ShiftablePinwheelRingPyramidFilters params@(S
       l = VS.zipWith (*) l0' vec
   hVec <- idft1dG fftw [nCenter, nChannel, nT, nR] [3] h
   let !hFeatures =
-        f . fromUnboxed (Z :. nCenter :. nChannel :. nT :. nR) . VS.convert $ hVec
-  lFeatures <- shiftablePinwheelRingPyramidLoop fftw params f 0 h1' l1' l
+        f parallelParams .
+        fromUnboxed (Z :. nCenter :. nChannel :. nT :. nR) . VS.convert $
+        hVec
+  lFeatures <-
+    shiftablePinwheelRingPyramidLoop fftw parallelParams params f 0 h1' l1' l
   return $! hFeatures : lFeatures
 
 {-# INLINE shiftablePinwheelRingPyramidLoop #-}
 
 shiftablePinwheelRingPyramidLoop
   :: FFTW
+  -> ParallelParams
   -> ShiftablePinwheelPyramidParams
-  -> (ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
+  -> (ParallelParams -> ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
   -> Int
   -> [VS.Vector (Complex Double)]
   -> [VS.Vector (Complex Double)]
   -> VS.Vector (Complex Double)
   -> IO [[VU.Vector Double]]
-shiftablePinwheelRingPyramidLoop fftw (ShiftablePinwheelPyramidParams _ nCenter nChannel nT nR) f n [] [] imgVec = do
+shiftablePinwheelRingPyramidLoop fftw parallelParams (ShiftablePinwheelPyramidParams _ nCenter nChannel nT nR) f n [] [] imgVec = do
   vec <- idft1dG fftw [nCenter, nChannel, nT, div nR (2 ^ n)] [3] imgVec
   return
-    [ f . fromUnboxed (Z :. nCenter :. nChannel :. nT :. div nR (2 ^ n)) . VS.convert $
+    [ f parallelParams .
+      fromUnboxed (Z :. nCenter :. nChannel :. nT :. div nR (2 ^ n)) . VS.convert $
       vec
     ]
-shiftablePinwheelRingPyramidLoop fftw params@(ShiftablePinwheelPyramidParams _ nCenter nChannel nT nR) f n (h1':h1s) (l1':l1s) imgVec = do
+shiftablePinwheelRingPyramidLoop fftw parallelParams params@(ShiftablePinwheelPyramidParams _ nCenter nChannel nT nR) f n (h1':h1s) (l1':l1s) imgVec = do
   let h = VS.zipWith (*) h1' imgVec
       l = VS.zipWith (*) l1' imgVec
   hVec <- idft1dG fftw [nCenter, nChannel, nT, div nR (2 ^ n)] [3] h
   lVec <- idft1dG fftw [nCenter, nChannel, nT, div nR (2 ^ n)] [3] l
   let !hFeatures =
-        f .
+        f parallelParams .
         fromUnboxed (Z :. nCenter :. nChannel :. nT :. div nR (2 ^ n)) . VS.convert $
         hVec
       lArr =
@@ -135,17 +141,35 @@ shiftablePinwheelRingPyramidLoop fftw params@(ShiftablePinwheelPyramidParams _ n
     dft1dG fftw [nCenter, nChannel, nT, div nR (2 ^ (n + 1))] [3] .
     VS.convert . toUnboxed . computeS $
     lArr
-  features <- shiftablePinwheelRingPyramidLoop fftw params f (n + 1) h1s l1s downsampledFourierLVec
+  features <-
+    shiftablePinwheelRingPyramidLoop
+      fftw
+      parallelParams
+      params
+      f
+      (n + 1)
+      h1s
+      l1s
+      downsampledFourierLVec
   return $! hFeatures : features
-shiftablePinwheelRingPyramidLoop _ _ _ _ _ _ _ = error "shiftablePinwheelRingPyramidLoop: The lengths of l1 and h1 lists are not the same."
+shiftablePinwheelRingPyramidLoop _ _ _ _ _ _ _ _ =
+  error
+    "shiftablePinwheelRingPyramidLoop: The lengths of l1 and h1 lists are not the same."
 
 {-# INLINE featureExtractionRing #-}
 
-featureExtractionRing :: ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double]
-featureExtractionRing arr' =
-  [ toUnboxed . computeS . R.slice magArr $ (Z :. i :. All :. All :. k)
-  | i <- [0 .. nCenter - 1]
-  , k <- [0 .. nR - 1] ]
+featureExtractionRing :: ParallelParams
+                      -> ShiftablePinwheelPyramidInternalArray
+                      -> [VU.Vector Double]
+featureExtractionRing parallelParams arr' =
+  parMapChunk
+    parallelParams
+    rdeepseq
+    (\(i, k) ->
+        toUnboxed . computeS . R.slice magArr $ (Z :. i :. All :. All :. k))
+    [ (i, k)
+    | i <- [0 .. nCenter - 1]
+    , k <- [0 .. nR - 1] ]
   where
     (Z :. nCenter :. _ :. _ :. nR) = extent arr'
     magArr = R.map magnitude arr'
@@ -200,7 +224,7 @@ shiftablePinwheelBlobPyramid
   :: ParallelParams
   -> FFTW
   -> ShiftablePinwheelBlobPyramidFilters
-  -> (ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
+  -> (ParallelParams -> ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
   -> ShiftablePinwheelPyramidInputArray
   -> IO [[VU.Vector Double]]
 shiftablePinwheelBlobPyramid parallelParams fftw (ShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) h0' l0' b1' l1') f arr = do
@@ -212,8 +236,19 @@ shiftablePinwheelBlobPyramid parallelParams fftw (ShiftablePinwheelBlobPyramidFi
       l = VS.zipWith (*) l0' vec
   hVec <- idft1dG fftw [nCenter, nChannel, nT, nR] [2, 3] h
   let !hFeatures =
-        f . fromUnboxed (Z :. nCenter :. nChannel :. nT :. nR) . VS.convert $ hVec
-  lFeatures <- shiftablePinwheelBlobRingPyramidLoop parallelParams  fftw params f 0 b1' l1' l
+        f parallelParams .
+        fromUnboxed (Z :. nCenter :. nChannel :. nT :. nR) . VS.convert $
+        hVec
+  lFeatures <-
+    shiftablePinwheelBlobRingPyramidLoop
+      parallelParams
+      fftw
+      params
+      f
+      0
+      b1'
+      l1'
+      l
   return $! hFeatures : lFeatures
 
 {-# INLINE shiftablePinwheelBlobRingPyramidLoop #-}
@@ -222,17 +257,17 @@ shiftablePinwheelBlobRingPyramidLoop
   :: ParallelParams
   -> FFTW
   -> ShiftablePinwheelBlobPyramidParams
-  -> (ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
+  -> (ParallelParams -> ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
   -> Int
   -> [[VS.Vector (Complex Double)]]
   -> [VS.Vector (Complex Double)]
   -> VS.Vector (Complex Double)
   -> IO [[VU.Vector Double]]
-shiftablePinwheelBlobRingPyramidLoop _ fftw (ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) f n [] [] imgVec = do
+shiftablePinwheelBlobRingPyramidLoop parallelParams fftw (ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) f n [] [] imgVec = do
   vec <-
     idft1dG fftw [nCenter, nChannel, div nT (2 ^ n), div nR (2 ^ n)] [2, 3] imgVec
   return
-    [ f .
+    [ f parallelParams .
       fromUnboxed (Z :. nCenter :. nChannel :. div nT (2 ^ n) :. div nR (2 ^ n)) .
       VS.convert $
       vec
@@ -247,11 +282,10 @@ shiftablePinwheelBlobRingPyramidLoop parallelParams fftw params@(ShiftablePinwhe
   lVec <-
     idft1dG fftw [nCenter, nChannel, div nT (2 ^ n), div nR (2 ^ n)] [2, 3] l
   let !hFeatures =
-        parMapChunk parallelParams rdeepseq VU.concat .
+        L.map VU.concat .
         L.transpose .
-        parMap
-          rdeepseq
-          (f .
+        L.map
+          (f parallelParams .
            fromUnboxed
              (Z :. nCenter :. nChannel :. div nT (2 ^ n) :. div nR (2 ^ n)) .
            VS.convert) $
@@ -285,12 +319,19 @@ shiftablePinwheelBlobRingPyramidLoop _ _ _ _ _ _ _ _ = error "shiftablePinwheelB
 
 {-# INLINE featureExtractionBlob #-}
 
-featureExtractionBlob :: ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double]
-featureExtractionBlob arr' =
-  [ toUnboxed . computeS . R.slice magArr $ (Z :. i :. All :. j :. k)
-  | i <- [0 .. nCenter - 1]
-  , j <- [0 .. nT - 1]
-  , k <- [0 .. nR - 1] ]
+featureExtractionBlob :: ParallelParams
+                      -> ShiftablePinwheelPyramidInternalArray
+                      -> [VU.Vector Double]
+featureExtractionBlob parallelParams arr' =
+  parMapChunk
+    parallelParams
+    rdeepseq
+    (\(i, j, k) ->
+        toUnboxed . computeS . R.slice magArr $ (Z :. i :. All :. j :. k))
+    [ (i, j, k)
+    | i <- [0 .. nCenter - 1]
+    , j <- [0 .. nT - 1]
+    , k <- [0 .. nR - 1] ]
   where
     (Z :. nCenter :. _ :. nT :. nR) = extent arr'
     magArr = R.map magnitude arr'

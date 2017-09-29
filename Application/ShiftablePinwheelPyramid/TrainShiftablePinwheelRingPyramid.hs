@@ -46,7 +46,7 @@ main = do
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelRingPyramidConduit fftw filters =$=
+    shiftablePinwheelRingPyramidConduit parallelParams fftw filters =$=
     kmeansConduit parallelParams kmeansModels =$=
     featurePtrConduit =$=
     CL.consume
