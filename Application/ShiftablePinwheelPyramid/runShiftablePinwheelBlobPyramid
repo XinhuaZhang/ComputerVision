@@ -14,11 +14,11 @@ if [ "$ColorFlag" == "True" ]; then
 else
     Color=Gray
 fi
-ModelName=${ImageSize}_${Color}_SVM_Model
-GMMFile=${ImageSize}_${Color}_GMM.dat
-PCAFile=${ImageSize}_${Color}_PCA.dat
-KMEANSFile=${ImageSize}_${Color}_KMEANS.dat
-ParamsFile=${ImageSize}_${Color}_Params
+ModelName=${ImageSize}_${color}_Blob_SVM_Model
+GMMFile=${ImageSize}_${color}_Blob_GMM.dat
+PCAFile=${ImageSize}_${color}_Blob_PCA.dat
+KMEANSFile=${ImageSize}_${color}_Blob_KMEANS.dat
+ParamsFile=${ImageSize}_${color}_Blob_Params
 NumPrincipal=128
 NumGaussian=128
 PatchSize=16
@@ -34,3 +34,7 @@ time ./shiftablePinwheelBlobPyramidKMeansModel  -i ../Leaf/Train_128_0_${Color}.
 time ./trainShiftablePinwheelBlobPyramid  -i ../Leaf/Train_128_0_${Color}.dat -c 128 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 375 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --patchSize ${PatchSize} --stride ${Stride} --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} --NumGrid ${NumGrid} --Radius ${Radius}  +RTS -N${NumThread}  -RTS --logpolarFlag
 
 time ./predictShiftablePinwheelBlobPyramid  -i ../Leaf/Test_128_0_${Color}.dat -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 60 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --patchSize ${PatchSize} --stride ${Stride} --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} --NumGrid ${NumGrid} --Radius ${Radius}  +RTS -N${NumThread}  -RTS --logpolarFlag
+
+time ./predictShiftablePinwheelBlobPyramid  -i "../Leaf/Train_Color_(128,128)_0_(0.5,1)_(1,1)_(0,0)_1.dat" -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 60 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --patchSize ${PatchSize} --stride ${Stride} --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} --NumGrid ${NumGrid} --Radius ${Radius}  +RTS -N${NumThread}  -RTS --logpolarFlag
+
+time ./predictShiftablePinwheelBlobPyramid  -i ../Leaf/Test_128_45_${Color}.dat -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 60 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --patchSize ${PatchSize} --stride ${Stride} --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} --NumGrid ${NumGrid} --Radius ${Radius}  +RTS -N${NumThread}  -RTS --logpolarFlag
