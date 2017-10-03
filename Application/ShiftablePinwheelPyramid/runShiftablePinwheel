@@ -1,0 +1,36 @@
+#!/bin/bash
+
+export OMP_NUM_THREADS=28
+NumThread=7
+BatchSize=14
+ImageSize=128
+Degree=0
+ScaleFactor="(1,1)"
+aRange="(1,1)"
+bRange="(0,0)"
+ColorFlag=True
+if [ "$ColorFlag" == "True" ]; then
+    Color=Color
+else
+    Color=Gray
+fi
+ModelName=${ImageSize}_${Color}_Fourier_SVM_Model
+GMMFile=${ImageSize}_${Color}_Fourier_GMM.dat
+PCAFile=${ImageSize}_${Color}_Fourier_PCA.dat
+KMEANSFile=${ImageSize}_${Color}_Fourier_KMEANS.dat
+ParamsFile=${ImageSize}_${Color}_Fourier_Params
+NumPrincipal=128
+NumGaussian=128
+PatchSize=16
+Stride=4
+NumBin=8
+GaussianScale=1
+Radius=64
+NumGrid=1
+
+
+time ./shiftablePinwheelKMeansModel  -i ../Leaf/Train_128_0_${Color}.dat -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 375 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --patchSize ${PatchSize} --stride ${Stride} --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} --NumGrid ${NumGrid} --Radius ${Radius}  +RTS -N${NumThread}  -RTS  --logpolarFlag
+
+time ./trainShiftablePinwheel  -i ../Leaf/Train_128_0_${Color}.dat -c 128 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 375 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --patchSize ${PatchSize} --stride ${Stride} --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} --NumGrid ${NumGrid} --Radius ${Radius}  +RTS -N${NumThread}  -RTS --logpolarFlag
+
+time ./predictShiftablePinwheel  -i ../Leaf/Test_128_0_${Color}.dat -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 60 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --patchSize ${PatchSize} --stride ${Stride} --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} --NumGrid ${NumGrid} --Radius ${Radius}  +RTS -N${NumThread}  -RTS --logpolarFlag

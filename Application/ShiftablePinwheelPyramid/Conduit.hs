@@ -99,7 +99,16 @@ shiftablePinwheelBlobPyramidConduit parallelParams fftw filter' =
            featureExtractionBlob
            x
        yield (label', features))
-
+       
+shiftablePinwheelConduit
+  :: FFTW
+  -> Int
+  -> Conduit (Double, ShiftablePinwheelPyramidInputArray) (ResourceT IO) (Double, [VU.Vector Double])
+shiftablePinwheelConduit fftw downsampleFactor =
+  awaitForever
+    (\(label', x) -> do
+       y <- liftIO $ shiftablePinwheel fftw downsampleFactor x
+       yield (label', y))
 
 kmeansConduit
   :: ParallelParams
@@ -117,6 +126,24 @@ kmeansConduit parallelParams models = do
                 xs
         sourceList ys
         kmeansConduit parallelParams models)
+        
+
+kmeansConduit1
+  :: ParallelParams
+  -> KMeansModel
+  -> Conduit (Double, [VU.Vector Double]) (ResourceT IO) (Double, VU.Vector Double)
+kmeansConduit1 parallelParams model = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (second $ vlad (center model))
+                xs
+        sourceList ys
+        kmeansConduit1 parallelParams model)
 
 featurePtrConduit :: Conduit (a, VU.Vector Double) (ResourceT IO) (a, Ptr C'feature_node)
 featurePtrConduit =

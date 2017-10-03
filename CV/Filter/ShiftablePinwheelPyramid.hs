@@ -12,6 +12,7 @@ module CV.Filter.ShiftablePinwheelPyramid
   , shiftablePinwheelBlobPyramid
   , featureExtractionRing
   , featureExtractionBlob
+  , shiftablePinwheel
   ) where
 
 import           Control.Monad               as M
@@ -335,6 +336,28 @@ featureExtractionBlob parallelParams arr' =
   where
     (Z :. nCenter :. _ :. nT :. nR) = extent arr'
     magArr = R.map magnitude arr'
+    
+shiftablePinwheel :: FFTW
+                  -> Int
+                  -> ShiftablePinwheelPyramidInputArray
+                  -> IO [VU.Vector Double]
+shiftablePinwheel fftw downsampleFactor arr = do
+  let (Z :. numCenters :. numChannels :. nT :. nR) = extent arr
+  vec <-
+    dft1dG fftw [numCenters, numChannels, nT, nR] [2, 3] .
+    VS.convert . toUnboxed . computeS . R.map (:+ 0) $
+    arr
+  let arr1 =
+        downsample [downsampleFactor, downsampleFactor, 1, 1] .
+        fromUnboxed
+          (Z :. numCenters :. numChannels :. div nT downsampleFactor :. div nR downsampleFactor) .
+        VS.convert . VS.map magnitude $
+        vec
+  return
+    [ toUnboxed . computeS . R.slice arr1 $ (Z :. i :. All :. All :. All)
+    | i <- [0 .. numCenters - 1] ]
+
+
 
 {-# INLINE fftwFreqOp #-}
 
