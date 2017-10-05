@@ -504,13 +504,16 @@ cartesian2polar2D ts rs (cRow, cCol) polarR valRange arr =
   fromFunction
     (Z :. ts :. rs)
     (\(Z :. t :. r) ->
-        let row =
-              cRow +
-              (deltaR * fromIntegral r) * cos (deltaTheta * fromIntegral t)
-            col =
-              cCol +
-              (deltaR * fromIntegral r) * sin (deltaTheta * fromIntegral t)
-        in bicubicInterpolation ds valRange (row, col))
+       let row =
+             cRow +
+             (deltaR * fromIntegral r) * cos (deltaTheta * fromIntegral t)
+           col =
+             cCol +
+             (deltaR * fromIntegral r) * sin (deltaTheta * fromIntegral t)
+       in (bicubicInterpolation ds valRange (row, col)) / (fromIntegral ts) * 2 *
+          pi *
+          deltaR *
+          fromIntegral r)
   where
     ds = computeDerivativeS . computeS . delay $ arr
     deltaTheta = 2 * pi / fromIntegral ts
@@ -531,13 +534,15 @@ cartesian2logpolar2D ts rs (cRow, cCol) polarR valRange arr =
   fromFunction
     (Z :. ts :. rs)
     (\(Z :. t :. r) ->
-        let row =
-              cRow +
-              exp (deltaR * fromIntegral r) * cos (deltaTheta * fromIntegral t)
-            col =
-              cCol +
-              exp (deltaR * fromIntegral r) * sin (deltaTheta * fromIntegral t)
-        in bicubicInterpolation ds valRange (row, col))
+       let row =
+             cRow +
+             (exp (deltaR * fromIntegral r)) * cos (deltaTheta * fromIntegral t)
+           col =
+             cCol +
+             (exp (deltaR * fromIntegral r)) * sin (deltaTheta * fromIntegral t)
+       in (bicubicInterpolation ds valRange (row, col)) / (fromIntegral ts) * 2 *
+          pi *
+          (exp $ fromIntegral r * deltaR))
   where
     ds = computeDerivativeS . computeS . delay $ arr
     deltaTheta = 2 * pi / fromIntegral ts
