@@ -16,16 +16,16 @@ import           Data.List                                       as L
 import           Data.Vector                                     as V
 import           Data.Vector.Unboxed                             as VU
 import           System.Environment
-import Control.Arrow
 
 main = do
   args <- getArgs
   params <- parseArgs args
   print params
-  -- filterParams <-
-  --   fmap (\x -> read x :: ShiftablePinwheelPyramidParams) . readFile $
-  --   (paramsFileName params)
-  -- kmeansModel <- decodeFile (kmeansFile params)
+  filterParams <-
+    fmap (\x -> read x :: ShiftablePinwheelPyramidParams) . readFile $
+    (paramsFileName params)
+  kmeansModel <- decodeFile (kmeansFile params)
+  -- pcaMat <- decodeFile (pcaFile params)
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
@@ -36,15 +36,6 @@ main = do
         | i <- generateCenters (imageSize params) (numGrid params)
         , j <- generateCenters (imageSize params) (numGrid params)
         ]
-      filterParams =
-        ShiftablePinwheelPyramidParams
-        { shiftablePinwheelPyramidNumLayers = 3
-        , shiftablePinwheelPyramidNumCenters = L.length centers
-        , shiftablePinwheelPyramidNumChannels = 3
-        , shiftablePinwheelPyramidNumTheta = 512
-        , shiftablePinwheelPyramidNumLogR = 128
-        }
-  writeFile (paramsFileName params) . show $ filterParams
   fftw <- initializefftw FFTWWisdomNull
   (x:_) <-
     runResourceT $
@@ -57,7 +48,8 @@ main = do
       (radius params)
       (logpolarFlag params) =$=
     shiftablePinwheelConduit fftw (stride params) =$=
-    CL.map (second $ VU.concat) =$=
+    -- pcaConduit1 parallelParams pcaMat =$=
+    kmeansConduit1 parallelParams kmeansModel =$=
     CL.take 1
   featurePtr <-
     runResourceT $
@@ -70,8 +62,8 @@ main = do
       (radius params)
       (logpolarFlag params) =$=
     shiftablePinwheelConduit fftw (stride params) =$=
-    CL.map (second $ VU.concat) =$=
-    -- kmeansConduit1 parallelParams kmeansModel =$=
+    -- pcaConduit1 parallelParams pcaMat =$=
+    kmeansConduit1 parallelParams kmeansModel =$=
     featurePtrConduit =$=
     CL.consume
   let trainParams =

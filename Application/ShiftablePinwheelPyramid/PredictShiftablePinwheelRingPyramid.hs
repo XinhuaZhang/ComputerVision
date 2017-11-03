@@ -25,6 +25,7 @@ main = do
     fmap (\x -> read x :: ShiftablePinwheelPyramidParams) . readFile $
     (paramsFileName params)
   kmeansModels <- decodeFile (kmeansFile params)
+  -- pcaMat <- decodeFile (pcaFile params)
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
@@ -34,7 +35,8 @@ main = do
       centers =
         [ (i, j)
         | i <- generateCenters (imageSize params) (numGrid params)
-        , j <- generateCenters (imageSize params) (numGrid params) ]
+        , j <- generateCenters (imageSize params) (numGrid params)
+        ]
   fftw <- initializefftw FFTWWisdomNull
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
@@ -45,7 +47,8 @@ main = do
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelRingPyramidConduit parallelParams fftw filters =$=
+    shiftablePinwheelRingPyramidConduit fftw filters =$=
+    -- pcaConduit parallelParams pcaMat =$=
     kmeansConduit parallelParams kmeansModels =$=
     featureConduit =$=
     predict (modelName params) ((modelName params) L.++ ".out")

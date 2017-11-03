@@ -16,6 +16,7 @@ import           Data.List                                       as L
 import           Data.Vector                                     as V
 import           Data.Vector.Unboxed                             as VU
 import           System.Environment
+import Control.Arrow
 
 main = do
   args <- getArgs
@@ -34,7 +35,8 @@ main = do
       centers =
         [ (i, j)
         | i <- generateCenters (imageSize params) (numGrid params)
-        , j <- generateCenters (imageSize params) (numGrid params) ]
+        , j <- generateCenters (imageSize params) (numGrid params)
+        ]
   fftw <- initializefftw FFTWWisdomNull
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
@@ -45,7 +47,7 @@ main = do
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelBlobPyramidConduit parallelParams fftw filters =$=
+    shiftablePinwheelBlobPyramidConduit fftw (stride params) filters =$=
     kmeansConduit parallelParams kmeansModels =$=
     featureConduit =$=
     predict (modelName params) ((modelName params) L.++ ".out")

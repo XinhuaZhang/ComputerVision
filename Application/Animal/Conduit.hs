@@ -4,7 +4,6 @@ import           Control.Monad                as M
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           CV.Filter.PinwheelWavelet
-import           CV.IO.ImageIO
 import           CV.Utility.FFT
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility  (arrayToUnboxed, downsample)
@@ -15,6 +14,8 @@ import           Data.Conduit.List            as CL
 import           Data.List                    as L
 import           Data.Vector.Unboxed          as VU
 import           Data.Vector.Storable          as VS
+import           CV.Array.Image
+import           CV.Filter.ShiftablePinwheelPyramid
 
 pinwheelWaveletConduit
   :: ParallelParams

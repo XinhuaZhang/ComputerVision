@@ -6,11 +6,23 @@ OBJPATH="../../Classifier/LibLinear/"
 SVMPATH="../../Classifier/LibSVM/"
 LIBS="-lstdc++ -llapack -lblas  -lgomp -lfftw3 -lfftw3f -lfftw3l -lm" # -lfftw3 -lfftw3f -lfftw3l -lm
 
-cabal exec -- ghc $FLAG $LIBS -i../../  Convert.hs -o convert
+## cabal exec -- ghc $FLAG $LIBS -i../../  Convert.hs -o convert
 
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeansModel.hs -o trainKMeansModel
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeans.hs -o trainKMeans
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictKMeans.hs -o predictKMeans
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeansModel.hs -o trainKMeansModel
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeans.hs -o trainKMeans
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictKMeans.hs -o predictKMeans
 
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o Train.hs -o train
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o Predict.hs -o predict
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o Train.hs -o train
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o Predict.hs -o predict
+
+
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainShiftablePinwheel.hs -o trainShiftablePinwheel
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictShiftablePinwheel.hs -o predictShiftablePinwheel
+
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o ShiftablePinwheelRingPyramidKMeansModel.hs -o shiftablePinwheelRingPyramidKMeansModel
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainShiftablePinwheelRingPyramid.hs -o trainShiftablePinwheelRingPyramid
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictShiftablePinwheelRingPyramid.hs -o predictShiftablePinwheelRingPyramid
+
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o ShiftablePinwheelBlobPyramidKMeansModel.hs -o shiftablePinwheelBlobPyramidKMeansModel
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainShiftablePinwheelBlobPyramid.hs -o trainShiftablePinwheelBlobPyramid
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictShiftablePinwheelBlobPyramid.hs -o predictShiftablePinwheelBlobPyramid

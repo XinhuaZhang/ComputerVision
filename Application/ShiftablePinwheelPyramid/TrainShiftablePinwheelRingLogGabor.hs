@@ -16,35 +16,26 @@ import           Data.List                                       as L
 import           Data.Vector                                     as V
 import           Data.Vector.Unboxed                             as VU
 import           System.Environment
-import Control.Arrow
 
 main = do
   args <- getArgs
   params <- parseArgs args
   print params
-  -- filterParams <-
-  --   fmap (\x -> read x :: ShiftablePinwheelPyramidParams) . readFile $
-  --   (paramsFileName params)
-  -- kmeansModel <- decodeFile (kmeansFile params)
+  filterParams <-
+    fmap (\x -> read x :: ShiftablePinwheelPyramidParams) . readFile $
+    (paramsFileName params)
+  kmeansModels <- decodeFile (kmeansFile params)
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
         , Par.batchSize = AP.batchSize params
         }
+      filters = generateShiftablePinwheelRingPyramidFilters filterParams
       centers =
         [ (i, j)
         | i <- generateCenters (imageSize params) (numGrid params)
         , j <- generateCenters (imageSize params) (numGrid params)
         ]
-      filterParams =
-        ShiftablePinwheelPyramidParams
-        { shiftablePinwheelPyramidNumLayers = 3
-        , shiftablePinwheelPyramidNumCenters = L.length centers
-        , shiftablePinwheelPyramidNumChannels = 3
-        , shiftablePinwheelPyramidNumTheta = 512
-        , shiftablePinwheelPyramidNumLogR = 128
-        }
-  writeFile (paramsFileName params) . show $ filterParams
   fftw <- initializefftw FFTWWisdomNull
   (x:_) <-
     runResourceT $
@@ -56,8 +47,8 @@ main = do
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelConduit fftw (stride params) =$=
-    CL.map (second $ VU.concat) =$=
+    shiftablePinwheelRingPyramidConduit fftw filters =$=
+    kmeansConduit parallelParams kmeansModels =$=
     CL.take 1
   featurePtr <-
     runResourceT $
@@ -69,9 +60,8 @@ main = do
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelConduit fftw (stride params) =$=
-    CL.map (second $ VU.concat) =$=
-    -- kmeansConduit1 parallelParams kmeansModel =$=
+    shiftablePinwheelRingPyramidConduit fftw filters =$=
+    kmeansConduit parallelParams kmeansModels =$=
     featurePtrConduit =$=
     CL.consume
   let trainParams =
@@ -80,6 +70,12 @@ main = do
         , trainC = (c params)
         , trainNumExamples = L.length featurePtr
         , trainFeatureIndexMax = VU.length . snd $ x
+          -- L.sum .
+          -- L.map
+          --   (\kmeansModel ->
+          --       V.length (center kmeansModel) *
+          --       VU.length (V.head . center $ kmeansModel)) $
+          -- kmeansModels
         , trainModel = (modelName params)
         }
       (labels, features) = L.unzip featurePtr

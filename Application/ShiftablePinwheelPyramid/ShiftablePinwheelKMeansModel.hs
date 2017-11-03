@@ -5,6 +5,7 @@ import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Filter.ShiftablePinwheelPyramid
 import           CV.Statistics.KMeans
+import           CV.Statistics.PCA
 import           CV.Utility.FFT
 import           CV.Utility.Parallel                             as Par
 import           Data.Binary
@@ -25,7 +26,7 @@ main = do
         }
       filterParams =
         ShiftablePinwheelPyramidParams
-        { shiftablePinwheelPyramidNumLayers = 3
+        { shiftablePinwheelPyramidNumLayers = 1
         , shiftablePinwheelPyramidNumCenters = L.length centers
         , shiftablePinwheelPyramidNumChannels = 3
         , shiftablePinwheelPyramidNumTheta = 128
@@ -34,7 +35,8 @@ main = do
       centers =
         [ (i, j)
         | i <- generateCenters (imageSize params) (numGrid params)
-        , j <- generateCenters (imageSize params) (numGrid params) ]
+        , j <- generateCenters (imageSize params) (numGrid params)
+        ]
   writeFile (paramsFileName params) . show $ filterParams
   fftw <- initializefftw FFTWWisdomNull
   xs <-
@@ -50,7 +52,9 @@ main = do
     shiftablePinwheelConduit fftw (stride params) =$=
     CL.take (numGMMExample params)
   let (ls, ys) = L.unzip xs
+      -- (pcaMat, _, zs) =
+  --       pcaSVD parallelParams (numPrincipal params) . L.concat $ ys
+  -- encodeFile (pcaFile params) pcaMat
   kmeansModel <-
-    kmeans parallelParams (numGaussian params) (kmeansFile params) 0.005 . L.concat $
-    ys
+    kmeans parallelParams (numGaussian params) (kmeansFile params) 0.005 . L.concat $ ys -- zs
   encodeFile (kmeansFile params) kmeansModel

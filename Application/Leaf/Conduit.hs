@@ -579,3 +579,35 @@ filterKeypointConduit parallelParams fftw filters numPoints threshold = do
   where
     rows = pinwheelWaveletRows . getFilterParams $ filters
     cols = pinwheelWaveletCols . getFilterParams $ filters
+
+
+filterExpansionConduit
+  :: (FilterExpansion a)
+  => ParallelParams
+  -> a
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, VU.Vector Double)
+filterExpansionConduit parallelParams filter = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray label x) ->
+                   let imgVecs =
+                         L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
+                   in ( fromIntegral label
+                      , normalizeVec .
+                        VU.map magnitude .
+                        VU.fromList . applyFilterExpansion filter $
+                        imgVecs))
+                xs
+        sourceList ys
+        filterExpansionConduit parallelParams filter)
+  where
+    normalizeVec vec
+      | s == 0 = VU.replicate (VU.length vec) 0
+      | otherwise = VU.map (/ s) vec
+      where
+        s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec

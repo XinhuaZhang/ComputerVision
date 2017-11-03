@@ -16,6 +16,7 @@ import           Data.List                                       as L
 import           Data.Vector                                     as V
 import           Data.Vector.Unboxed                             as VU
 import           System.Environment
+import Control.Arrow
 
 main = do
   args <- getArgs
@@ -34,8 +35,22 @@ main = do
       centers =
         [ (i, j)
         | i <- generateCenters (imageSize params) (numGrid params)
-        , j <- generateCenters (imageSize params) (numGrid params) ]
+        , j <- generateCenters (imageSize params) (numGrid params)
+        ]
   fftw <- initializefftw FFTWWisdomNull
+  (x:_) <-
+    runResourceT $
+    CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+    logpolarImageConduit
+      parallelParams
+      (shiftablePinwheelBlobPyramidNumTheta filterParams)
+      (shiftablePinwheelBlobPyramidNumLogR filterParams)
+      centers
+      (radius params)
+      (logpolarFlag params) =$=
+    shiftablePinwheelBlobPyramidConduit fftw (stride params) filters =$=
+    kmeansConduit parallelParams kmeansModels =$=
+    CL.take 1
   featurePtr <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
@@ -46,7 +61,7 @@ main = do
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelBlobPyramidConduit parallelParams fftw filters =$=
+    shiftablePinwheelBlobPyramidConduit fftw (stride params) filters =$=
     kmeansConduit parallelParams kmeansModels =$=
     featurePtrConduit =$=
     CL.consume
@@ -55,13 +70,7 @@ main = do
         { trainSolver = L2R_L2LOSS_SVC_DUAL
         , trainC = (c params)
         , trainNumExamples = L.length featurePtr
-        , trainFeatureIndexMax =
-          L.sum .
-          L.map
-            (\kmeansModel ->
-                V.length (center kmeansModel) *
-                VU.length (V.head . center $ kmeansModel)) $
-          kmeansModels
+        , trainFeatureIndexMax = VU.length . snd $ x
         , trainModel = (modelName params)
         }
       (labels, features) = L.unzip featurePtr

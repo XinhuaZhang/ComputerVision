@@ -22,56 +22,47 @@ main = do
   args <- getArgs
   params <- parseArgs args
   print params
-  -- filterParams <-
-  --   fmap (\x -> read x :: ShiftablePinwheelPyramidParams) . readFile $
-  --   (paramsFileName params)
-  -- kmeansModel <- decodeFile (kmeansFile params)
+  filterParams <-
+    fmap (\x -> read x :: ShiftablePinwheelBlobPyramidParams) . readFile $
+    (paramsFileName params)
+  kmeansModels <- decodeFile (kmeansFile params)
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
         , Par.batchSize = AP.batchSize params
         }
+      filters = generateShiftablePinwheelBlobPyramidFilters2Layers filterParams
       centers =
         [ (i, j)
         | i <- generateCenters (imageSize params) (numGrid params)
         , j <- generateCenters (imageSize params) (numGrid params)
         ]
-      filterParams =
-        ShiftablePinwheelPyramidParams
-        { shiftablePinwheelPyramidNumLayers = 3
-        , shiftablePinwheelPyramidNumCenters = L.length centers
-        , shiftablePinwheelPyramidNumChannels = 3
-        , shiftablePinwheelPyramidNumTheta = 512
-        , shiftablePinwheelPyramidNumLogR = 128
-        }
-  writeFile (paramsFileName params) . show $ filterParams
   fftw <- initializefftw FFTWWisdomNull
   (x:_) <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
     logpolarImageConduit
       parallelParams
-      (shiftablePinwheelPyramidNumTheta filterParams)
-      (shiftablePinwheelPyramidNumLogR filterParams)
+      (shiftablePinwheelBlobPyramidNumTheta filterParams)
+      (shiftablePinwheelBlobPyramidNumLogR filterParams)
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelConduit fftw (stride params) =$=
-    CL.map (second $ VU.concat) =$=
+    shiftablePinwheelBlobPyramidConduit2Layers fftw (stride params) filters =$=
+    kmeansConduit parallelParams kmeansModels =$=
     CL.take 1
   featurePtr <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
     logpolarImageConduit
       parallelParams
-      (shiftablePinwheelPyramidNumTheta filterParams)
-      (shiftablePinwheelPyramidNumLogR filterParams)
+      (shiftablePinwheelBlobPyramidNumTheta filterParams)
+      (shiftablePinwheelBlobPyramidNumLogR filterParams)
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelConduit fftw (stride params) =$=
-    CL.map (second $ VU.concat) =$=
-    -- kmeansConduit1 parallelParams kmeansModel =$=
+    shiftablePinwheelBlobPyramidConduit2Layers fftw (stride params) filters =$=
+    kmeansConduit parallelParams kmeansModels =$=
     featurePtrConduit =$=
     CL.consume
   let trainParams =

@@ -30,13 +30,14 @@ main = do
         , shiftablePinwheelBlobPyramidNumChannels = 3
         , shiftablePinwheelBlobPyramidNumTheta = 128
         , shiftablePinwheelBlobPyramidNumLogR = 128
-        , shiftablePinwheelBlobPyramidK = 3
+        , shiftablePinwheelBlobPyramidK = 12
         }
       filters = generateShiftablePinwheelBlobPyramidFilters filterParams
       centers =
         [ (i, j)
         | i <- generateCenters (imageSize params) (numGrid params)
-        , j <- generateCenters (imageSize params) (numGrid params) ]
+        , j <- generateCenters (imageSize params) (numGrid params)
+        ]
   writeFile (paramsFileName params) . show $ filterParams
   fftw <- initializefftw FFTWWisdomNull
   xs <-
@@ -49,7 +50,7 @@ main = do
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelBlobPyramidConduit parallelParams fftw filters =$=
+    shiftablePinwheelBlobPyramidConduit fftw (stride params) filters =$=
     CL.take (numGMMExample params)
   let (ls, ys) = L.unzip xs
   kmeansModel <-

@@ -25,6 +25,7 @@ main = do
     fmap (\x -> read x :: ShiftablePinwheelPyramidParams) . readFile $
     (paramsFileName params)
   kmeansModels <- decodeFile (kmeansFile params)
+  -- pcaMat <- decodeFile (pcaFile params)
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
@@ -34,8 +35,23 @@ main = do
       centers =
         [ (i, j)
         | i <- generateCenters (imageSize params) (numGrid params)
-        , j <- generateCenters (imageSize params) (numGrid params) ]
+        , j <- generateCenters (imageSize params) (numGrid params)
+        ]
   fftw <- initializefftw FFTWWisdomNull
+  (x:_) <-
+    runResourceT $
+    CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+    logpolarImageConduit
+      parallelParams
+      (shiftablePinwheelPyramidNumTheta filterParams)
+      (shiftablePinwheelPyramidNumLogR filterParams)
+      centers
+      (radius params)
+      (logpolarFlag params) =$=
+    shiftablePinwheelRingPyramidConduit fftw filters =$=
+    -- pcaConduit parallelParams pcaMat =$=
+    kmeansConduit parallelParams kmeansModels =$=
+    CL.take 1
   featurePtr <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
@@ -46,7 +62,8 @@ main = do
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelRingPyramidConduit parallelParams fftw filters =$=
+    shiftablePinwheelRingPyramidConduit fftw filters =$=
+    -- pcaConduit parallelParams pcaMat =$=
     kmeansConduit parallelParams kmeansModels =$=
     featurePtrConduit =$=
     CL.consume
@@ -55,13 +72,7 @@ main = do
         { trainSolver = L2R_L2LOSS_SVC_DUAL
         , trainC = (c params)
         , trainNumExamples = L.length featurePtr
-        , trainFeatureIndexMax =
-          L.sum .
-          L.map
-            (\kmeansModel ->
-                V.length (center kmeansModel) *
-                VU.length (V.head . center $ kmeansModel)) $
-          kmeansModels
+        , trainFeatureIndexMax = VU.length . snd $ x
         , trainModel = (modelName params)
         }
       (labels, features) = L.unzip featurePtr

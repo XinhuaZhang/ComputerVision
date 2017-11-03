@@ -29,6 +29,7 @@ data Flag
   | LogpolarFlag 
   | NumGrid Int
   | Radius Double
+  | LabelFile FilePath
   deriving (Show)
 
 data Params = Params
@@ -56,6 +57,7 @@ data Params = Params
   , logpolarFlag     :: Bool
   , numGrid          :: Int
   , radius           :: Double
+  , labelFile        :: FilePath
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -164,6 +166,7 @@ options =
        ["Radius"]
        (ReqArg (Radius . readDouble) "DOUBLE")
        ""
+  ,   Option ['l'] ["labelFile"] (ReqArg LabelFile "FILE") "Label list file."
   ]
 
 readInt :: String -> Int
@@ -216,6 +219,7 @@ parseFlag flags = go flags defaultFlag
       , logpolarFlag = False
       , numGrid = 1
       , radius = 1
+      , labelFile = ""
       }
     go [] params = params
     go (x:xs) params =
@@ -363,6 +367,12 @@ parseFlag flags = go flags defaultFlag
             xs
             (params
              { radius = v
+             })
+        LabelFile str ->
+          go
+            xs
+            (params
+             { labelFile = str
              })
 
 

@@ -540,13 +540,14 @@ cartesian2logpolar2D ts rs (cRow, cCol) polarR valRange arr =
            col =
              cCol +
              (exp (deltaR * fromIntegral r)) * sin (deltaTheta * fromIntegral t)
-       in (bicubicInterpolation ds valRange (row, col)) / (fromIntegral ts) * 2 *
-          pi *
-          (exp $ fromIntegral r * deltaR))
+       in (bicubicInterpolation ds valRange (row, col)) *
+          ((1 / (fromIntegral ts) * 2 * pi * (exp  (fromIntegral r * deltaR))) ^
+           (1 :: Int))
+    )
   where
     ds = computeDerivativeS . computeS . delay $ arr
     deltaTheta = 2 * pi / fromIntegral ts
-    deltaR = polarR / fromIntegral rs
+    deltaR = (log polarR) / fromIntegral rs
 
 {-# INLINE cartesian2polarImage #-}
 
@@ -558,14 +559,16 @@ cartesian2polarImage :: Int
                      -> ImageCoordinates
 cartesian2polarImage ts rs (cRow, cCol) polarR (CartesianImage valueRange arr) =
   PolarImage polarR valueRange .
+  -- computeS .
+  -- normalizeImage 255 .
   fromUnboxed (Z :. nf :. ts :. rs) .
   VU.concat .
   L.map
     (\i ->
-        toUnboxed .
-        computeS .
-        cartesian2polar2D ts rs (cRow, cCol) polarR valueRange . R.slice arr $
-        (Z :. i :. All :. All)) $
+       toUnboxed .
+       computeS .
+       cartesian2polar2D ts rs (cRow, cCol) polarR valueRange . R.slice arr $
+       (Z :. i :. All :. All)) $
   [0 .. nf - 1]
   where
     (Z :. nf :. _ :. _) = extent arr
@@ -582,15 +585,18 @@ cartesian2logpolarImage :: Int
                         -> ImageCoordinates
 cartesian2logpolarImage ts rs (cRow, cCol) logpolarR (CartesianImage valueRange arr) =
   LogpolarImage logpolarR valueRange .
+  computeS .
+  normalizeImage 255 .
   fromUnboxed (Z :. nf :. ts :. rs) .
   VU.concat .
   L.map
     (\i ->
-        toUnboxed .
-        computeS .
-        cartesian2logpolar2D ts rs (cRow, cCol) logpolarR valueRange . R.slice arr $
-        (Z :. i :. All :. All)) $
-   [0 .. nf - 1]
+       toUnboxed .
+       computeS .
+       cartesian2logpolar2D ts rs (cRow, cCol) logpolarR valueRange .
+       R.slice arr $
+       (Z :. i :. All :. All)) $
+  [0 .. nf - 1]
   where
     (Z :. nf :. _ :. _) = extent arr
 cartesian2logpolarImage _ _ _ _ _ =

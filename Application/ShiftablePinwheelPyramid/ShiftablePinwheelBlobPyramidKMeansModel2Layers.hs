@@ -5,7 +5,6 @@ import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Filter.ShiftablePinwheelPyramid
 import           CV.Statistics.KMeans
-import           CV.Statistics.PCA
 import           CV.Utility.FFT
 import           CV.Utility.Parallel                             as Par
 import           Data.Binary
@@ -25,14 +24,15 @@ main = do
         , Par.batchSize = AP.batchSize params
         }
       filterParams =
-        ShiftablePinwheelPyramidParams
-        { shiftablePinwheelPyramidNumLayers = 1
-        , shiftablePinwheelPyramidNumCenters = L.length centers
-        , shiftablePinwheelPyramidNumChannels = 3
-        , shiftablePinwheelPyramidNumTheta = 128
-        , shiftablePinwheelPyramidNumLogR = 128
+        ShiftablePinwheelBlobPyramidParams
+        { shiftablePinwheelBlobPyramidNumLayers = 3
+        , shiftablePinwheelBlobPyramidNumCenters = L.length centers
+        , shiftablePinwheelBlobPyramidNumChannels = 3
+        , shiftablePinwheelBlobPyramidNumTheta = 128
+        , shiftablePinwheelBlobPyramidNumLogR = 128
+        , shiftablePinwheelBlobPyramidK = 12
         }
-      filters = generateShiftablePinwheelRingPyramidFilters filterParams
+      filters = generateShiftablePinwheelBlobPyramidFilters2Layers filterParams
       centers =
         [ (i, j)
         | i <- generateCenters (imageSize params) (numGrid params)
@@ -45,27 +45,16 @@ main = do
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
     logpolarImageConduit
       parallelParams
-      (shiftablePinwheelPyramidNumTheta filterParams)
-      (shiftablePinwheelPyramidNumLogR filterParams)
+      (shiftablePinwheelBlobPyramidNumTheta filterParams)
+      (shiftablePinwheelBlobPyramidNumLogR filterParams)
       centers
       (radius params)
       (logpolarFlag params) =$=
-    shiftablePinwheelRingPyramidConduit fftw filters =$=
+    shiftablePinwheelBlobPyramidConduit2Layers fftw (stride params) filters =$=
     CL.take (numGMMExample params)
   let (ls, ys) = L.unzip xs
-  --     (pcaMat, _, zs) =
-  --       L.unzip3 .
-  --       L.map (pcaSVD parallelParams (numPrincipal params)) .
-  --       L.map L.concat . L.transpose $
-  --       ys
-  -- encodeFile (pcaFile params) pcaMat
   kmeansModel <-
     M.mapM
-      (kmeans
-         parallelParams
-         (numGaussian params)
-         (kmeansFile params)
-         (threshold params))
+      (kmeans parallelParams (numGaussian params) (kmeansFile params) 0.005)
       (L.map L.concat . L.transpose $ ys)
-      -- zs
   encodeFile (kmeansFile params) kmeansModel

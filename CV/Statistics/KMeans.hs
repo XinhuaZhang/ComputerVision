@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns  #-}
+{-# LANGUAGE BangPatterns #-}
 
 module CV.Statistics.KMeans
   ( ClusterCenter
@@ -16,6 +16,7 @@ import           Data.List           as L
 import           Data.Vector         as V
 import           Data.Vector.Unboxed as VU
 import           System.Random
+import           Text.Printf
 
 type ClusterCenter = V.Vector (VU.Vector Double)
 
@@ -155,7 +156,9 @@ computeClusterSize k xs =
 
 kmeans :: ParallelParams -> Int -> FilePath -> Double -> [VU.Vector Double] -> IO KMeansModel
 kmeans parallelParams k filePath threshold xs = do
+  printf "Looking for %d centers in %d samples.\n" k (L.length xs)
   randomCenter <- randomClusterCenterPP [] k ys
+  putStrLn "Done."
   go (V.fromListN k randomCenter) (V.fromListN k randomCenter) (fromIntegral (maxBound :: Int)) ys
   where
     nf = VU.length . L.head $ xs
@@ -167,13 +170,15 @@ kmeans parallelParams k filePath threshold xs = do
       let assignment = computeAssignmentP center' zs
           distortion = computeDistortionP center' assignment zs
           ratio = (lastDistortion - distortion) / distortion
-      print distortion
-      if distortion >= lastDistortion || ratio < threshold
-        then return $! KMeansModel (computeClusterSize k assignment) oldCenter
+      printf "%e %.4f\n" distortion ratio
+      if -- distortion >= lastDistortion ||
+        abs ratio < threshold
+        then do putStrLn ""
+                return $! KMeansModel (computeClusterSize k assignment) oldCenter
         else do
           newCenter <-
             meanList2ClusterCenter (computeMeanP k nf assignment zs) zs
-          encodeFile filePath (KMeansModel (computeClusterSize k assignment) newCenter)
+          -- encodeFile filePath (KMeansModel (computeClusterSize k assignment) newCenter)
           go center' newCenter distortion zs
 
 {-# INLINE computeSoftAssignment #-}

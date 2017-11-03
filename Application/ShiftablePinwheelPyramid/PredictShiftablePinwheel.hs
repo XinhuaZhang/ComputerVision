@@ -1,4 +1,5 @@
 import           Application.ShiftablePinwheelPyramid.ArgsParser as AP
+import Control.Arrow
 import           Application.ShiftablePinwheelPyramid.Conduit
 import           Classifier.LibLinear
 import           Control.Monad                                   as M
@@ -24,7 +25,7 @@ main = do
   filterParams <-
     fmap (\x -> read x :: ShiftablePinwheelPyramidParams) . readFile $
     (paramsFileName params)
-  kmeansModels <- decodeFile (kmeansFile params)
+  -- kmeansModels <- decodeFile (kmeansFile params)
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
@@ -45,6 +46,7 @@ main = do
       (radius params)
       (logpolarFlag params) =$=
     shiftablePinwheelConduit fftw (stride params) =$=
-    kmeansConduit1 parallelParams kmeansModels =$=
+    CL.map (second $ VU.concat) =$=
+    -- kmeansConduit1 parallelParams kmeansModels =$=
     featureConduit =$=
     predict (modelName params) ((modelName params) L.++ ".out")
