@@ -1,8 +1,12 @@
 {-# LANGUAGE TypeFamilies #-}
-module CV.Filter where
+module CV.Filter
+  ( module CV.Utility.DFT
+  , module CV.Filter
+  ) where
 
 import           Control.DeepSeq      (NFData, rnf)
 import           CV.Utility.FFT       (FFTW)
+import           CV.Utility.DFT
 import           Data.Complex
 import           Data.Vector.Storable as VS
 import           Data.Vector.Unboxed  as VU
@@ -30,18 +34,20 @@ class FilterExpansion a  where
   makeFilterExpansion :: FilterExpansionParameters a -> Int -> Int -> a
   applyFilterExpansion :: a -> [VU.Vector (Complex Double)] -> [Complex Double]
 
-class FilterConvolution a  where
+class FilterConvolution a where
   type FilterConvolutionParameters a :: *
   getFilterConvolutionNum :: a -> Int
   getFilterConvolutionList :: a -> [VS.Vector (Complex Double)]
-  makeFilterConvolution :: FFTW
-                        -> FilterConvolutionParameters a
-                        -> ConvolutionalFilterType
-                        -> IO a
-  applyFilterConvolution :: FFTW
-                         -> a
-                         -> [VS.Vector (Complex Double)]
-                         -> IO [VS.Vector (Complex Double)]
+  makeFilterConvolution
+    :: DFTPlan
+    -> FilterConvolutionParameters a
+    -> ConvolutionalFilterType
+    -> IO (DFTPlan, a)
+  applyFilterConvolution
+    :: DFTPlan
+    -> a
+    -> [VS.Vector (Complex Double)]
+    -> IO [VS.Vector (Complex Double)]
 
 {-# INLINE makeFilterExpansionList #-}
 

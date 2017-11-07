@@ -1,12 +1,10 @@
 import           Application.Leaf.ArgsParser          as AP
-import           Application.Leaf.Conduit             (featurePtrConduitP)
 import           Application.OriginPrediction.Conduit
 import           Classifier.LibLinear
 import           Control.Monad                        as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Filter.FourierMellinTransform
-import           CV.Utility.FFT
 import           CV.Utility.Parallel                  as Par
 import           Data.Array.Repa
 import           Data.Binary
@@ -36,34 +34,20 @@ main = do
         , getFourierMellinTransformGridRadialFreq = [0 .. fromIntegral n]
         , getFourierMellinTransformGridAngularFreq = [0 .. n]
         }
-      fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
   writeFile (paramsFileName params) . show $ filterParams
-  fftwInit <- initializefftw FFTWWisdomNull
-  imgs <-
-    runResourceT $
-    CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    CL.map (\(LabeledArray _ arr) -> toUnboxed arr) =$=
-    CL.take 1
-  generateWisdom
-    fftwInit
-    (fftwWisdomPath params)
-    (imageSize params)
-    (imageSize params) .
-    VU.convert . VU.map (:+ 0) . L.head $
-    imgs
-  fftw <- initializefftw fftwWisdom
-  filters <-
-    makeFilterConvolution fftw filterParams Normal :: IO FourierMellinTransformConvolution
+  (plan, filters) <-
+    makeFilterConvolution getEmptyPlan filterParams Normal :: IO (DFTPlan, FourierMellinTransformConvolution)
+  exportFFTWWisdom (fftwWisdomPath params)
   (x:_) <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    filterConduit parallelParams fftw [filters] =$=
+    filterConduit parallelParams plan [filters] =$=
     splitOriginsConduit parallelParams len (stride params) =$=
     CL.take 1
   featurePtr <-
     runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    filterConduit parallelParams fftw [filters] =$=
+    filterConduit parallelParams plan [filters] =$=
     splitOriginsConduit parallelParams len (stride params) =$=
     featurePtrConduitP parallelParams =$=
     CL.consume

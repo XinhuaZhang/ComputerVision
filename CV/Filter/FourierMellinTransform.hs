@@ -22,7 +22,7 @@ data FourierMellinTransformParamsGrid = FourierMellinTransformParamsGrid
   , getFourierMellinTransformGridCols        :: !Int
   , getFourierMellinTransformGridRadialFreq  :: ![Double]
   , getFourierMellinTransformGridAngularFreq :: ![Int]
-  } deriving (Show,Read)
+  } deriving (Show, Read)
 
 type FourierMellinTransformExpansion = Filter FourierMellinTransformParamsGrid [[VU.Vector (Complex Double)]]
 type FourierMellinTransformConvolution = Filter FourierMellinTransformParamsGrid [[VS.Vector (Complex Double)]]
@@ -33,14 +33,16 @@ instance FilterExpansion FourierMellinTransformExpansion where
   makeFilterExpansion params@(FourierMellinTransformParamsGrid rows cols rfs afs) rCenter cCenter =
     Filter params $!
     [ [ VU.fromListN (rows * cols) $
-       makeFilterExpansionList
-         rows
-         cols
-         rCenter
-         cCenter
-         (fourierMellinTransform rf af)
-      | af <- afs ]
-    | rf <- rfs ]
+    makeFilterExpansionList
+      rows
+      cols
+      rCenter
+      cCenter
+      (fourierMellinTransform rf af)
+    | af <- afs
+    ]
+    | rf <- rfs
+    ]
   {-# INLINE getFilterExpansionNum #-}
   getFilterExpansionNum (Filter (FourierMellinTransformParamsGrid _ _ rfs afs) _) =
     L.length rfs * L.length afs
@@ -54,37 +56,46 @@ instance FilterExpansion FourierMellinTransformExpansion where
 instance FilterConvolution FourierMellinTransformConvolution where
   type FilterConvolutionParameters FourierMellinTransformConvolution = FourierMellinTransformParamsGrid
   {-# INLINE makeFilterConvolution #-}
-  makeFilterConvolution fftw params@(FourierMellinTransformParamsGrid rows cols rfs afs) filterType =
-    Filter params <$!>
-    M.mapM
-      (\rf ->
-          M.mapM
-            (\af ->
-                dft2d fftw rows cols .
-                VS.fromListN (rows * cols) . conjugateFunc filterType $!
-                makeFilterConvolutionList
-                  rows
-                  cols
-                  (fourierMellinTransform rf af))
-            afs)
-      rfs
+  makeFilterConvolution plan params@(FourierMellinTransformParamsGrid rows cols rfs afs) filterType = do
+    let filterList =
+          L.map
+            (\rf ->
+               L.map
+                 (\af ->
+                    VS.fromList . conjugateFunc filterType $!
+                    makeFilterConvolutionList
+                      rows
+                      cols
+                      (fourierMellinTransform rf af))
+                 afs)
+            rfs
+    lock <- getFFTWLock
+    (p1, vec) <- dft2dPlan lock plan rows cols . L.last . L.last $ filterList
+    (p2, _) <- idft2dPlan lock p1 rows cols vec
+    let dftPlan = getDFTPlan p2 (DFTPlanID DFT2D [rows, cols] [])
+    filters <-
+      Filter params <$!>
+      M.mapM (M.mapM (dftExecuteWithPlan dftPlan (rows * cols))) filterList
+    return (p2, filters)
   {-# INLINE getFilterConvolutionNum #-}
   getFilterConvolutionNum (Filter (FourierMellinTransformParamsGrid _ _ rfs afs) _) =
     L.length rfs * L.length afs
   {-# INLINE applyFilterConvolution #-}
-  applyFilterConvolution fftw (Filter (FourierMellinTransformParamsGrid rows cols _ _) filters) xs = do
-    ys <- M.mapM (dft2d fftw rows cols) xs
+  applyFilterConvolution plan (Filter (FourierMellinTransformParamsGrid rows cols _ _) filters) xs = do
+    let dftPlan = getDFTPlan plan (DFTPlanID DFT2D [rows, cols] [])
+        idftPlan = getDFTPlan plan (DFTPlanID IDFT2D [rows, cols] [])
+    ys <- M.mapM (dftExecuteWithPlan dftPlan (rows * cols)) xs
     L.concat <$>
       M.mapM
         (\x ->
-            L.concat <$>
-            M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x)) filters)
+           L.concat <$>
+           M.mapM
+             (M.mapM
+                (dftExecuteWithPlan idftPlan (rows * cols) . VS.zipWith (*) x))
+             filters)
         ys
   {-# INLINE getFilterConvolutionList #-}
   getFilterConvolutionList = L.concat . getFilter
-
-
-
 
 {-# INLINE fourierMellinTransform #-}
 

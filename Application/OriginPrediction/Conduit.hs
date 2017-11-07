@@ -9,8 +9,8 @@ import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Filter.FourierMellinTransform
 import           CV.IO.ImageIO
+import           CV.Utility.DFT
 import           CV.Utility.Draw
-import           CV.Utility.FFT
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility      (arrayToUnboxed)
 import           CV.Utility.Time
@@ -23,23 +23,25 @@ import           Data.List                        as L
 import           Data.Vector.Storable             as VS
 import           Data.Vector.Unboxed              as VU
 import           Foreign.C.String
+import           Foreign.Marshal.Array
 import           Foreign.Ptr
 
 
 filterConduit
   :: (FilterConvolution a)
   => ParallelParams
-  -> FFTW
+  -> DFTPlan
   -> [a]
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (R.Array U DIM3 Double)
-filterConduit parallelParams fftw filters = do
+filterConduit parallelParams dftPlan filters = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
     (do let (Z :. nf :. rows :. cols) =
               (\(LabeledArray _ x) -> extent x) . L.head $ xs
         ys <-
-          M.mapM
+          liftIO $
+          MP.mapM
             (\(LabeledArray label x) -> do
                let imgVecs =
                      L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
@@ -47,7 +49,7 @@ filterConduit parallelParams fftw filters = do
                filteredImages <-
                  liftIO $
                  M.mapM
-                   (\filter' -> applyFilterConvolution fftw filter' imgVecs)
+                   (\filter' -> applyFilterConvolution dftPlan filter' imgVecs)
                    filters
                return filteredImages)
             xs
@@ -60,7 +62,7 @@ filterConduit parallelParams fftw filters = do
                 (VU.map magnitude . VS.convert . VS.concat . L.concat) $
               ys
         sourceList zs
-        filterConduit parallelParams fftw filters)
+        filterConduit parallelParams dftPlan filters)
 
 {-# INLINE notOrigin #-}
 
@@ -214,7 +216,7 @@ normalizeVec vec
   | otherwise = VU.map (/ s) vec
   where
     s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec
-    
+
 {-# INLINE removeOutlier #-}
 
 removeOutlier :: [(Int,Int)] -> [(Int,Int)]
@@ -233,13 +235,29 @@ removeOutlier xs =
   in L.filter
        (\(a, b) -> distFunc center (fromIntegral a, fromIntegral b) <= (4 * std))
        xs
-       
+
 skipConduit :: Int -> Conduit a (ResourceT IO) a
 skipConduit n = do
   CL.drop (n - 1)
   x <- await
   case x of
-    Nothing -> return () 
+    Nothing -> return ()
     Just y -> do
       yield y
       skipConduit n
+
+featurePtrConduitP :: ParallelParams -> Conduit (a, VU.Vector Double) (ResourceT IO) (a, Ptr C'feature_node)
+featurePtrConduitP parallelParams = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do ys <-
+          liftIO $
+          MP.mapM
+            (\(label, vec) -> do
+               featurePtr <-
+                 liftIO $ newArray . getFeature . Dense . VU.toList $ vec
+               return (label, featurePtr))
+            xs
+        sourceList ys
+        featurePtrConduitP parallelParams)

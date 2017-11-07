@@ -1,12 +1,10 @@
 import           Application.Leaf.ArgsParser          as AP
-import           Application.Leaf.Conduit             (featurePtrConduitP)
 import           Application.OriginPrediction.Conduit
 import           Classifier.LibLinear
 import           Control.Monad                        as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Filter.FourierMellinTransform
-import           CV.Utility.FFT
 import           CV.Utility.Parallel                  as Par
 import           Data.Array.Repa
 import           Data.Binary
@@ -31,15 +29,13 @@ main = do
         , Par.batchSize = AP.numThread params -- AP.batchSize params
         }
       n = 10
-      len = 16
-      fftwWisdom = FFTWWisdomPath (fftwWisdomPath params)
-  fftw <- initializefftw fftwWisdom
-  filters <-
-    makeFilterConvolution fftw filterParams Normal :: IO FourierMellinTransformConvolution
+  importFFTWWisdom (fftwWisdomPath params)
+  (plan, filters) <-
+    makeFilterConvolution getEmptyPlan filterParams Normal :: IO (DFTPlan, FourierMellinTransformConvolution)
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
     skipConduit n =$=
-    filterConduit parallelParams fftw [filters] =$=
+    filterConduit parallelParams plan [filters] =$=
     getOriginsConduit parallelParams (modelName params) =$=
     mergeSource
       (CB.sourceFile (inputFile params) =$= readLabeledImagebinaryConduit =$=

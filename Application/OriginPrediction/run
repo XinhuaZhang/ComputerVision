@@ -1,8 +1,8 @@
 #!/bin/bash
 
 export OMP_NUM_THREADS=28
-NumThread=16
-BatchSize=160
+NumThread=12
+BatchSize=120
 ImageSize=128
 Degree=0
 ScaleFactor="(1,1)"
@@ -26,6 +26,6 @@ Stride=4
 NumBin=8
 GaussianScale=1
 
-# time ./trainFourierMellin -i ../Leaf/Train_128_0_${Color}.dat -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 375 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --patchSize ${PatchSize} --stride ${Stride} --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} +RTS -N${NumThread}  -RTS 
+time ./trainFourierMellin -i ../Leaf/Train_128_0_${Color}.dat -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 375 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --patchSize ${PatchSize} --stride ${Stride} --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} +RTS -N${NumThread}  -RTS 
 
 time ./predictFourierMellin -i "../Leaf/Test_${Color}_(128,128)_0_(0.5,1)_(1,1)_(0,0)_1.dat" -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 60 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --patchSize ${PatchSize} --stride ${Stride} --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} +RTS -N${NumThread}  -RTS 
