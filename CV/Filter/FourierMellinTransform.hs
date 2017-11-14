@@ -72,26 +72,28 @@ instance FilterConvolution FourierMellinTransformConvolution where
     lock <- getFFTWLock
     (p1, vec) <- dft2dPlan lock plan rows cols . L.last . L.last $ filterList
     (p2, _) <- idft2dPlan lock p1 rows cols vec
-    let dftPlan = getDFTPlan p2 (DFTPlanID DFT2D [rows, cols] [])
+    let planID = DFTPlanID DFT2D [rows, cols] []
+        dftPlan = getDFTPlan p2 planID
     filters <-
       Filter params <$!>
-      M.mapM (M.mapM (dftExecuteWithPlan dftPlan (rows * cols))) filterList
+      M.mapM (M.mapM (dftExecuteWithPlan planID dftPlan)) filterList
     return (p2, filters)
   {-# INLINE getFilterConvolutionNum #-}
   getFilterConvolutionNum (Filter (FourierMellinTransformParamsGrid _ _ rfs afs) _) =
     L.length rfs * L.length afs
   {-# INLINE applyFilterConvolution #-}
   applyFilterConvolution plan (Filter (FourierMellinTransformParamsGrid rows cols _ _) filters) xs = do
-    let dftPlan = getDFTPlan plan (DFTPlanID DFT2D [rows, cols] [])
-        idftPlan = getDFTPlan plan (DFTPlanID IDFT2D [rows, cols] [])
-    ys <- M.mapM (dftExecuteWithPlan dftPlan (rows * cols)) xs
+    let planID = DFTPlanID DFT2D [rows, cols] []
+        iPlanID = DFTPlanID IDFT2D [rows, cols] []
+        dftPlan = getDFTPlan plan planID
+        idftPlan = getDFTPlan plan iPlanID
+    ys <- M.mapM (dftExecuteWithPlan planID dftPlan) xs
     L.concat <$>
       M.mapM
         (\x ->
            L.concat <$>
            M.mapM
-             (M.mapM
-                (dftExecuteWithPlan idftPlan (rows * cols) . VS.zipWith (*) x))
+             (M.mapM (dftExecuteWithPlan iPlanID idftPlan . VS.zipWith (*) x))
              filters)
         ys
   {-# INLINE getFilterConvolutionList #-}

@@ -9,11 +9,11 @@ import           Data.Array.ST
 import           Data.Array.Unboxed
 import           Data.List           as L
 
-data Shape = Circle
-  { circleRadius    :: Int
-  , circleThickness :: Int
-  , circleCenter    :: (Double, Double)
-  }
+data Shape
+  = Circle { circleRadius :: Int
+          ,  circleThickness :: Int
+          ,  circleCenter :: (Double, Double)}
+  | Point { pointCenter :: (Int, Int)}
 
 data Color
   = Yellow
@@ -55,6 +55,11 @@ drawShape arr (r, g, b) (Circle radius thickness (i, j)) = do
     [0,1 .. stride - 1]
   where
     stride = 4 * pi * fromIntegral radius
+drawShape arr (r, g, b) (Point (i, j)) = do
+  writeArray arr (0, i, j) r
+  writeArray arr (1, i, j) g
+  writeArray arr (2, i, j) b
+
 
 draw :: ImageRepa -> Color -> [Shape] -> ImageRepa
 draw (Image depth img) color xs

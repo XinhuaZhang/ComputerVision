@@ -9,6 +9,7 @@ module CV.Utility.DFT.Plan
   , getDFTPlan
   , getEmptyPlan
   , dftExecuteWithPlan
+  , dftExecuteBatch
   , dftExecute
   , dft2dPlan
   , idft2dPlan
@@ -17,6 +18,7 @@ module CV.Utility.DFT.Plan
   ) where
 
 import           Control.Concurrent.MVar
+import           Control.Monad                as M
 import           CV.Utility.DFT.FFI
 import           CV.Utility.FFT.Base          (Flag (..), Sign (..), measure,
                                                unFlag, unSign)
@@ -67,17 +69,44 @@ getDFTPlan plan planID =
   case HM.lookup planID plan of
     Nothing -> error $ "getDFTPlan: couldn't find plan for ID " L.++ show planID
     Just p -> p
-    
+
 {-# INLINE dftExecuteWithPlan #-}
 
-dftExecuteWithPlan :: Plan
-                   -> Int
+dftExecuteWithPlan :: DFTPlanID
+                   -> Plan
                    -> VS.Vector (Complex Double)
                    -> IO (VS.Vector (Complex Double))
-dftExecuteWithPlan plan size vec = do
-  v <- VSM.new size
+dftExecuteWithPlan planID@(DFTPlanID t d i) plan vec = do
+  v <- VSM.new (L.product d)
   VS.unsafeWith vec $ \ip -> VSM.unsafeWith v $ \op -> c_execute_dft plan ip op
-  VS.freeze v
+  u <- VS.freeze v
+  if t == IDFT1DG || t == IDFT2D
+    then if L.null i
+           then return $ VS.map (/ (fromIntegral . L.product $ d)) u
+           else if size == 0
+                  then error $
+                       "dftExecuteWithPlan: dimension error.\n" L.++ "dims: " L.++
+                       show d L.++
+                       "\nIdx: " L.++
+                       show i
+                  else return $ VS.map (/ (fromIntegral size)) u
+    else return u
+  where
+    size = L.product . L.take (L.last i - L.head i + 1) . L.drop (L.head i) $ d
+
+{-# INLINE dftExecuteBatch #-}
+
+dftExecuteBatch
+  :: DFTPlan
+  -> DFTPlanID
+  -> [VS.Vector (Complex Double)]
+  -> IO [VS.Vector (Complex Double)]
+dftExecuteBatch hashMap planID@(DFTPlanID t d i) vecs =
+  case HM.lookup planID hashMap of
+    Nothing ->
+      error $
+      "dftExecuteBatch: couldn't find plan for ID " L.++ show planID
+    Just plan -> M.mapM (dftExecuteWithPlan planID plan) vecs
 
 {-# INLINE dftExecute #-}
 
@@ -89,18 +118,7 @@ dftExecute
 dftExecute hashMap planID@(DFTPlanID t d i) vec =
   case HM.lookup planID hashMap of
     Nothing -> error $ "dftExecute: couldn't find plan for ID " L.++ show planID
-    Just plan -> do
-      u <- dftExecuteWithPlan plan (L.product d) vec
-      if dftType planID == IDFT1DG || dftType planID == IDFT2D
-        then let size =
-                   L.product .
-                   L.take (L.last i - L.head i + 1) . L.drop (L.head i) $
-                   d
-             in return $
-                if L.null i
-                  then VS.map (/ (fromIntegral . L.product $ d)) u
-                  else VS.map (/ (fromIntegral size)) u
-        else return u
+    Just plan -> dftExecuteWithPlan planID plan vec
 
 {-# INLINE dft2dG #-}
 
@@ -145,7 +163,7 @@ dft2dPlan lock' hashMap rows cols vec =
       (p, v) <- dft2dG lock' rows cols vec DFTForward measure
       return (HM.insert planID p hashMap, v)
     Just p -> do
-      v <- dftExecuteWithPlan p (rows * cols) vec
+      v <- dftExecuteWithPlan planID p vec
       return (hashMap, v)
   where
     planID = DFTPlanID DFT2D [rows, cols] []
@@ -166,8 +184,8 @@ idft2dPlan lock' hashMap rows cols vec =
       return
         (HM.insert planID p hashMap, VS.map (/ (fromIntegral $ rows * cols)) v)
     Just p -> do
-      v <- dftExecuteWithPlan p (rows * cols) vec
-      return (hashMap, VS.map (/ (fromIntegral $ rows * cols)) v)
+      v <- dftExecuteWithPlan planID p vec
+      return (hashMap, v)
   where
     planID = DFTPlanID IDFT2D [rows, cols] []
 
@@ -221,8 +239,8 @@ dft1dGGeneric lock' dims dftIndex vec sign flag
               (fromIntegral dist)
               (unSign sign)
               (unFlag flag)
-    putMVar lock' x
     c_execute p
+    putMVar lock' x
     u <- VS.freeze v
     return (p, u)
   | otherwise =
@@ -250,7 +268,7 @@ dft1dGPlan lock' hashMap dims dftIndex vec =
       (p, v) <- dft1dGGeneric lock' dims dftIndex vec DFTForward measure
       return (HM.insert planID p hashMap, v)
     Just p -> do
-      v <- dftExecuteWithPlan p (L.product dims) vec
+      v <- dftExecuteWithPlan planID p vec
       return (hashMap, v)
   where
     planID = DFTPlanID DFT1DG dims dftIndex
@@ -270,8 +288,8 @@ idft1dGPlan lock' hashMap dims dftIndex vec =
       (p, v) <- dft1dGGeneric lock' dims dftIndex vec DFTBackward measure
       return (HM.insert planID p hashMap, VS.map (/ size) v)
     Just p -> do
-      v <- dftExecuteWithPlan p (L.product dims) vec
-      return (hashMap, VS.map (/ size) v)
+      v <- dftExecuteWithPlan planID p vec
+      return (hashMap, v)
   where
     planID = DFTPlanID IDFT1DG dims dftIndex
     size =

@@ -184,11 +184,7 @@ drawConduit parallelParams = do
                 (\(LabeledArray _ x, idx') ->
                    let img = Image 8 x
                        idx = removeOutlier idx'
-                       shape =
-                         L.map
-                           (\(i, j) ->
-                              Circle 1 1 (fromIntegral i, fromIntegral j))
-                           idx
+                       shape = L.map Point idx
                        (a, b) =
                          join
                            (***)
@@ -233,7 +229,7 @@ removeOutlier xs =
          xs) /
         (fromIntegral (L.length xs - 1))
   in L.filter
-       (\(a, b) -> distFunc center (fromIntegral a, fromIntegral b) <= (4 * std))
+       (\(a, b) -> distFunc center (fromIntegral a, fromIntegral b) <= (3 * std))
        xs
 
 skipConduit :: Int -> Conduit a (ResourceT IO) a
