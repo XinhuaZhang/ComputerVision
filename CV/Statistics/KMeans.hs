@@ -8,7 +8,7 @@ module CV.Statistics.KMeans
   , computeSoftAssignmentP
   , vlad
   ) where
-
+ 
 import           Control.Monad       as M
 import           CV.Utility.Parallel
 import           Data.Binary
@@ -43,25 +43,24 @@ randomClusterCenterPP
   -> IO [VU.Vector Double]
 randomClusterCenterPP !centers 0 _ = return centers
 randomClusterCenterPP [] !n xs = do
-  randomNumber <-
-    M.replicateM (L.length xs) .
-    V.replicateM (V.length . L.head $ xs) . randomRIO $
-    ((0, 1) :: (Double, Double))
+  randomGen <- M.replicateM (L.length xs) newStdGen
   let ys =
         V.concat $
         parZipWith
           rdeepseq
-          (\x' r' -> V.map fst . V.filter (\(_, p') -> p' > 0.5) $ V.zip x' r')
+          (\x' g ->
+             V.map fst .
+             V.filter (\(_, p') -> p' > 0.5) .
+             V.zip x' . getRandomVector g . V.length . L.head $
+             xs)
           xs
-          randomNumber
+          randomGen
   randomClusterCenterPP
     [VU.map (/ fromIntegral (V.length ys)) . V.foldl1' (VU.zipWith (+)) $ ys]
     (n - 1)
     xs
 randomClusterCenterPP !centers !n xs = do
-  randomNumber <-
-    M.replicateM (L.length xs) . V.replicateM (V.length . L.head $ xs) . randomRIO $
-    ((0, 1) :: (Double, Double))
+  randomGen <- M.replicateM (L.length xs) newStdGen
   let ys =
         parMap
           rdeepseq
@@ -73,24 +72,30 @@ randomClusterCenterPP !centers !n xs = do
         V.concat $
         parZipWith3
           rdeepseq
-          (\xs' ys' rs' ->
-              V.map fst . V.filter snd $
-              V.zipWith3
-                (\x' y' r' ->
-                    if y' / s > r'
-                      then (x', True)
-                      else (x', False))
-                xs'
-                ys'
-                rs')
+          (\xs' ys' g ->
+             V.map fst . V.filter snd $
+             V.zipWith3
+               (\x' y' r' ->
+                  if y' / s > r'
+                    then (x', True)
+                    else (x', False))
+               xs'
+               ys' .
+             getRandomVector g . V.length . L.head $
+             xs)
           xs
           ys
-          randomNumber
+          randomGen
       center' =
         VU.map (/ fromIntegral (V.length as)) . V.foldl1' (VU.zipWith (+)) $ as
   if V.length as == 0
     then randomClusterCenterPP centers n xs
     else randomClusterCenterPP (center' : centers) (n - 1) xs
+    
+{-# INLINE getRandomVector #-}
+
+getRandomVector :: StdGen -> Int -> V.Vector Double
+getRandomVector gen n = V.unfoldrN n (\g -> Just . randomR (0, 1) $ g) gen
 
 {-# INLINE computeAssignmentP #-}
 computeAssignmentP :: ClusterCenter
