@@ -12,6 +12,7 @@ import           Classifier.LibLinear.Solver
 import           Control.Monad                 as M
 import           Control.Monad.IO.Class        (liftIO)
 import           Control.Monad.Trans.Resource
+import           Data.Array.Unboxed            as AU
 import           Data.Conduit
 import           Data.Conduit.List             as CL
 import           Data.List                     as L
@@ -20,6 +21,7 @@ import           Foreign.C
 import           Foreign.Marshal.Array
 import           Prelude                       as P
 import           System.IO
+import           Text.Printf
 
 
 data TrainParams = TrainParams
@@ -56,23 +58,56 @@ train (TrainParams solver c numExample maxIndex modelName) label feature =
      c'save_model modelName model
 
 predict
-  :: String -> FilePath -> Sink (Double,[C'feature_node]) (ResourceT IO) ()
+  :: String -> FilePath -> Sink (Double,[C'feature_node]) (ResourceT IO) (UArray (Int,Int) Double)
 predict predictModel output = do
   modelName <- liftIO $ newCString predictModel
   model <- liftIO $ c'load_model modelName
-  (correct, total) <- func model (0, 0)
+  nrClass <- liftIO $ c'get_nr_class model
+  labels <-
+    liftIO $
+    allocaArray
+      (fromIntegral nrClass)
+      (\p -> do
+         c'get_labels model p
+         peekArray (fromIntegral nrClass) p)
+  let maxLabel = fromIntegral . L.maximum $ labels
+      minLabel = fromIntegral . L.minimum $ labels
+  (correct, total, arr) <-
+    func
+      model
+      (0, 0)
+      (listArray ((minLabel, minLabel), (maxLabel, maxLabel)) .
+       L.replicate ((maxLabel - minLabel + 1) ^ (2 :: Int)) $
+       0)
   let percent = fromIntegral correct / (fromIntegral total :: Double) * 100
       str = show percent
+      confusionList =
+        L.groupBy (\((i, _), _) ((j, _), _) -> i == j) . assocs $ arr
+      sList = L.map (L.sum . L.map snd) confusionList
+      normalizedArr =
+        array (bounds arr) .
+        L.concat .
+        L.zipWith
+          (\s xs ->
+             L.map
+               (\((i, j), x) -> ((i, j), fromIntegral x / fromIntegral s))
+               xs)
+          sList $
+        confusionList :: UArray (Int, Int) Double
   liftIO $ putStrLn str
   h <- liftIO $ openFile output WriteMode
   liftIO $ hPutStrLn h str
+  confusionMatrixStr <- liftIO $ printConfusionMatrix normalizedArr
+  liftIO $ hPutStrLn h confusionMatrixStr
   liftIO $ hClose h
+  return normalizedArr
   where
     func
       :: Ptr C'model
       -> (Int, Int)
-      -> Sink (Double, [C'feature_node]) (ResourceT IO) (Int, Int)
-    func model (!correct, !total) = do
+      -> UArray (Int, Int) Int
+      -> Sink (Double, [C'feature_node]) (ResourceT IO) (Int, Int, UArray (Int, Int) Int)
+    func model (!correct, !total) arr = do
       x <- await
       case x of
         Just (!target, !xs) -> do
@@ -81,6 +116,7 @@ predict predictModel output = do
                 if (round target :: Int) == round prediction
                   then correct + 1
                   else correct
+              newArr = accum (+) arr [((round target, round prediction), 1)]
           -- liftIO $
           --   putStrLn $
           --   show target P.++ " " P.++ show prediction P.++ " " P.++
@@ -88,9 +124,9 @@ predict predictModel output = do
           --     (fromIntegral correctNew / fromIntegral (total + 1) * 100 :: Double) P.++
           --   "%"
           if (round target :: Int) == round prediction
-            then func model (correct + 1, total + 1)
-            else func model (correct, total + 1)
-        Nothing -> return (correct, total)
+            then func model (correct + 1, total + 1) newArr
+            else func model (correct, total + 1) newArr
+        Nothing -> return (correct, total, arr)
 
 findParameterC
   :: TrainParams -> [Double] -> [Ptr C'feature_node] -> IO Double
@@ -187,3 +223,17 @@ trainNPredict (TrainParams solver c numExample maxIndex _modelName) trainLabelFe
       testLabelFeature
   putStrLn $ show (numCorrect / numTotal * 100) P.++ "%"
   return $! (round numCorrect, round numTotal)
+
+
+{-# INLINE printConfusionMatrix #-}
+
+printConfusionMatrix :: UArray (Int, Int) Double -> IO String
+printConfusionMatrix arr = do
+  let lines = L.groupBy (\((i, _), _) ((j, _), _) -> i == j) . assocs $ arr
+      lineStr =
+        L.map
+          (L.concatMap (\((i, j), x) -> printf "((%d,%d),%5.1f)" i j (x * 100)))
+          lines
+      result = L.unlines $ lineStr
+  putStrLn result
+  return result
