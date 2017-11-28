@@ -1,18 +1,18 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP                      #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE NamedFieldPuns           #-}
 {-# LANGUAGE ScopedTypeVariables      #-}
 module Application.CaffeData.Caffe
-  -- ( saveDataSink
-  -- , FeatureInfo(..)
-  -- , minMaxSink
-  -- )
+  ( saveDataSink
+  )
 where
 
 import           Application.CaffeData.Bindings
 import           Control.Monad                  as M
 import           Control.Monad.IO.Class         (liftIO)
+import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
+import           Data.Array.Repa                as R
 import           Data.Char
 import           Data.Conduit
 import           Data.Conduit.List              as CL
@@ -21,63 +21,52 @@ import           Foreign.C.String
 import           Foreign.C.Types
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
+import           Text.Printf
 
-data FeatureInfo = FeatureInfo
-  { width   :: Int
-  , height  :: Int
-  , channel :: Int
-  } deriving (Show)
-
+{-# INLINE createLabelVec #-}
 
 createLabelVec :: [Int] -> IO (Ptr CInt)
 createLabelVec label = newArray $ L.map fromIntegral label
 
+{-# INLINE createDataArr #-}
+
 createDataArr :: [[Double]] -> IO [Ptr CUChar]
-createDataArr = M.mapM (newArray . L.map (castCharToCUChar . chr . round)) 
+createDataArr = M.mapM (newArray . L.map (castCharToCUChar . chr . round))
 
+{-# INLINE saveData #-}
 
-saveData :: Int
-         -> Int
-         -> FeatureInfo
-         -> Sink (Int, [Double]) IO ()
-saveData batchSize n fi@FeatureInfo {width = w
-                                    ,height = h
-                                    ,channel = c} = do
+saveData :: Int -> Int -> Sink (LabeledArray DIM3 Double) (ResourceT IO) ()
+saveData batchSize n = do
   batch <- CL.take batchSize
-  if not (null batch)
-    then let (label, feature) = unzip batch
-         in if (div (sum (L.map length feature)) (length feature)) /=
-               (w * h * c)
-              then do
-                liftIO $ print $ (L.length . L.head) feature
-                liftIO $ print (w * h * c)
-                error "Dimension error"
-              else do
-                labelVec <- liftIO $ createLabelVec label
-                featuresVec <- liftIO $ createDataArr feature
-                liftIO $
-                  withArray
-                    featuresVec
-                    (\featureIndexVec ->
-                        c'saveData
-                          (fromIntegral w)
-                          (fromIntegral h)
-                          (fromIntegral c)
-                          (fromIntegral $ length batch)
-                          (fromIntegral $ n * (length batch))
-                          featureIndexVec
-                          labelVec)
-                saveData batchSize (n + 1) fi
-    else do
-      liftIO $ c'closeDatabase
-      return ()
+  if L.null batch
+    then liftIO $ c'closeDatabase
+    else let (Z :. channels :. rows :. cols) =
+               extent . (\(LabeledArray _ arr) -> arr) . L.head $ batch
+             (label, feature) =
+               L.unzip .
+               L.map (\(LabeledArray label vec) -> (label, R.toList vec)) $
+               batch
+         in do labelVec <- liftIO $ createLabelVec label
+               featuresVec <- liftIO $ createDataArr feature
+               liftIO $
+                 withArray
+                   featuresVec
+                   (\featureIndexVec ->
+                      c'saveData
+                        (fromIntegral cols)
+                        (fromIntegral rows)
+                        (fromIntegral channels)
+                        (fromIntegral $ length batch)
+                        (fromIntegral $ n * batchSize)
+                        featureIndexVec
+                        labelVec)
+               saveData batchSize (n + 1)
 
--- saveDataSink :: String
---              -> Int
---              -> FeatureInfo
---              -> Sink (Int,[Double]) IO ()
--- saveDataSink path batchSize fi =
---   do pathCSString <- liftIO $ newCString path
---      typeCSString <- liftIO $ newCString "lmdb"
---      liftIO $ c'openDatabase typeCSString pathCSString
---      saveData batchSize 0 fi 
+saveDataSink :: String
+             -> Int
+             -> Sink (LabeledArray DIM3 Double) (ResourceT IO) ()
+saveDataSink path batchSize = do
+  pathCSString <- liftIO $ newCString path
+  typeCSString <- liftIO $ newCString "lmdb"
+  liftIO $ c'openDatabase typeCSString pathCSString
+  saveData batchSize 0
