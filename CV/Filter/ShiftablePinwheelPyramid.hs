@@ -823,22 +823,30 @@ shiftablePinwheelBlobPyramidLoopArray
   -> [VS.Vector (Complex Double)]
   -> IO ([[ShiftablePinwheelPyramidInputArray]],[VU.Vector Double])
 shiftablePinwheelBlobPyramidLoopArray plan (ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) stride' f n [] [] imgVecs = do
-  vec <-
-    dftExecuteBatch
-      plan
-      (DFTPlanID
-         IDFT1DG
-         [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
-         [2, 3])
-      imgVecs
+  -- vecs <-
+  --   dftExecuteBatch
+  --     plan
+  --     (DFTPlanID
+  --        IDFT1DG
+  --        [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
+  --        [2, 3])
+  --     imgVecs
   return
     ( []
     , f stride' .
       fromUnboxed
-        (Z :. (nChannel * L.length vec) :. nCenter :. div nT (2 ^ n) :.
+        (Z :. (nChannel * L.length imgVecs) :. nCenter :. div nT (2 ^ n) :.
          div nR (2 ^ n)) .
       VS.convert . VS.concat $
-      vec)
+      imgVecs)
+  -- return
+  --   ( []
+  --   , f stride' .
+  --     fromUnboxed
+  --       (Z :. (nChannel * L.length imgVecs) :. nCenter :. div nT (2 ^ n) :.
+  --        div nR (2 ^ n)) .
+  --     VS.convert . VS.concat $
+  --     imgVecs)
 shiftablePinwheelBlobPyramidLoopArray plan params@(ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) stride' f n (b1':b1s) (l1':l1s) imgVecs = do
   let bs = L.map (\imgVec -> L.map (VS.zipWith (*) imgVec) b1') imgVecs
       l = L.map (VS.zipWith (*) l1') imgVecs
@@ -900,7 +908,7 @@ shiftablePinwheelBlobPyramidArrayLowpass
   -> (Int -> ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
   -> [ShiftablePinwheelPyramidInputArray]
   -> IO [VU.Vector Double]
-shiftablePinwheelBlobPyramidArrayLowpass plan (ShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) h0' l0' _b1' l1') stride' f arr = do
+shiftablePinwheelBlobPyramidArrayLowpass plan (ShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) _h0' l0' _b1' l1') stride' f arr = do
   vec <-
     dftExecuteBatch plan (DFTPlanID DFT1DG [nChannel, nCenter, nT, nR] [2, 3]) .
     L.map (VS.convert . toUnboxed . computeS . R.map (:+ 0)) $
@@ -921,21 +929,28 @@ shiftablePinwheelBlobPyramidLoopArrayLowpass
   -> [VS.Vector (Complex Double)]
   -> IO [VU.Vector Double]
 shiftablePinwheelBlobPyramidLoopArrayLowpass plan (ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) stride' f n [] imgVecs = do
-  vec <-
-    dftExecuteBatch
-      plan
-      (DFTPlanID
-         IDFT1DG
-         [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
-         [2, 3])
-      imgVecs
+  -- vecs <-
+  --   dftExecuteBatch
+  --     plan
+  --     (DFTPlanID
+  --        IDFT1DG
+  --        [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
+  --        [2, 3])
+  --     imgVecs
   return .
     f stride' .
     fromUnboxed
-      (Z :. (nChannel * L.length vec) :. nCenter :. div nT (2 ^ n) :.
+      (Z :. (nChannel * L.length imgVecs) :. nCenter :. div nT (2 ^ n) :.
        div nR (2 ^ n)) .
     VS.convert . VS.concat $
-    vec
+    imgVecs
+-- return .
+-- f stride' .
+-- fromUnboxed
+--   (Z :. (nChannel * L.length imgVecs) :. nCenter :. div nT (2 ^ n) :.
+--    div nR (2 ^ n)) .
+-- VS.convert . VS.concat $
+-- imgVecs           
 shiftablePinwheelBlobPyramidLoopArrayLowpass plan params@(ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) stride' f n (l1':l1s) imgVecs = do
   let l = L.map (VS.zipWith (*) l1') imgVecs
   lVec <-
@@ -1044,7 +1059,7 @@ generateShiftablePinwheelBlobPyramidScatteringNetworksFilters
 generateShiftablePinwheelBlobPyramidScatteringNetworksFilters params@(ShiftablePinwheelBlobPyramidParams nLayer nCenter nChannel nT nR k) =
   let x =
         round . logBase 2 . fromIntegral $
-        div (min (div nT (2 ^ nLayer)) (div nR (2 ^ nLayer))) 2 :: Int
+        div (min (div nT (2 ^ nLayer)) (div nR (2 ^ nLayer))) 3 :: Int
   in DFT.fromList .
      L.map
        (\n ->
@@ -1068,17 +1083,15 @@ featureExtractionBlobScattering
   -> [VU.Vector Double]
 featureExtractionBlobScattering stride' arr' =
   L.map
-    (\(i, j, k) ->
-       toUnboxed . computeS . R.slice magArr $ (Z :. All :. i :. j :. k))
-    [ (i, j, k)
-    | i <- [0 .. nCenter - 1]
-    , j <- [0,stride' .. nT - 1]
-    , k <- [newR,newR + stride' .. nR - 1]
-    ]
+    (\i -> toUnboxed . computeS . R.slice magArr $ (Z :. All :. i :. All :. All))
+    [0 .. nCenter - 1]
   where
-    (Z :. _ :. nCenter :. nT :. nR) = extent arr'
-    magArr = R.map magnitude arr'
-    newR = 0 -- div nR 4
+    (Z :. numChannels :. nCenter :. nT :. nR) = extent arr'
+    magArr =
+      R.map magnitude -- .
+      -- crop [0, 0, 0, 0] [(div nR 2) + 1, (div nT 2) + 1, nCenter, numChannels] 
+      $
+      arr'
     
 
 shiftablePinwheelBlobPyramidScatteringNetworksPlan :: DFTPlan
@@ -1088,27 +1101,36 @@ shiftablePinwheelBlobPyramidScatteringNetworksPlan plan filters = do
   lock <- getFFTWLock
   M.foldM
     (\plan1 (ShiftablePinwheelBlobPyramidFilters (ShiftablePinwheelBlobPyramidParams nLayer nCenter nChannel nT nR k) _ _ _ vecs) -> do
-       M.foldM
-         (\plan2 (n, vec) -> do
-            (plan3, x) <-
-              dft1dGPlan
-                lock
-                plan2
-                [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
-                [2, 3]
-                vec
-            (plan4, _) <-
-              idft1dGPlan
-                lock
-                plan3
-                [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
-                [2, 3]
-                x
-            return plan4)
-         plan1 .
-         L.zip [0 ..] $
-         (vecs L.++
-          [VS.take (div (VS.length . L.last $ vecs) 4) . L.last $ vecs]))
+       fst <$>
+         M.foldM
+           (\(plan2, vec) n -> do
+              (plan3, x) <-
+                dft1dGPlan
+                  lock
+                  plan2
+                  [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
+                  [2, 3]
+                  vec
+              (plan4, y) <-
+                idft1dGPlan
+                  lock
+                  plan3
+                  [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
+                  [2, 3]
+                  x
+              return
+                ( plan4
+                , VS.convert .
+                  toUnboxed .
+                  computeS .
+                  downsample [2, 2, 1, 1] .
+                  fromUnboxed
+                    (Z :. nChannel :. nCenter :. div nT (2 ^ n) :.
+                     div nR (2 ^ n)) .
+                  VS.convert $
+                  y))
+           (plan1, L.head vecs)
+           [0 .. L.length vecs])
     plan .
     DFT.elems $
     filters

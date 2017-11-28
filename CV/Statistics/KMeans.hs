@@ -161,14 +161,26 @@ computeClusterSize k xs =
 
 kmeans :: ParallelParams -> Int -> FilePath -> Double -> [VU.Vector Double] -> IO KMeansModel
 kmeans parallelParams k filePath threshold xs = do
+  when
+    (k > L.length xs)
+    (error $
+     "kmeans: number of center is greater than number of points.\n" L.++ show k L.++
+     " vs " L.++
+     (show . L.length $ xs))
   printf "Looking for %d centers in %d samples.\n" k (L.length xs)
+  print (VU.length . L.head $ xs)
   randomCenter <- randomClusterCenterPP [] k ys
   putStrLn "Done."
-  go (V.fromListN k randomCenter) (V.fromListN k randomCenter) (fromIntegral (maxBound :: Int)) ys
+  go
+    (V.fromListN k randomCenter)
+    (V.fromListN k randomCenter)
+    (fromIntegral (maxBound :: Int))
+    ys
   where
     nf = VU.length . L.head $ xs
-    ys =                                                            -- Because the data will be partitioned again and again,
-      L.map V.fromList .                                            -- it is better partitioning them first, then using parMap
+    ys -- Because the data will be partitioned again and again,
+     =
+      L.map V.fromList . -- it is better partitioning them first, then using parMap
       splitList (div (L.length xs) (numThread parallelParams)) $
       xs
     go oldCenter !center' lastDistortion zs = do
@@ -176,10 +188,11 @@ kmeans parallelParams k filePath threshold xs = do
           distortion = computeDistortionP center' assignment zs
           ratio = (lastDistortion - distortion) / distortion
       printf "%e %.4f\n" distortion ratio
-      if -- distortion >= lastDistortion ||
-        abs ratio < threshold
-        then do putStrLn ""
-                return $! KMeansModel (computeClusterSize k assignment) oldCenter
+         -- distortion >= lastDistortion ||
+      if abs ratio < threshold
+        then do
+          putStrLn ""
+          return $! KMeansModel (computeClusterSize k assignment) oldCenter
         else do
           newCenter <-
             meanList2ClusterCenter (computeMeanP k nf assignment zs) zs

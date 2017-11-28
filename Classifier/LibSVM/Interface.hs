@@ -123,29 +123,34 @@ train (TrainParams svmType kernelType modelName numFeature c eps nu) labels feat
      modelName' <- newCString modelName
      c'svm_save_model modelName' model
 
-predict
-  :: String -> FilePath -> Sink (Double,Ptr C'svm_node) IO ()
-predict modelName output =
-  do modelNameCS <- liftIO $ newCString modelName
-     model <- liftIO $ c'svm_load_model modelNameCS
-     (correct,total) <-
-       CL.foldM (func model)
-                (0,0)
-     let percent = (fromIntegral correct) / (fromIntegral total) * 100
-         str = show percent
-     liftIO $ putStrLn str
-     h <- liftIO $ openFile output WriteMode
-     liftIO $ hPutStrLn h str
-     liftIO $ hClose h
-  where func :: Ptr C'svm_model
-             -> (Int,Int)
-             -> (Double,Ptr C'svm_node)
-             -> IO (Int,Int)
-        func model (correct,total) (!target,!featurePtr) =
-          do prediction <- c'svm_predict model featurePtr
-             if round target == round prediction
-                then return (correct + 1,total + 1)
-                else return (correct,total + 1)
+predict :: String -> FilePath -> Sink (Double, Ptr C'svm_node) (ResourceT IO) ()
+predict modelName output = do
+  modelNameCS <- liftIO $ newCString modelName
+  model <- liftIO $ c'svm_load_model modelNameCS
+  (correct, total) <- func model (0, 0)
+  let percent = (fromIntegral correct) / (fromIntegral total) * 100
+      str = show percent
+  liftIO $ putStrLn str
+  h <- liftIO $ openFile output WriteMode
+  liftIO $ hPutStrLn h str
+  liftIO $ hClose h
+  where
+    func
+      :: Ptr C'svm_model
+      -> (Int, Int)
+      -> Sink (Double, Ptr C'svm_node) (ResourceT IO) (Int, Int)
+    func model (correct, total) = do
+      x <- await
+      case x of
+        Nothing -> return (correct, total)
+        Just (target, featurePtr) -> do
+          prediction <- liftIO $ c'svm_predict model featurePtr
+          func model $
+            if round target == round prediction
+              then (correct + 1, total + 1)
+              else (correct, total + 1)
+
+
 
 crossValidation
   :: TrainParams -> [Double] -> [Ptr C'svm_node] -> Int -> IO ()
@@ -203,52 +208,53 @@ crossValidation (TrainParams svmType kernelType modelName numFeature c eps nu) l
 
 oneVsRestTrain
   :: TrainParams -> [Double] -> [Ptr C'svm_node] -> IO ()
-oneVsRestTrain (TrainParams svmType kernelType modelName numFeature c eps nu) labels features =
-  do featurePtr <- newArray features
-     let labelMax = P.maximum labels
-         labelMin = P.minimum labels
-         params =
-           C'svm_parameter {c'svm_parameter'svm_type =
-                              fromIntegral . fromEnum $ svmType
-                           ,c'svm_parameter'kernel_type =
-                              fromIntegral . fromEnum $ kernelType
-                           ,c'svm_parameter'degree = 3
-                           ,c'svm_parameter'gamma =
-                              1 / (fromIntegral numFeature)
-                           ,c'svm_parameter'coef0 = 0
-                           ,c'svm_parameter'cache_size = 100
-                           ,c'svm_parameter'eps = realToFrac eps
-                           ,c'svm_parameter'C = realToFrac c
-                           ,c'svm_parameter'nr_weight = 0
-                           ,c'svm_parameter'weight_label = nullPtr
-                           ,c'svm_parameter'weight = nullPtr
-                           ,c'svm_parameter'nu = realToFrac nu
-                           ,c'svm_parameter'p = 0.1
-                           ,c'svm_parameter'shrinking = 1
-                           ,c'svm_parameter'probability = 1}
-     P.mapM_ (\label ->
-                do labelPtr <-
-                     newArray .
-                     P.map (realToFrac .
-                            (\x ->
-                               if x == P.fromIntegral label
-                                  then 1.0
-                                  else 0.0)) $
-                     labels
-                   let problem =
-                         C'svm_problem {c'svm_problem'l =
-                                          fromIntegral . length $ features
-                                       ,c'svm_problem'y = labelPtr
-                                       ,c'svm_problem'x = featurePtr}
-                   model <-
-                     with problem
-                          (\problem' ->
-                             with params
-                                  (\params' -> c'svm_train problem' params'))
-                   modelName' <-
-                     newCString (modelName P.++ "_" P.++ (show label))
-                   c'svm_save_model modelName' model)
-             [(round labelMin) .. (round labelMax)]
+oneVsRestTrain (TrainParams svmType kernelType modelName numFeature c eps nu) labels features = do
+  featurePtr <- newArray features
+  let labelMax = P.maximum labels
+      labelMin = P.minimum labels
+      params =
+        C'svm_parameter
+        { c'svm_parameter'svm_type = fromIntegral . fromEnum $ svmType
+        , c'svm_parameter'kernel_type = fromIntegral . fromEnum $ kernelType
+        , c'svm_parameter'degree = 3
+        , c'svm_parameter'gamma = 1 / (fromIntegral numFeature)
+        , c'svm_parameter'coef0 = 0
+        , c'svm_parameter'cache_size = 100
+        , c'svm_parameter'eps = realToFrac eps
+        , c'svm_parameter'C = realToFrac c
+        , c'svm_parameter'nr_weight = 0
+        , c'svm_parameter'weight_label = nullPtr
+        , c'svm_parameter'weight = nullPtr
+        , c'svm_parameter'nu = realToFrac nu
+        , c'svm_parameter'p = 0.1
+        , c'svm_parameter'shrinking = 1
+        , c'svm_parameter'probability = 1
+        }
+  print (labelMin, labelMax)
+  P.mapM_
+    (\label -> do
+       labelPtr <-
+         newArray .
+         P.map
+           (realToFrac .
+            (\x ->
+               if x == P.fromIntegral label
+                 then 1.0
+                 else 0.0)) $
+         labels
+       let problem =
+             C'svm_problem
+             { c'svm_problem'l = fromIntegral . length $ features
+             , c'svm_problem'y = labelPtr
+             , c'svm_problem'x = featurePtr
+             }
+       model <-
+         with
+           problem
+           (\problem' -> with params (\params' -> c'svm_train problem' params'))
+       modelName' <- newCString (modelName P.++ "_" P.++ (show label))
+       c'svm_save_model modelName' model)
+    [(round labelMin) .. (round labelMax)]
 
 oneVsRestPredict
   :: String -> FilePath -> (Int,Int) -> Sink (Double,Ptr C'svm_node) (ResourceT IO) () 
