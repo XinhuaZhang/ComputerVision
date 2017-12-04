@@ -57,6 +57,10 @@ logpolarImageConduit parallelParams ts rs centers polarR logpolarFlag = do
                            centers
                        (Z :. nf :. _ :. _) = extent x
                        result =
+                         computeS .
+                         R.backpermute
+                           (Z :. nf :. nc :. ts :. rs)
+                           (\(Z :. a :. b :. c :. d) -> (Z :. b :. a :. c :. d)) .
                          fromUnboxed (Z :. L.length centers :. nf :. ts :. rs) .
                          VU.concat $
                          imgs
@@ -100,6 +104,10 @@ logpolarImageConduit1 parallelParams ts rs centers polarR logpolarFlag = do
                            centers
                        (Z :. nf :. _ :. _) = extent x
                        result =
+                         computeS .
+                         R.backpermute
+                           (Z :. nf :. nc :. ts :. rs)
+                           (\(Z :. a :. b :. c :. d) -> (Z :. b :. a :. c :. d)) .
                          fromUnboxed (Z :. L.length centers :. nf :. ts :. rs) .
                          VU.concat $
                          imgs
@@ -302,13 +310,7 @@ shiftablePinwheelBlobPyramidConduit2Layers fftw stride' filters =
     (\(label', x) -> do
        let (Z :. nc :. nf :. ts :. rs) = extent x
        firstLayer <-
-         liftIO $
-         shiftablePinwheelBlobPyramidArray fftw (L.head filters) .
-         computeS .
-         R.backpermute
-           (Z :. nf :. nc :. ts :. rs)
-           (\(Z :. a :. b :. c :. d) -> (Z :. b :. a :. c :. d)) $
-         x
+         liftIO $ shiftablePinwheelBlobPyramidArray fftw (L.head filters) $ x
        secondLayer <-
          liftIO $
          M.zipWithM
@@ -319,5 +321,5 @@ shiftablePinwheelBlobPyramidConduit2Layers fftw stride' filters =
              parMap
                rdeepseq
                (featureExtractionBlobMag stride')
-               ((L.map L.last secondLayer) L.++  ([L.last firstLayer]))
+               ((L.map L.last secondLayer) L.++ ([L.last firstLayer]))
        yield (label', y))

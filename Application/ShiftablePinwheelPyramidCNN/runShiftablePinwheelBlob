@@ -1,0 +1,31 @@
+#!/bin/bash
+
+export OMP_NUM_THREADS=24
+NumThread=16
+BatchSize=1600
+ImageSize=28
+FilterType=Blob
+ModelName=${ImageSize}_${FilterType}_SVM_Model
+OriginModelName=${ImageSize}_${FilterType}_Origin_SVM_Model
+GMMFile=${ImageSize}_${FilterType}_GMM.dat
+PCAFile=${ImageSize}_${FilterType}_PCA.dat
+KMEANSFile=${ImageSize}_${FilterType}_KMEANS.dat
+ParamsFile=${ImageSize}_${FilterType}_Params
+OriginPredictorParamsFile=${ImageSize}_${FilterType}_OriginPredictor_Params
+FFTWPath=${ImageSize}_${FilterType}_FFTW.dat
+NumPrincipal=32
+NumGaussian=32
+PatchSize=16
+Stride=1
+NumBin=8
+GaussianScale=1
+Radius=20
+NumGrid=1
+FolderPath=/home/xzhang/Dataset/RotatedMNIST
+ 
+#time ./trainOriginPredictor -i ${FolderPath}/Train_10000.dat -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold -15 --numGMMExample 375 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --OriginPredictorParamsFileName ${OriginPredictorParamsFile} --patchSize ${PatchSize} --stride 4 --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} --NumGrid ${NumGrid} --Radius ${Radius} --OriginModelName ${OriginModelName} --fftwPath ${FFTWPath} +RTS -N${NumThread}  -RTS --logpolarFlag
+
+time ./shiftablePinwheelBlob  -i ${FolderPath}/Train_10000.dat -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold 0.01 --numGMMExample 1200 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --OriginPredictorParamsFileName ${OriginPredictorParamsFile} --patchSize ${PatchSize} --stride 4 --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} --NumGrid ${NumGrid} --Radius ${Radius} --OriginModelName ${OriginModelName} --fftwPath ${FFTWPath} +RTS -N${NumThread}  -RTS  --logpolarFlag
+
+time ./shiftablePinwheelBlob  -i ${FolderPath}/Validate_2000.dat -c 1 -t ${NumThread} -b ${BatchSize} -m ${ModelName} --GMMFile ${GMMFile} --PCAFile ${PCAFile} --threshold 0.01 --numGMMExample 1200 --numPrincipal ${NumPrincipal} --numGaussian ${NumGaussian} --imageSize ${ImageSize} --paramsFileName ${ParamsFile} --OriginPredictorParamsFileName ${OriginPredictorParamsFile} --patchSize ${PatchSize} --stride 4 --numBin ${NumBin} --gaussianScale ${GaussianScale} --KMeansFile ${KMEANSFile} --NumGrid ${NumGrid} --Radius ${Radius} --OriginModelName ${OriginModelName} --fftwPath ${FFTWPath} +RTS -N${NumThread}  -RTS  --logpolarFlag
+

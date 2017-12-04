@@ -10,6 +10,7 @@ module CV.Filter.ShiftablePinwheelPyramid
   , ShiftablePinwheelBlobPyramidFilters(..)
   , ShiftablePinwheelRingLogGaborFilters(..)
   , ShiftablePinwheelPyramidInputArray
+  , ShiftablePinwheelPyramidInternalArray
   , generateShiftablePinwheelRingPyramidFilters
   -- , shiftablePinwheelRingPyramid
   , generateShiftablePinwheelBlobPyramidFilters
@@ -65,7 +66,7 @@ data ShiftablePinwheelBlobPyramidParams = ShiftablePinwheelBlobPyramidParams
   } deriving (Show, Read, Eq, Generic)
 
 
--- NumCenters X NumChannels X NumTheta X NumLogR
+-- NumChannels X NumCenters X NumTheta X NumLogR
 type ShiftablePinwheelPyramidInputArray  = R.Array U DIM4 Double
 type ShiftablePinwheelPyramidInternalArray  = R.Array U DIM4 (Complex Double)
 
@@ -116,7 +117,7 @@ generateShiftablePinwheelRingPyramidFilters params@(ShiftablePinwheelPyramidPara
   where
     makeFilter n op =
       VS.convert .
-      toUnboxed . computeS . fromFunction (Z :. nCenter :. nChannel :. nT :. n) $
+      toUnboxed . computeS . fromFunction (Z :. nChannel :. nCenter :. nT :. n) $
       (\(Z :. _ :. _ :. _ :. i) -> op . fftwFreqOp n $ i)
 
 
@@ -128,14 +129,14 @@ generateShiftablePinwheelRingPyramidFilters params@(ShiftablePinwheelPyramidPara
 --   -> IO [[VU.Vector Double]]
 -- shiftablePinwheelRingPyramid fftw (ShiftablePinwheelRingPyramidFilters params@(ShiftablePinwheelPyramidParams _ nCenter nChannel nT nR) h0' l0' h1' l1') f arr = do
 --   vec <-
---     dft1dG fftw [nCenter, nChannel, nT, nR] [2, 3] .
+--     dft1dG fftw [nChannel, nCenter, nT, nR] [2, 3] .
 --     VS.convert . toUnboxed . computeS . R.map (:+ 0) $
 --     arr
 --   let h = VS.zipWith (*) h0' vec
 --       l = VS.zipWith (*) l0' vec
---   hVec <- idft1dG fftw [nCenter, nChannel, nT, nR] [3] h
+--   hVec <- idft1dG fftw [nChannel, nCenter, nT, nR] [3] h
 --   let !hFeatures =
---         f . fromUnboxed (Z :. nCenter :. nChannel :. nT :. nR) . VS.convert $
+--         f . fromUnboxed (Z :. nChannel :. nCenter  :. nT :. nR) . VS.convert $
 --         hVec
 --   lFeatures <- shiftablePinwheelRingPyramidLoop fftw params f 0 h1' l1' l
 --   return $! hFeatures : lFeatures
@@ -152,30 +153,30 @@ generateShiftablePinwheelRingPyramidFilters params@(ShiftablePinwheelPyramidPara
 --   -> VS.Vector (Complex Double)
 --   -> IO [[VU.Vector Double]]
 -- shiftablePinwheelRingPyramidLoop fftw (ShiftablePinwheelPyramidParams _ nCenter nChannel nT nR) f n [] [] imgVec = do
---   vec <- idft1dG fftw [nCenter, nChannel, nT, div nR (2 ^ n)] [3] imgVec
+--   vec <- idft1dG fftw [nChannel, nCenter, nT, div nR (2 ^ n)] [3] imgVec
 --   return
 --     [ f .
---       fromUnboxed (Z :. nCenter :. nChannel :. nT :. div nR (2 ^ n)) .
+--       fromUnboxed (Z :. nChannel :. nCenter  :. nT :. div nR (2 ^ n)) .
 --       VS.convert $
 --       vec
 --     ]
 -- shiftablePinwheelRingPyramidLoop fftw params@(ShiftablePinwheelPyramidParams _ nCenter nChannel nT nR) f n (h1':h1s) (l1':l1s) imgVec = do
 --   let h = VS.zipWith (*) h1' imgVec
 --       l = VS.zipWith (*) l1' imgVec
---   hVec <- idft1dG fftw [nCenter, nChannel, nT, div nR (2 ^ n)] [3] h
---   lVec <- idft1dG fftw [nCenter, nChannel, nT, div nR (2 ^ n)] [3] l
+--   hVec <- idft1dG fftw [nChannel, nCenter, nT, div nR (2 ^ n)] [3] h
+--   lVec <- idft1dG fftw [nChannel, nCenter, nT, div nR (2 ^ n)] [3] l
 --   let !hFeatures =
 --         f .
---         fromUnboxed (Z :. nCenter :. nChannel :. nT :. div nR (2 ^ n)) .
+--         fromUnboxed (Z :. nChannel :. nCenter  :. nT :. div nR (2 ^ n)) .
 --         VS.convert $
 --         hVec
 --   lArr <-
 --     computeP .
 --     downsample [2, 1, 1, 1] .
---     fromUnboxed (Z :. nCenter :. nChannel :. nT :. div nR (2 ^ n)) . VS.convert $
+--     fromUnboxed (Z :. nChannel :. nCenter  :. nT :. div nR (2 ^ n)) . VS.convert $
 --     lVec
 --   downsampledFourierLVec <-
---     dft1dG fftw [nCenter, nChannel, nT, div nR (2 ^ (n + 1))] [3] .
+--     dft1dG fftw [nChannel, nCenter, nT, div nR (2 ^ (n + 1))] [3] .
 --     VS.convert . toUnboxed $
 --     lArr
 --   features <-
@@ -199,10 +200,10 @@ featureExtractionRing :: ShiftablePinwheelPyramidInternalArray
 featureExtractionRing arr' =
   L.map
     (\(i, k) ->
-       toUnboxed . computeS . R.slice magArr $ (Z :. i :. All :. All :. k))
-    [(i, k) | i <- [0 .. nCenter - 1], k <- [newR, newR + 1 .. nR - 1]]
+       toUnboxed . computeS . R.slice magArr $ (Z :. All :. i :. All :. k))
+    [(i, k) | i <- [0 .. nCenter - 1], k <- [newR,newR + 1 .. nR - 1]]
   where
-    (Z :. nCenter :. _ :. _ :. nR) = extent arr'
+    (Z :. _ :. nCenter :. _ :. nR) = extent arr'
     magArr = R.map magnitude arr'
     newR = 0 -- div nR 4
     -- s = sumAllS . R.map (^ (2 :: Int) ) $ magArr
@@ -214,10 +215,10 @@ featureExtractionRing1 :: ShiftablePinwheelPyramidInternalArray
                        -> [VU.Vector Double]
 featureExtractionRing1 arr' =
   L.map
-    (\i -> toUnboxed . computeS . R.slice magArr $ (Z :. i :. All :. All :. All))
+    (\i -> toUnboxed . computeS . R.slice magArr $ (Z :. All :. i :. All :. All))
     [i | i <- [0 .. nCenter - 1]]
   where
-    (Z :. nCenter :. _ :. _ :. nR) = extent arr'
+    (Z :. _ :. nCenter :. _ :. nR) = extent arr'
     magArr = R.map magnitude arr'
 
 
@@ -249,7 +250,7 @@ generateShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramid
     makeFilter nT'' nR'' op =
       VS.convert .
       toUnboxed .
-      computeS . fromFunction (Z :. nCenter :. nChannel :. nT'' :. nR'') $
+      computeS . fromFunction (Z :. nChannel :. nCenter  :. nT'' :. nR'') $
       (\(Z :. _ :. _ :. j :. i) ->
           let a = fftwFreqOpBlob nR'' i
               b = fftwFreqOpBlob nT'' j
@@ -258,7 +259,7 @@ generateShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramid
     makeBandpassFilter nT' nR' opR opT =
       VS.convert .
       toUnboxed .
-      computeS . fromFunction (Z :. nCenter :. nChannel :. nT' :. nR') $
+      computeS . fromFunction (Z :. nChannel :. nCenter  :. nT' :. nR') $
       (\(Z :. _ :. _ :. tInd :. rInd) ->
           let a = fftwFreqOpBlob nR' rInd
               b = fftwFreqOpBlob nT' tInd
@@ -274,12 +275,12 @@ shiftablePinwheelBlobPyramidPlan
 shiftablePinwheelBlobPyramidPlan plan (ShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) h0' l0' b1' l1') arr = do
   lock <- getFFTWLock
   (p1, vec) <-
-    dft1dGPlan lock plan [nCenter, nChannel, nT, nR] [2, 3] .
+    dft1dGPlan lock plan [nChannel, nCenter, nT, nR] [2, 3] .
     VS.convert . toUnboxed . computeS . R.map (:+ 0) $
     arr
   let h = VS.zipWith (*) h0' vec
       l = VS.zipWith (*) l0' vec
-  (p2, _) <- idft1dGPlan lock p1 [nCenter, nChannel, nT, nR] [2, 3] h
+  (p2, _) <- idft1dGPlan lock p1 [nChannel, nCenter, nT, nR] [2, 3] h
   shiftablePinwheelBlobPyramidLoopPlan lock p2 params 0 b1' l1' l
 
 {-# INLINE shiftablePinwheelBlobPyramidLoopPlan #-}
@@ -298,7 +299,7 @@ shiftablePinwheelBlobPyramidLoopPlan lock plan (ShiftablePinwheelBlobPyramidPara
     idft1dGPlan
       lock
       plan
-      [nCenter, nChannel, div nT (2 ^ n), div nR (2 ^ n)]
+      [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
       [2, 3]
       imgVec
   return p1
@@ -308,21 +309,21 @@ shiftablePinwheelBlobPyramidLoopPlan lock plan params@(ShiftablePinwheelBlobPyra
     idft1dGPlan
       lock
       plan
-      [nCenter, nChannel, div nT (2 ^ n), div nR (2 ^ n)]
+      [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
       [2, 3]
       l
   let lArr =
         computeS .
         downsample [2, 2, 1, 1] .
         fromUnboxed
-          (Z :. nCenter :. nChannel :. div nT (2 ^ n) :. div nR (2 ^ n)) .
+          (Z :. nChannel :. nCenter  :. div nT (2 ^ n) :. div nR (2 ^ n)) .
         VS.convert $
         lVec
   (p2, downsampledFourierLVec) <-
     dft1dGPlan
       lock
       p1
-      [nCenter, nChannel, div nT (2 ^ (n + 1)), div nR (2 ^ (n + 1))]
+      [nChannel, nCenter, div nT (2 ^ (n + 1)), div nR (2 ^ (n + 1))]
       [2, 3] .
     VS.convert . toUnboxed $
     lArr
@@ -347,16 +348,16 @@ shiftablePinwheelBlobPyramid
   -> IO [[VU.Vector Double]]
 shiftablePinwheelBlobPyramid plan stride' (ShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) h0' l0' b1' l1') f arr = do
   vec <-
-    dftExecute plan (DFTPlanID DFT1DG [nCenter, nChannel, nT, nR] [2, 3]) .
+    dftExecute plan (DFTPlanID DFT1DG [nChannel, nCenter, nT, nR] [2, 3]) .
     VS.convert . toUnboxed . computeS . R.map (:+ 0) $
     arr
   let h = VS.zipWith (*) h0' vec
       l = VS.zipWith (*) l0' vec
   hVec <-
-    dftExecute plan (DFTPlanID IDFT1DG [nCenter, nChannel, nT, nR] [2, 3]) h
+    dftExecute plan (DFTPlanID IDFT1DG [nChannel, nCenter, nT, nR] [2, 3]) h
   let !hFeatures =
         f stride' .
-        fromUnboxed (Z :. nCenter :. nChannel :. nT :. nR) . VS.convert $
+        fromUnboxed (Z :. nChannel :. nCenter  :. nT :. nR) . VS.convert $
         hVec
   (x:lFeatures) <-
     shiftablePinwheelBlobPyramidLoop plan stride' params f 0 b1' l1' l
@@ -380,12 +381,12 @@ shiftablePinwheelBlobPyramidLoop plan stride' (ShiftablePinwheelBlobPyramidParam
       plan
       (DFTPlanID
          IDFT1DG
-         [nCenter, nChannel, div nT (2 ^ n), div nR (2 ^ n)]
+         [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
          [2, 3])
       imgVec
   return
     [ f stride' .
-      fromUnboxed (Z :. nCenter :. nChannel :. div nT (2 ^ n) :. div nR (2 ^ n)) .
+      fromUnboxed (Z :. nChannel :. nCenter  :. div nT (2 ^ n) :. div nR (2 ^ n)) .
       VS.convert $
       vec
     ]
@@ -395,7 +396,7 @@ shiftablePinwheelBlobPyramidLoop plan stride' params@(ShiftablePinwheelBlobPyram
       planID =
         DFTPlanID
           IDFT1DG
-          [nCenter, nChannel, div nT (2 ^ n), div nR (2 ^ n)]
+          [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
           [2, 3]
       planPtr = getDFTPlan plan planID
   hVecs <- M.mapM (dftExecuteWithPlan planID planPtr) bs
@@ -404,7 +405,7 @@ shiftablePinwheelBlobPyramidLoop plan stride' params@(ShiftablePinwheelBlobPyram
       plan
       (DFTPlanID
          IDFT1DG
-         [nCenter, nChannel, div nT (2 ^ n), div nR (2 ^ n)]
+         [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
          [2, 3])
       l
   let !hFeatures =
@@ -413,14 +414,14 @@ shiftablePinwheelBlobPyramidLoop plan stride' params@(ShiftablePinwheelBlobPyram
         L.map
           (f stride' .
            fromUnboxed
-             (Z :. nCenter :. nChannel :. div nT (2 ^ n) :. div nR (2 ^ n)) .
+             (Z :. nChannel :. nCenter  :. div nT (2 ^ n) :. div nR (2 ^ n)) .
            VS.convert) $
         hVecs
   let lArr =
         computeS .
         downsample [2, 2, 1, 1] .
         fromUnboxed
-          (Z :. nCenter :. nChannel :. div nT (2 ^ n) :. div nR (2 ^ n)) .
+          (Z :. nChannel :. nCenter  :. div nT (2 ^ n) :. div nR (2 ^ n)) .
         VS.convert $
         lVec
   downsampledFourierLVec <-
@@ -428,7 +429,7 @@ shiftablePinwheelBlobPyramidLoop plan stride' params@(ShiftablePinwheelBlobPyram
       plan
       (DFTPlanID
          DFT1DG
-         [nCenter, nChannel, div nT (2 ^ (n + 1)), div nR (2 ^ (n + 1))]
+         [nChannel, nCenter, div nT (2 ^ (n + 1)), div nR (2 ^ (n + 1))]
          [2, 3]) .
     VS.convert . toUnboxed $
     lArr
@@ -455,14 +456,14 @@ featureExtractionBlob
 featureExtractionBlob stride' arr' =
   L.map
     (\(i, j, k) ->
-       toUnboxed . computeS . R.slice magArr $ (Z :. i :. All :. j :. k))
+       toUnboxed . computeS . R.slice magArr $ (Z :. All :. i :. j :. k))
     [ (i, j, k)
     | i <- [0 .. nCenter - 1]
     , j <- [0,stride' .. nT - 1]
     , k <- [newR,newR + stride' .. nR - 1]
     ]
   where
-    (Z :. nCenter :. _ :. nT :. nR) = extent arr'
+    (Z :. _ :. nCenter :. nT :. nR) = extent arr'
     magArr = R.map magnitude arr'
     newR = 0 -- div nR 4
 
@@ -475,14 +476,14 @@ shiftablePinwheelBlobPyramidDFT
   -> IO [[VU.Vector Double]]
 shiftablePinwheelBlobPyramidDFT plan stride' (ShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) h0' l0' b1' l1') f arr = do
   vec <-
-    dftExecute plan (DFTPlanID DFT1DG [nCenter, nChannel, nT, nR] [2, 3]) .
+    dftExecute plan (DFTPlanID DFT1DG [nChannel, nCenter, nT, nR] [2, 3]) .
     VS.convert . toUnboxed . computeS . R.map (:+ 0) $
     arr
   let h = VS.zipWith (*) h0' vec
       l = VS.zipWith (*) l0' vec
   let !hFeatures =
         f stride' .
-        fromUnboxed (Z :. nCenter :. nChannel :. nT :. nR) . VS.convert $
+        fromUnboxed (Z :. nChannel :. nCenter  :. nT :. nR) . VS.convert $
         h
   (x:lFeatures) <-
     shiftablePinwheelBlobPyramidLoopDFT plan stride' params f 0 b1' l1' l
@@ -503,7 +504,7 @@ shiftablePinwheelBlobPyramidLoopDFT
 shiftablePinwheelBlobPyramidLoopDFT plan stride' (ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) f n [] [] imgVec =
   return
     [ f stride' .
-      fromUnboxed (Z :. nCenter :. nChannel :. div nT (2 ^ n) :. div nR (2 ^ n)) .
+      fromUnboxed (Z :. nChannel :. nCenter  :. div nT (2 ^ n) :. div nR (2 ^ n)) .
       VS.convert $
       imgVec
     ]
@@ -515,7 +516,7 @@ shiftablePinwheelBlobPyramidLoopDFT plan stride' params@(ShiftablePinwheelBlobPy
       plan
       (DFTPlanID
          IDFT1DG
-         [nCenter, nChannel, div nT (2 ^ n), div nR (2 ^ n)]
+         [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
          [2, 3])
       l
   let !hFeatures =
@@ -524,14 +525,14 @@ shiftablePinwheelBlobPyramidLoopDFT plan stride' params@(ShiftablePinwheelBlobPy
         L.map
           (f stride' .
            fromUnboxed
-             (Z :. nCenter :. nChannel :. div nT (2 ^ n) :. div nR (2 ^ n)) .
+             (Z :. nChannel :. nCenter  :. div nT (2 ^ n) :. div nR (2 ^ n)) .
            VS.convert) $
         bs
   let lArr =
         computeS .
         downsample [2, 2, 1, 1] .
         fromUnboxed
-          (Z :. nCenter :. nChannel :. div nT (2 ^ n) :. div nR (2 ^ n)) .
+          (Z :. nChannel :. nCenter  :. div nT (2 ^ n) :. div nR (2 ^ n)) .
         VS.convert $
         lVec
   downsampledFourierLVec <-
@@ -539,7 +540,7 @@ shiftablePinwheelBlobPyramidLoopDFT plan stride' params@(ShiftablePinwheelBlobPy
       plan
       (DFTPlanID
          DFT1DG
-         [nCenter, nChannel, div nT (2 ^ (n + 1)), div nR (2 ^ (n + 1))]
+         [nChannel, nCenter, div nT (2 ^ (n + 1)), div nR (2 ^ (n + 1))]
          [2, 3]) .
     VS.convert . toUnboxed $
     lArr
@@ -564,10 +565,10 @@ featureExtractionBlobDFT :: Int
                          -> [VU.Vector Double]
 featureExtractionBlobDFT stride' arr' =
   L.map
-    (\i -> toUnboxed . computeS . R.slice magArr $ (Z :. i :. All :. All :. All))
+    (\i -> toUnboxed . computeS . R.slice magArr $ (Z :. All :. i  :. All :. All))
     [i | i <- [0 .. nCenter - 1]]
   where
-    (Z :. nCenter :. _ :. _ :. _) = extent arr'
+    (Z :. _ :. nCenter :. _ :. _) = extent arr'
     magArr = R.map magnitude . downsample [stride', stride', 1, 1] $ arr'
 
 -- shiftablePinwheel :: FFTW
@@ -575,20 +576,20 @@ featureExtractionBlobDFT stride' arr' =
 --                   -> ShiftablePinwheelPyramidInputArray
 --                   -> IO [VU.Vector Double]
 -- shiftablePinwheel fftw downsampleFactor arr = do
---   let (Z :. numCenters :. numChannels :. nT :. nR) = extent arr
+--   let (Z :. numChannels :. numCenters :. nT :. nR) = extent arr
 --   vec <-
---     dft1dG fftw [numCenters, numChannels, nT, nR] [2, 3] .
+--     dft1dG fftw [numChannels, numCenters, nT, nR] [2, 3] .
 --     VS.convert . toUnboxed . computeS . R.map (:+ 0) $
 --     arr
 --   let arr1 =
 --         downsample [downsampleFactor, downsampleFactor, 1, 1] .
---         -- crop [0,0,0,0] [div nR 4, div nT 4, numChannels, numCenters] .
---         fromUnboxed (Z :. numCenters :. numChannels :. nT :. nR) .
+--         -- crop [0,0,0,0] [div nR 4, div nT 4, numCenters, numChannels] .
+--         fromUnboxed (Z :. numChannels :. numCenters :. nT :. nR) .
 --         VS.convert . VS.map magnitude $
 --         vec
 --   return
 --     [ l2norm . toUnboxed . computeS . R.slice arr1 $
---     (Z :. i :. All :. All :. All)
+--     (Z :. All :. i :. All :. All)
 --     | i <- [0 .. numCenters - 1]
 --     ]
 
@@ -603,7 +604,7 @@ generateShiftablePinwheelRingLogGaborFilters params@(ShiftablePinwheelPyramidPar
   where
     makeFilter op s =
       VS.convert .
-      toUnboxed . computeS . fromFunction (Z :. nCenter :. nChannel :. nT :. nR) $
+      toUnboxed . computeS . fromFunction (Z :. nChannel :. nCenter  :. nT :. nR) $
       (\(Z :. _ :. _ :. _ :. i) -> op s . fftwFreqOpBlob nR $ i)
 
 -- {-# INLINE shiftablePinwheelRingLogGabor #-}
@@ -616,27 +617,27 @@ generateShiftablePinwheelRingLogGaborFilters params@(ShiftablePinwheelPyramidPar
 --   -> IO [[VU.Vector Double]]
 -- shiftablePinwheelRingLogGabor fftw (ShiftablePinwheelRingLogGaborFilters (ShiftablePinwheelPyramidParams _ nCenter nChannel nT nR) filters) f arr = do
 --   imgVec <-
---     dft1dG fftw [nCenter, nChannel, nT, nR] [2, 3] .
+--     dft1dG fftw [nChannel, nCenter, nT, nR] [2, 3] .
 --     VS.convert . toUnboxed . computeS . R.map (:+ 0) $
 --     arr
 --   let filteredImageFourierVecs = parMap rdeepseq (VS.zipWith (*) imgVec) filters
 --   filteredImageVecs <-
 --     M.mapM
---       (idft1dG fftw [nCenter, nChannel, nT, nR] [3])
+--       (idft1dG fftw [nChannel, nCenter, nT, nR] [3])
 --       filteredImageFourierVecs
 --   -- let results =
 --   --       [ L.map VU.concat .
 --   --         L.transpose .
 --   --         parMap
 --   --           rdeepseq
---   --           (f . fromUnboxed (Z :. nCenter :. nChannel :. nT :. nR) . VS.convert) $
+--   --           (f . fromUnboxed (Z :. nChannel :. nCenter  :. nT :. nR) . VS.convert) $
 --   --         filteredImageVecs
 --   --       ]
 --   -- return results
 --   return .
 --     parMap
 --       rdeepseq
---       (f . fromUnboxed (Z :. nCenter :. nChannel :. nT :. nR) . VS.convert) $
+--       (f . fromUnboxed (Z :. nChannel :. nCenter  :. nT :. nR) . VS.convert) $
 --     filteredImageVecs
 
 {-# INLINE fftwFreqOp #-}
