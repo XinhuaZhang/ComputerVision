@@ -72,8 +72,9 @@ colorImage2Array img =
 
 normalizeImage
   :: Double -> Array U DIM3 Double -> Array D DIM3 Double
-normalizeImage upperBound img =
-  R.map (\x -> (x - minV) / (maxV - minV) * upperBound) img
+normalizeImage upperBound img
+  | (VU.all (== 0) . toUnboxed $ img) = delay img
+  | otherwise = R.map (\x -> (x - minV) / (maxV - minV) * upperBound) img
   where
     maxV = foldAllS max (fromIntegral (minBound :: Int)) img
     minV = foldAllS min (fromIntegral (maxBound :: Word)) img
