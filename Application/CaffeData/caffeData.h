@@ -5,9 +5,9 @@
 extern "C" {
 #endif
 
-void openDatabase(char * dbType, char * path);
+void openDatabase(char * dbType, char * path, int num);
 void closeDatabase();
-void saveData(int width, int height, int channel,int batch, int offset, unsigned char ** data, int *label);
+void saveData(int dbIdx, int width, int height, int channel,int batch, int offset, unsigned char ** data, int *label);
 
 #ifdef __cplusplus
 }
