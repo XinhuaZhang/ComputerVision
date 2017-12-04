@@ -1,0 +1,44 @@
+#/bin/bash
+
+export OMP_NUM_THREADS=16
+FLAG="--make -O2 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000  -funbox-strict-fields -fllvm -optlo-O3  " #-fllvm -optlo-O3 -XBangPatterns
+OBJPATH="../../Classifier/LibLinear/"
+SVMPATH="../../Classifier/LibSVM/"
+LIBS="-lstdc++ -llapack -lblas  -lgomp -lfftw3 -lfftw3f -lfftw3l -lm" # -lfftw3 -lfftw3f -lfftw3l -lm
+LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
+
+## cabal exec -- ghc $FLAG $LIBS -i../../ GenerateDataset.hs -o generateDataset
+## ## cabal exec -- ghc $FLAG $LIBS -i../../ IOTest.hs -o ioTest
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PlotImage.hs -o plotImage
+
+## ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainOriginPredictor.hs -o trainOriginPredictor
+## ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o OriginPredictor.hs -o originPredictor
+
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o ShiftablePinwheelBlobPyramidKMeansModel.hs -o shiftablePinwheelBlobPyramidKMeansModel 
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainShiftablePinwheelBlobPyramid.hs -o trainShiftablePinwheelBlobPyramid 
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictShiftablePinwheelBlobPyramid.hs -o predictShiftablePinwheelBlobPyramid &
+
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o FourierMellinKMeansModel.hs -o fourierMellinKMeansModel &
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainFourierMellin.hs -o trainFourierMellin &
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictFourierMellin.hs -o predictFourierMellin  &
+
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o ShiftablePinwheelBlobPyramidKMeansModelDFTPCA.hs -o shiftablePinwheelBlobPyramidKMeansModelDFTPCA &
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainShiftablePinwheelBlobPyramidDFTPCA.hs -o trainShiftablePinwheelBlobPyramidDFTPCA & 
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictShiftablePinwheelBlobPyramidDFTPCA.hs -o predictShiftablePinwheelBlobPyramidDFTPCA &
+
+
+
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o ShiftablePinwheelBlobPyramidKMeansModelScatteringNetworks.hs -o shiftablePinwheelBlobPyramidKMeansModelScatteringNetworks &
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainShiftablePinwheelBlobPyramidScatteringNetworks.hs -o trainShiftablePinwheelBlobPyramidScatteringNetworks & 
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictShiftablePinwheelBlobPyramidScatteringNetworks.hs -o predictShiftablePinwheelBlobPyramidScatteringNetworks &
+
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o ShiftablePinwheelBlobPyramidKMeansModelScatteringNetworksOriginalImage.hs -o shiftablePinwheelBlobPyramidKMeansModelScatteringNetworksOriginalImage &
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainShiftablePinwheelBlobPyramidScatteringNetworksOriginalImage.hs -o trainShiftablePinwheelBlobPyramidScatteringNetworksOriginalImage & 
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictShiftablePinwheelBlobPyramidScatteringNetworksOriginalImage.hs -o predictShiftablePinwheelBlobPyramidScatteringNetworksOriginalImage &
+
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainSVM.hs -o trainSVM
+## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictSVM.hs -o predictSVM
+
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o -lprotobuf -lopencv_imgcodecs -lcaffe ../CaffeData/caffeData.o SaveLogpolarImage.hs -o saveLogpolarImage
+
+wait
