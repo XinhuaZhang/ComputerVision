@@ -29,9 +29,9 @@ foreign import ccall "&closeDatabase" p'closeDatabase
 
 {-# LINE 8 "Bindings.hsc" #-}
 foreign import ccall "saveData" c'saveData
-  :: CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> Ptr (Ptr CUChar) -> Ptr CInt -> IO ()
+  :: CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> Ptr (Ptr CFloat) -> Ptr CInt -> IO ()
 foreign import ccall "&saveData" p'saveData
-  :: FunPtr (CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> Ptr (Ptr CUChar) -> Ptr CInt -> IO ())
+  :: FunPtr (CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> Ptr (Ptr CFloat) -> Ptr CInt -> IO ())
 
 {-# LINE 9 "Bindings.hsc" #-}
 -- #ccall saveData , CInt ->  CInt ->  CInt -> CInt -> CInt -> Ptr (Ptr CFloat) -> Ptr CInt -> IO ()

@@ -133,3 +133,136 @@ shiftablePinwheelBlobPyramidCNN plan (ShiftablePinwheelBlobPyramidFilters params
           (-- imgVec VU.++ 
            (VS.convert hVec) VU.++ (toUnboxed x))
   return . L.transpose . L.map extractFeatureArray $ (y : lFeatures)
+  
+-- {-# INLINE shiftablePinwheelBlobPyramidArrayLowpassCNN #-}
+
+-- shiftablePinwheelBlobPyramidArrayLowpassCNN
+--   :: DFTPlan
+--   -> ShiftablePinwheelBlobPyramidFilters
+--   -> Int
+--   -> (Int -> ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
+--   -> [ShiftablePinwheelPyramidInputArray]
+--   -> IO [VU.Vector Double]
+-- shiftablePinwheelBlobPyramidArrayLowpassCNN plan (ShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) _h0' l0' _b1' l1') stride' f arr = do
+--   vec <-
+--     dftExecuteBatch plan (DFTPlanID DFT1DG [nChannel, nCenter, nT, nR] [2, 3]) .
+--     L.map (VS.convert . toUnboxed . computeS . R.map (:+ 0)) $
+--     arr
+--   let l = L.map (VS.zipWith (*) l0') vec
+--   shiftablePinwheelBlobPyramidLoopArrayLowpassCNN plan params stride' f 0 l1' l
+
+
+{-# INLINE shiftablePinwheelBlobPyramidLoopArrayLowpassCNN #-}
+
+shiftablePinwheelBlobPyramidLoopArrayLowpassCNN
+  :: DFTPlan
+  -> ShiftablePinwheelBlobPyramidParams
+  -> Int
+  -> [VS.Vector (Complex Double)]
+  -> [VS.Vector (Complex Double)]
+  -> IO [FeatureArray]
+shiftablePinwheelBlobPyramidLoopArrayLowpassCNN plan (ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) n [] imgVecs = do
+  vecs <-
+    dftExecuteBatch
+      plan
+      (DFTPlanID
+         IDFT1DG
+         [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
+         [2, 3])
+      imgVecs
+  return .
+    extractFeatureArray . 
+    fromUnboxed
+      (Z :. (nChannel * L.length imgVecs) :. nCenter :. div nT (2 ^ n) :.
+       div nR (2 ^ n)) .
+    VS.convert . VS.concat $
+    vecs
+shiftablePinwheelBlobPyramidLoopArrayLowpassCNN plan params@(ShiftablePinwheelBlobPyramidParams _ nCenter nChannel nT nR _) n (l1':l1s) imgVecs = do
+  let l = L.map (VS.zipWith (*) l1') imgVecs
+  lVec <-
+    dftExecuteBatch
+      plan
+      (DFTPlanID
+         IDFT1DG
+         [nChannel, nCenter, div nT (2 ^ n), div nR (2 ^ n)]
+         [2, 3])
+      l
+  let lArr =
+        L.map
+          (computeS .
+           downsample [2, 2, 1, 1] .
+           fromUnboxed
+             (Z :. nChannel :. nCenter :. div nT (2 ^ n) :. div nR (2 ^ n)) .
+           VS.convert)
+          lVec
+  downsampledFourierLVec <-
+    dftExecuteBatch
+      plan
+      (DFTPlanID
+         DFT1DG
+         [nChannel, nCenter, div nT (2 ^ (n + 1)), div nR (2 ^ (n + 1))]
+         [2, 3]) .
+    L.map (VS.convert . toUnboxed) $
+    lArr
+  shiftablePinwheelBlobPyramidLoopArrayLowpassCNN
+    plan
+    params
+    (n + 1)
+    l1s
+    downsampledFourierLVec
+  
+
+-- {-# INLINE shiftablePinwheelBlobPyramidScatteringNetworksCNN #-}
+
+-- shiftablePinwheelBlobPyramidScatteringNetworksCNN
+--   :: DFTPlan
+--   -> ShiftablePinwheelBlobPyramidScatteringNetworksFilters
+--   -> Int
+--   -> Int
+--   -> (Int -> ShiftablePinwheelPyramidInternalArray -> [VU.Vector Double])
+--   -> Int
+--   -> Int
+--   -> [ShiftablePinwheelPyramidInputArray]
+--   -> IO [[FeatureArray]]
+-- shiftablePinwheelBlobPyramidScatteringNetworksCNN plan filters 1 stride' f numLayers k arrs =
+--   let (Z :. numChannels :. numCenters :. nT :. nR) = extent . L.head $ arrs
+--   in case DFT.lookup
+--             (ShiftablePinwheelBlobPyramidParams
+--                numLayers
+--                numCenters
+--                numChannels
+--                nT
+--                nR
+--                k)
+--             filters of
+--        Nothing -> return []
+--        Just x -> do
+--          y <- shiftablePinwheelBlobPyramidArrayLowpass plan x stride' f arrs
+--          return [y]
+-- shiftablePinwheelBlobPyramidScatteringNetworksCNN plan filters n stride' f numLayers k arrs =
+--   let (Z :. numChannels :. numCenters :. nT :. nR) = extent . L.head $ arrs
+--   in case DFT.lookup
+--             (ShiftablePinwheelBlobPyramidParams
+--                numLayers
+--                numCenters
+--                numChannels
+--                nT
+--                nR
+--                k)
+--             filters of
+--        Nothing -> return []
+--        Just x -> do
+--          (bs, features) <-
+--            shiftablePinwheelBlobPyramidArray plan x stride' f arrs
+--          bsFeatures <-
+--            M.mapM
+--              (shiftablePinwheelBlobPyramidScatteringNetworksCNN
+--                 plan
+--                 filters
+--                 (n - 1)
+--                 stride'
+--                 f
+--                 numLayers
+--                 k)
+--              bs
+--          return $ features : L.concat bsFeatures

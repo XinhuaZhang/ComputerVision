@@ -23,6 +23,7 @@ import           Foreign.C.String
 import           Foreign.C.Types
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
+import           GHC.Float
 import           System.Random
 import           Text.Printf
 
@@ -33,8 +34,8 @@ createLabelVec label = newArray $ L.map fromIntegral label
 
 {-# INLINE createDataArr #-}
 
-createDataArr :: [[Double]] -> IO [Ptr CUChar]
-createDataArr = M.mapM (newArray . L.map (castCharToCUChar . chr . round))
+createDataArr :: [[Double]] -> IO [Ptr CFloat]
+createDataArr = M.mapM (newArray . L.map (CFloat . double2Float))
 
 {-# INLINE saveData #-}
 
@@ -55,7 +56,7 @@ saveData batchSize n = do
                    L.unzip .
                    L.map
                      (\(LabeledArray label vec) ->
-                        (label, normalize (0, 255) . R.toList $ vec)) $
+                        (label, normalize (0,1) .  R.toList $ vec)) $
                    shuffledBatch
              in do labelVec <- createLabelVec label
                    featuresVec <- createDataArr feature
