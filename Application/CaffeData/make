@@ -1,5 +1,5 @@
 #!/bin/bash
 
-cabal exec -- ghc -i../.. -lgomp -lstdc++ -lblas  -lprotobuf -lopencv_imgcodecs -lcaffe caffeData.o  -O2 ConvertLabeledArray.hs -o convertLabeledArray
+cabal exec -- ghc -i../.. -lgomp -lstdc++ -lblas  -lprotobuf -lopencv_imgcodecs -lcaffe -lhdf5 -lhdf5_hl  -O2 ConvertLabeledArray.hs -o convertLabeledArray
 
 

@@ -78,4 +78,8 @@ main = do
       (logpolarFlag params)
       (numGrid params) =$=
     shiftablePinwheelBlobPyramidCNNConduit parallelParams plan filters =$=
-    hdf5Sink parallelParams (takeBaseName . inputFile $ params)
+    hdf5Sink
+      parallelParams
+      (("Blob_" L.++ show (shiftablePinwheelBlobPyramidK filterParams) L.++ "_" L.++
+        show (shiftablePinwheelBlobPyramidNumLayers filterParams)) </>
+       (takeBaseName . inputFile $ params))

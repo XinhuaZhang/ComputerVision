@@ -2,17 +2,19 @@
 module Application.CaffeData.HDF5 where
 
 import           Application.CaffeData.HDF5Bindings
+import           Control.Arrow
 import           Control.Monad                      as M
 import           Control.Monad.IO.Class             (liftIO)
-import           Control.Monad.Parallel             as MP
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Utility.Parallel
+import           CV.Utility.Utility
 import           Data.Array.Repa                    as R
 import           Data.Conduit                       as C
 import           Data.Conduit.List                  as CL
 import           Data.List                          as L
 import           Data.Vector.Storable               as VS
+import           Data.Vector.Unboxed                as VU
 import           Foreign.C.String
 import           Foreign.C.Types
 import           Foreign.Marshal
@@ -28,76 +30,72 @@ hdf5Sink :: ParallelParams
          -> String
          -> Sink [LabeledArray DIM3 Double] (ResourceT IO) ()
 hdf5Sink parallelParams folderName = do
-  x <- CL.peek
-  case x of
-    Nothing -> return ()
-    Just y -> do
-      liftIO $ removePathForcibly folderName
-      liftIO $ createDirectory folderName
-      currentPath <- liftIO $ getCurrentDirectory
-      let filePath = currentPath </> folderName
-      handles <-
-        liftIO $
-        M.mapM
-          (\i -> do
-             createDirectory (filePath </> show i)
-             openFile (filePath </> show i </> "fileList.txt") WriteMode)
-          [0 .. L.length y - 1]
-      loop filePath 0 handles
-      liftIO $ M.mapM_ hClose handles
+  liftIO $ removePathForcibly folderName
+  liftIO $ createDirectoryIfMissing True folderName
+  currentPath <- liftIO $ getCurrentDirectory
+  let filePath = currentPath </> folderName
+  handle <- liftIO $ openFile (filePath </> "fileList.txt") WriteMode
+  loop filePath 0 handle
   where
-    loop filePath count hs = do
+    loop filePath count h = do
       xs <- CL.take (batchSize parallelParams)
       if L.null xs
-        then liftIO $ M.mapM_ hClose hs
+        then liftIO $ hClose h
         else do
-          let ys = L.zip hs . L.transpose $ xs
+          let (labels, ys) =
+                first L.head .
+                L.unzip .
+                L.map
+                  (second ((L.head *** VU.concat) . L.unzip) .
+                   L.unzip .
+                   parMap
+                     rdeepseq
+                     (\(LabeledArray label arr) ->
+                        ( label
+                        , ( L.map fromIntegral .
+                            L.reverse . listOfShape . extent $
+                            arr
+                          , rescaleUnboxedVector (0, 1) . toUnboxed $ arr)))) .
+                L.transpose $
+                xs
+              path = filePath </> show count <.> "h5"
+          liftIO $ hPutStrLn h path
+          cPath <- liftIO $ newCString path
+          hid <- liftIO $ c'H5Fcreate cPath h5f_acc_excl h5p_default h5p_default
+          when (hid < 0) (error "c'H5Fcreate")
+          labelStr <- liftIO $ newCString $ "label"
+          status <-
+            liftIO $
+            withArray [fromIntegral . L.length $ labels, 1] $ \dims ->
+              withArray (L.map (CFloat . fromIntegral) labels) $ \buffer ->
+                c'H5LTmake_dataset_float hid labelStr 2 dims buffer
+          when (status < 0) (error "c'H5LTmake_dataset_float: label")
           liftIO $
             M.zipWithM_
-              (\i (handle, y) -> do
-                 M.zipWithM_
-                   (\j (LabeledArray label arr) -> do
-                      let path =
-                            filePath </> show i </> show (j + count) <.> "h5"
-                      hPutStrLn handle path
-                      cPath <- newCString path
-                      hid <-
-                        c'H5Fcreate cPath h5f_acc_excl h5p_default h5p_default
-                      when (hid < 0) (error "c'H5Fcreate")
-                      dataStr <- newCString $ "data" L.++ show i
-                      labelStr <- newCString $ "label" L.++ show i
-                      status <-
-                        withArray [1, 1] $ \dims ->
-                          with (CFloat . fromIntegral $ label) $ \buffer ->
-                            c'H5LTmake_dataset_float hid labelStr 2 dims buffer
-                      when
-                        (status < 0)
-                        (error "c'H5LTmake_dataset_float: label")
-                      status <-
-                        withArray
-                          (((:) 1) .
-                           L.map fromIntegral . L.reverse . listOfShape . extent $
-                           arr) $ \dims ->
-                          unsafeWith
-                            (VS.map (CFloat . double2Float) .
-                             VS.convert . toUnboxed $
-                             arr) $ \buffer ->
-                            c'H5LTmake_dataset_float hid dataStr 4 dims buffer
-                      when (status < 0) (error "c'H5LTmake_dataset_float: data")
-                      status <- c'H5Fclose hid
-                      when (status < 0) (error "c'H5Fclose"))
-                   [0 .. L.length y - 1]
-                   y)
-              [0 .. L.length hs - 1]
+              (\i (shapeList, y) -> do
+                 dataStr <- newCString $ "data" L.++ show i
+                 status <-
+                   withArray ((fromIntegral . L.length $ xs) : shapeList) $ \dims ->
+                     unsafeWith
+                       (VS.map (CFloat . double2Float) . VS.convert $ y) $ \buffer ->
+                       c'H5LTmake_dataset_float hid dataStr 4 dims buffer
+                 when (status < 0) (error "c'H5LTmake_dataset_float: data"))
+              [0 :: Int ..]
               ys
-          -- loop filePath (count + L.length xs) hs
+          status <- liftIO $ c'H5Fclose hid
+          when (status < 0) (error "c'H5Fclose")
+          loop filePath (count + 1) h
 
 
-hdf5Source :: FilePath -> C.Source (ResourceT IO) (LabeledArray DIM3 Double)
-hdf5Source filePath = do
+hdf5Source
+  :: FilePath
+  -> String
+  -> String
+  -> C.Source (ResourceT IO) (LabeledArray DIM3 Double)
+hdf5Source filePath labelName dataName = do
   h <- liftIO $ openFile filePath ReadMode
-  labelStr <- liftIO $ newCString "label"
-  dataStr <- liftIO $ newCString "data"
+  labelStr <- liftIO $ newCString labelName
+  dataStr <- liftIO $ newCString dataName
   loop h labelStr dataStr
   where
     loop h labelStr dataStr = do
@@ -124,6 +122,9 @@ hdf5Source filePath = do
               status <- c'H5LTget_dataset_ndims hid dataStr p
               when (status < 0) (error "c'H5LTget_dataset_ndims")
               FS.peek p
+          when
+            (ndims /= 4)
+            (error "hdf5Source: hdf5 file is not a 4-dimension array.")
           dims <-
             liftIO $
             fmap (L.map fromIntegral) . alloca $ \classP ->
@@ -133,16 +134,23 @@ hdf5Source filePath = do
                     c'H5LTget_dataset_info hid dataStr arrP classP typeSizeP
                   when (status < 0) (error "c'H5LTget_dataset_info")
                   peekArray ndims arrP
-          arr <-
+          arrs <-
             liftIO $
             fmap
-              (fromListUnboxed (shapeOfList . L.reverse $ dims) .
-               L.map (float2Double . (\(CFloat x) -> x))) .
+              (\xs ->
+                 let arr =
+                       fromListUnboxed (shapeOfList . L.reverse $ dims) .
+                       L.map (float2Double . (\(CFloat x) -> x)) $
+                       xs
+                 in L.map
+                      (\i ->
+                         computeS . R.slice arr $ (Z :. i :. All :. All :. All))
+                      [0 .. (L.last dims) - 1]) .
             allocaArray (L.product dims) $ \arrP -> do
               status <- c'H5LTread_dataset_float hid dataStr arrP
               when (status < 0) (error "c'H5LTread_dataset_float")
               peekArray (L.product dims) arrP
           status <- liftIO $ c'H5Fclose hid
           when (status < 0) (error "c'H5Fclose")
-          yield (LabeledArray (round label) arr)
+          sourceList . L.map (LabeledArray (round label)) $ arrs
           loop h labelStr dataStr
