@@ -9,6 +9,6 @@ LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
 
 cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainOriginPredictor.hs -o trainOriginPredictor
 
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o -lprotobuf -lopencv_imgcodecs -lcaffe ../CaffeData/caffeData.o ShiftablePinwheelBlob.hs -o shiftablePinwheelBlob
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o -lprotobuf -lopencv_imgcodecs -lcaffe -lhdf5 -lhdf5_hl ShiftablePinwheelBlob.hs -o shiftablePinwheelBlob
 
 wait

@@ -78,6 +78,4 @@ main = do
       (logpolarFlag params)
       (numGrid params) =$=
     shiftablePinwheelBlobPyramidCNNConduit parallelParams plan filters =$=
-    saveDataSink
-      (takeBaseName . inputFile $ params)
-      (AP.batchSize params)
+    hdf5Sink parallelParams (takeBaseName . inputFile $ params)

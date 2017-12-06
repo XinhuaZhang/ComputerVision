@@ -1,10 +1,10 @@
 module Application.ShiftablePinwheelPyramidCNN.Conduit
   ( module RC
   , module Application.ShiftablePinwheelPyramidCNN.Conduit
-  , module Application.CaffeData.Caffe
+  , module Application.CaffeData.HDF5
   ) where
 
-import           Application.CaffeData.Caffe
+import           Application.CaffeData.HDF5 
 import           Application.RotatedMNIST.Conduit      as RC
 import           Control.Monad                         as M
 import           Control.Monad.IO.Class

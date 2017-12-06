@@ -2,7 +2,7 @@
 
 export OMP_NUM_THREADS=24
 NumThread=16
-BatchSize=1600
+BatchSize=64
 ImageSize=28
 FilterType=Blob
 ModelName=${ImageSize}_${FilterType}_SVM_Model
