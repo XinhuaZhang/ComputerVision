@@ -46,3 +46,38 @@ shiftablePinwheelBlobPyramidCNNConduit parallelParams plan filter' = do
             xs
         sourceList . L.concat $ ys
         shiftablePinwheelBlobPyramidCNNConduit parallelParams plan filter')
+
+shiftablePinwheelBlobPyramidScatteringNetworkCNNConduit
+  :: ParallelParams
+  -> DFTPlan
+  -> ShiftablePinwheelBlobPyramidScatteringNetworksFilters
+  -> Int
+  -> Int
+  -> Int
+  -> Conduit (Double, ShiftablePinwheelPyramidInputArray) (ResourceT IO) [LabeledArray DIM3 Double]
+shiftablePinwheelBlobPyramidScatteringNetworkCNNConduit parallelParams plan filters m numLayers k = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do ys <-
+          liftIO $
+          MP.mapM
+            (\(label, arr) -> do
+               zs <-
+                 shiftablePinwheelBlobPyramidScatteringNetworksCNN
+                   plan
+                   filters
+                   m
+                   numLayers
+                   k
+                   [arr]
+               return . featureArray2LabeledArrayList (round label) $ zs)
+            xs
+        sourceList . L.concat $ ys
+        shiftablePinwheelBlobPyramidScatteringNetworkCNNConduit
+          parallelParams
+          plan
+          filters
+          m
+          numLayers
+          k)

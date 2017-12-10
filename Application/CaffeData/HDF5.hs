@@ -24,18 +24,24 @@ import           GHC.Float
 import           System.Directory
 import           System.FilePath
 import           System.IO
+import           Text.Printf
 
 
 hdf5Sink :: ParallelParams
          -> String
          -> Sink [LabeledArray DIM3 Double] (ResourceT IO) ()
 hdf5Sink parallelParams folderName = do
-  liftIO $ removePathForcibly folderName
-  liftIO $ createDirectoryIfMissing True folderName
-  currentPath <- liftIO $ getCurrentDirectory
-  let filePath = currentPath </> folderName
-  handle <- liftIO $ openFile (filePath </> "fileList.txt") WriteMode
-  loop filePath 0 handle
+  x <- CL.peek
+  case x of
+    Nothing -> return ()
+    Just y -> do
+      liftIO $ M.mapM_ (print . extent . (\(LabeledArray _ arr) -> arr)) y
+      currentPath <- liftIO $ getCurrentDirectory
+      let filePath = currentPath </> folderName
+      liftIO $ removePathForcibly filePath
+      liftIO $ createDirectoryIfMissing True filePath
+      handle <- liftIO $ openFile (filePath </> "fileList.txt") WriteMode
+      loop filePath 0 handle
   where
     loop filePath count h = do
       xs <- CL.take (batchSize parallelParams)
@@ -60,6 +66,7 @@ hdf5Sink parallelParams folderName = do
                 xs
               path = filePath </> show count <.> "h5"
           liftIO $ hPutStrLn h path
+          liftIO $ hFlush h
           cPath <- liftIO $ newCString path
           hid <- liftIO $ c'H5Fcreate cPath h5f_acc_excl h5p_default h5p_default
           when (hid < 0) (error "c'H5Fcreate")

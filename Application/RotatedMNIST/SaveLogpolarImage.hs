@@ -1,4 +1,4 @@
-import           Application.CaffeData.Caffe
+import           Application.CaffeData.HDF5
 import           Application.RotatedMNIST.ArgsParser as AP
 import           Application.RotatedMNIST.Conduit
 import           Control.Monad                       as M
@@ -62,5 +62,5 @@ main = do
       (logpolarFlag params)
       (numGrid params) =$=
     toLabeledArrayConduit =$=
-    saveDataSink (takeBaseName . inputFile $ params) 10000
+    hdf5Sink parallelParams ("Pixel" </> (takeBaseName . inputFile $ params) )
 

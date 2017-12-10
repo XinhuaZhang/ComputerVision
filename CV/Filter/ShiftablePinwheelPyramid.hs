@@ -235,9 +235,11 @@ generateShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramid
       (makeFilter nT nR l0)
       (L.map
          (\i ->
+             -- [makeBandpassFilter (div nT (2 ^ i)) (div nR (2 ^ i)) h1 . g1 (10::Int) $ 0]
              L.map
                (makeBandpassFilter (div nT (2 ^ i)) (div nR (2 ^ i)) h1 . g1 k)
-               [0 .. k - 1])
+               [0 .. k - 1]
+         )
          [0 .. nLayer - 1])
       (L.map
          (\i -> makeFilter (div nT (2 ^ i)) (div nR (2 ^ i)) l1)
@@ -255,7 +257,9 @@ generateShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramid
           let a = fftwFreqOpBlob nR'' i
               b = fftwFreqOpBlob nT'' j
               r = sqrt $ a ^ (2 :: Int) + b ^ (2 :: Int)
-          in op r)
+          in -- (op . abs $ a) * (op . abs $ b)
+             op r
+      )
     makeBandpassFilter nT' nR' opR opT =
       VS.convert .
       toUnboxed .
@@ -265,7 +269,10 @@ generateShiftablePinwheelBlobPyramidFilters params@(ShiftablePinwheelBlobPyramid
               b = fftwFreqOpBlob nT' tInd
               r = sqrt $ a ^ (2 :: Int) + b ^ (2 :: Int)
               t = angleFunctionRad a b
-          in opT t * opR r)
+          in -- (opR . abs $ a) * (opR . abs $ b)  
+             opT t * opR r
+             -- opR r
+      )
 
 shiftablePinwheelBlobPyramidPlan
   :: DFTPlan
@@ -669,7 +676,7 @@ h1 x
 l1 :: Double -> Complex Double
 l1 x
   | x >= 0.5 * pi = 0
-  -- | x <= 0 = 0
+  | x < 0 = 0
   | x <= pi / n = 2
   | otherwise = (2 * cos 0.5 * pi * logBase (n / 2) (n * x / pi)) :+ 0
   where
@@ -1060,7 +1067,7 @@ generateShiftablePinwheelBlobPyramidScatteringNetworksFilters
 generateShiftablePinwheelBlobPyramidScatteringNetworksFilters params@(ShiftablePinwheelBlobPyramidParams nLayer nCenter nChannel nT nR k) =
   let x =
         round . logBase 2 . fromIntegral $
-        div (min (div nT (2 ^ nLayer)) (div nR (2 ^ nLayer))) 3 :: Int
+        div (min (div nT (2 ^ nLayer)) (div nR (2 ^ nLayer))) 8 :: Int
   in DFT.fromList .
      L.map
        (\n ->

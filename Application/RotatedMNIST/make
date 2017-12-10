@@ -39,6 +39,6 @@ LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainSVM.hs -o trainSVM
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictSVM.hs -o predictSVM
 
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o -lprotobuf -lopencv_imgcodecs -lcaffe ../CaffeData/caffeData.o SaveLogpolarImage.hs -o saveLogpolarImage
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o -lprotobuf -lopencv_imgcodecs -lcaffe -lhdf5 -lhdf5_hl SaveLogpolarImage.hs -o saveLogpolarImage
 
 wait

@@ -11,4 +11,6 @@ cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPAT
 
 cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o -lprotobuf -lopencv_imgcodecs -lcaffe -lhdf5 -lhdf5_hl ShiftablePinwheelBlob.hs -o shiftablePinwheelBlob
 
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o -lprotobuf -lopencv_imgcodecs -lcaffe -lhdf5 -lhdf5_hl ShiftablePinwheelBlobScatteringNetwork.hs -o shiftablePinwheelBlobScatteringNetwork
+
 wait

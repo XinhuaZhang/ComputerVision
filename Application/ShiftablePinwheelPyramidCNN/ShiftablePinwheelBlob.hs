@@ -36,7 +36,7 @@ main = do
         , shiftablePinwheelBlobPyramidNumChannels = nf
         , shiftablePinwheelBlobPyramidNumTheta = 64
         , shiftablePinwheelBlobPyramidNumLogR = 64
-        , shiftablePinwheelBlobPyramidK = 20
+        , shiftablePinwheelBlobPyramidK = 10
         }
       filters = generateShiftablePinwheelBlobPyramidFilters filterParams
   writeFile (paramsFileName params) . show $ filterParams
