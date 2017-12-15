@@ -62,5 +62,5 @@ main = do
       (logpolarFlag params)
       (numGrid params) =$=
     toLabeledArrayConduit =$=
-    hdf5Sink parallelParams ("Pixel" </> (takeBaseName . inputFile $ params) )
+    hdf5Sink parallelParams ("LogpolarPixel" </> (takeBaseName . inputFile $ params) )
 

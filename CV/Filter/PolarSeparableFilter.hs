@@ -14,7 +14,6 @@ import           Control.Monad            as M
 import           CV.Filter
 import           CV.Filter.GaussianFilter
 import           CV.Utility.Coordinates
-import           CV.Utility.FFT
 import           Data.Array.Repa          as R
 import           Data.Complex             as C
 import           Data.List                as L
@@ -515,23 +514,22 @@ instance FilterExpansion PolarSeparableFilterGridExpansion where
   {-# INLINE makeFilterExpansion #-}
   makeFilterExpansion params@(PolarSeparableFilterParamsGrid rows cols scales rfs afs) rCenter cCenter =
     Filter params $!
-    [ [ [ VU.fromListN (rows * cols) $!
-         makeFilterExpansionList
-           rows
-           cols
-           rCenter
-           cCenter
-           (pinwheels scale rf af)
-        | af <- afs ]
-      | rf <- rfs ]
-    | scale <- scales ]
+    [ [ [ VU.fromList $!
+    makeFilterExpansionList rows cols rCenter cCenter (pinwheels scale rf af)
+    | af <- afs
+    ]
+    | rf <- rfs
+    ]
+    | scale <- scales
+    ]
   {-# INLINE getFilterExpansionNum #-}
   getFilterExpansionNum (Filter (PolarSeparableFilterParamsGrid _ _ scales rfs afs) _) =
     L.length scales * L.length rfs * L.length afs
   {-# INLINE applyFilterExpansion #-}
   applyFilterExpansion (Filter _ filters) =
     L.concatMap
-      (\x -> L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))) filters)
+      (\x ->
+         L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))) filters)
   {-# INLINE getFilterExpansionList #-}
   getFilterExpansionList = L.concatMap L.concat . getFilter
 
@@ -539,34 +537,41 @@ instance FilterExpansion PolarSeparableFilterGridExpansion where
 instance FilterConvolution PolarSeparableFilterGridConvolution where
   type FilterConvolutionParameters PolarSeparableFilterGridConvolution = PolarSeparableFilterParamsGrid
   {-# INLINE makeFilterConvolution #-}
-  makeFilterConvolution fftw params@(PolarSeparableFilterParamsGrid rows cols scales rfs afs) filterType =
-    Filter params <$!>
-    M.mapM
-      (\scale ->
-          M.mapM
-            (\rf ->
-                M.mapM
-                  (dft2d fftw rows cols .
-                   VS.fromListN (rows * cols) .
-                   conjugateFunc filterType .
-                   makeFilterConvolutionList rows cols . pinwheels scale rf)
-                  afs)
-            rfs)
-      scales
+  makeFilterConvolution plan params@(PolarSeparableFilterParamsGrid rows cols scales rfs afs) filterType = do
+    let filterList =
+          L.map
+            (\scale ->
+               L.map
+                 (\rf ->
+                    L.map
+                      (VS.fromListN (rows * cols) .
+                       conjugateFunc filterType .
+                       makeFilterConvolutionList rows cols . pinwheels scale rf)
+                      afs)
+                 rfs)
+            scales
+        filterTemp =
+          VS.fromListN (rows * cols) .
+          conjugateFunc filterType . makeFilterConvolutionList rows cols $
+          pinwheels (L.last scales) (L.last rfs) (L.last afs)
+    lock <- getFFTWLock
+    (p1, vec) <- dft2dPlan lock plan rows cols filterTemp
+    (p2, _) <- idft2dPlan lock p1 rows cols vec
+    filters <-
+      Filter params <$!>
+      M.mapM
+        (M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])))
+        filterList
+    return (p2, filters)
   {-# INLINE getFilterConvolutionNum #-}
   getFilterConvolutionNum (Filter (PolarSeparableFilterParamsGrid _ _ scales rfs afs) _) =
     L.length scales * L.length rfs * L.length afs
   {-# INLINE applyFilterConvolution #-}
-  applyFilterConvolution fftw (Filter (PolarSeparableFilterParamsGrid rows cols _ _ _) filters) xs = do
-    ys <- M.mapM (dft2d fftw rows cols) xs
-    L.concat <$>
-      M.mapM
-        (\x ->
-            L.concat <$>
-            M.mapM
-              (fmap L.concat .
-               M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x)))
-              filters)
-        ys
+  applyFilterConvolution plan (Filter (PolarSeparableFilterParamsGrid rows cols _ _ _) filters) xs = do
+    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+    dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+      L.concatMap
+        (\x -> L.concatMap (L.concatMap (L.map (VS.zipWith (*) x))) filters) $
+      ys
   {-# INLINE getFilterConvolutionList #-}
   getFilterConvolutionList = L.concatMap L.concat . getFilter

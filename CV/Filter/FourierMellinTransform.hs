@@ -11,7 +11,6 @@ module CV.Filter.FourierMellinTransform
 import           Control.Monad          as M
 import           CV.Filter              as F
 import           CV.Utility.Coordinates
-import           CV.Utility.FFT
 import           Data.Complex           as C
 import           Data.List              as L
 import           Data.Vector.Storable   as VS
@@ -57,7 +56,13 @@ instance FilterConvolution FourierMellinTransformConvolution where
   type FilterConvolutionParameters FourierMellinTransformConvolution = FourierMellinTransformParamsGrid
   {-# INLINE makeFilterConvolution #-}
   makeFilterConvolution plan params@(FourierMellinTransformParamsGrid rows cols rfs afs) filterType = do
-    let filterList =
+    let filterTemp =
+          VS.fromList . conjugateFunc filterType $!
+          makeFilterConvolutionList
+            rows
+            cols
+            (fourierMellinTransform (L.last rfs) (L.last afs))
+        filterList =
           L.map
             (\rf ->
                L.map
@@ -70,32 +75,21 @@ instance FilterConvolution FourierMellinTransformConvolution where
                  afs)
             rfs
     lock <- getFFTWLock
-    (p1, vec) <- dft2dPlan lock plan rows cols . L.last . L.last $ filterList
+    (p1, vec) <- dft2dPlan lock plan rows cols filterTemp
     (p2, _) <- idft2dPlan lock p1 rows cols vec
-    let planID = DFTPlanID DFT2D [rows, cols] []
-        dftPlan = getDFTPlan p2 planID
     filters <-
       Filter params <$!>
-      M.mapM (M.mapM (dftExecuteWithPlan planID dftPlan)) filterList
+      M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])) filterList
     return (p2, filters)
   {-# INLINE getFilterConvolutionNum #-}
   getFilterConvolutionNum (Filter (FourierMellinTransformParamsGrid _ _ rfs afs) _) =
     L.length rfs * L.length afs
   {-# INLINE applyFilterConvolution #-}
   applyFilterConvolution plan (Filter (FourierMellinTransformParamsGrid rows cols _ _) filters) xs = do
-    let planID = DFTPlanID DFT2D [rows, cols] []
-        iPlanID = DFTPlanID IDFT2D [rows, cols] []
-        dftPlan = getDFTPlan plan planID
-        idftPlan = getDFTPlan plan iPlanID
-    ys <- M.mapM (dftExecuteWithPlan planID dftPlan) xs
-    L.concat <$>
-      M.mapM
-        (\x ->
-           L.concat <$>
-           M.mapM
-             (M.mapM (dftExecuteWithPlan iPlanID idftPlan . VS.zipWith (*) x))
-             filters)
-        ys
+    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+    dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+      L.concatMap (\x -> L.concatMap (L.map (VS.zipWith (*) x)) filters) $
+      ys
   {-# INLINE getFilterConvolutionList #-}
   getFilterConvolutionList = L.concat . getFilter
 
@@ -104,8 +98,7 @@ instance FilterConvolution FourierMellinTransformConvolution where
 fourierMellinTransform ::  Double -> Int -> Int -> Int -> Complex Double
 fourierMellinTransform rf af x y
   | x == 0 && y == 0 = 0
-  | otherwise =
-    (r ** ((-0.5) :+ (-rf))) * exp (0 :+ (fromIntegral (-af) * theta))
+  | otherwise = (r ** ((-1) :+ (-rf))) * exp (0 :+ (fromIntegral (-af) * theta))
   where
     r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     theta = angleFunctionRad (fromIntegral x) (fromIntegral y)

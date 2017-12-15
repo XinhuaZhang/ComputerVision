@@ -18,9 +18,9 @@ LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainShiftablePinwheelBlobPyramid.hs -o trainShiftablePinwheelBlobPyramid 
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictShiftablePinwheelBlobPyramid.hs -o predictShiftablePinwheelBlobPyramid &
 
-## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o FourierMellinKMeansModel.hs -o fourierMellinKMeansModel &
-## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainFourierMellin.hs -o trainFourierMellin &
-## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictFourierMellin.hs -o predictFourierMellin  &
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o FourierMellinKMeansModel.hs -o fourierMellinKMeansModel &
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainFourierMellin.hs -o trainFourierMellin &
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictFourierMellin.hs -o predictFourierMellin  &
 
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o ShiftablePinwheelBlobPyramidKMeansModelDFTPCA.hs -o shiftablePinwheelBlobPyramidKMeansModelDFTPCA &
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainShiftablePinwheelBlobPyramidDFTPCA.hs -o trainShiftablePinwheelBlobPyramidDFTPCA & 
@@ -40,5 +40,7 @@ LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
 ## cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictSVM.hs -o predictSVM
 
 cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o -lprotobuf -lopencv_imgcodecs -lcaffe -lhdf5 -lhdf5_hl SaveLogpolarImage.hs -o saveLogpolarImage
+
+cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o -lprotobuf -lopencv_imgcodecs -lcaffe -lhdf5 -lhdf5_hl SaveCartesianImage.hs -o saveCartesianImage
 
 wait
