@@ -1,15 +1,20 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 module CV.Array.Image where
 
 import           Codec.Picture
 import           Control.Monad                as M
+import           Control.Monad.ST
 import           Control.Monad.Trans.Resource
 import           CV.Image
 import           CV.Utility.Coordinates
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility  as RAU
 import           Data.Array.Repa              as R
+import           Data.Array.ST
+import qualified Data.Array.IArray as IA
+import qualified Data.Array.Unboxed as UA
 import           Data.Conduit
 import           Data.Conduit.List            as CL
 import           Data.Image
@@ -23,7 +28,7 @@ data ImageTransformationParams = ImageTransformationParams
   { imageTransformationParamsRows :: !Int
   , imageTransformationParamsCols :: !Int
   , rotationAngleParams           :: !Double
-  , scaleFactorRange              :: !(Double, Double)   -- the maximum scale is 1
+  , scaleFactorRange              :: !(Double, Double)   -- if the inputSize * scale is greater than outputSize, it crops.
   , contrastFactorARange          :: !(Double, Double)
   , contrastFactorBRange          :: !(Double, Double)
   } deriving (Read, Show)
@@ -337,9 +342,9 @@ padResizeRotate2DImageS n degs arr =
     !minVal = 0 -- foldAllS min (fromIntegral (maxBound :: Word64)) arr
     !maxVal = 255 -- foldAllS max (fromIntegral (minBound :: Int)) arr
     !(Z :. ny :. nx) = extent arr
-    !m =
-      ceiling
-        (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
+    !m = max nx ny
+      -- ceiling
+      --   (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
     !paddedImg = RAU.pad [m, m] 0 arr
     !ds = computeDerivativeS (computeUnboxedS paddedImg)
     !center = fromIntegral (n - 1) / 2
@@ -387,7 +392,7 @@ padResizeRotateImageConduit parallelParams n deg = do
     !degs = L.map (* deg) [0 .. fromIntegral len - 1]
 
 
--- First pading image to be a square image then doing transformation
+-- First pading image to be a square image then doing transformation, then padding it to the target size
 {-# INLINE padTransformGrayImage #-}   
 
 padTransformGrayImage
@@ -399,66 +404,55 @@ padTransformGrayImage
 padTransformGrayImage padVal transformationList arr =
   L.map
     (\(ImageTransformation r' c' deg sf a b) ->
-        let -- r = div r' 2
-            -- c = div c' 2
-            rescaledR = round $ fromIntegral r' * sf
-            rescaledC = round $ fromIntegral c' * sf
-            ratioR = fromIntegral (m - 1) / fromIntegral (rescaledR - 1)
-            ratioC = fromIntegral (m - 1) / fromIntegral (rescaledC - 1)
-        in if deg == 0
-             then computeS .
-                  -- R.map
-                  --   (\x ->
-                  --       let y = a * x + b
-                  --       in if y > 255
-                  --            then 255
-                  --            else if y < 0
-                  --                   then 0
-                  --                   else y) .
-                  RAU.pad [c', r'] padVal .
-                  fromFunction (Z :. rescaledR :. rescaledC) $
-                  \(Z :. j :. i) ->
-                     bicubicInterpolation
-                       ds
-                       (minVal, maxVal)
-                       (fromIntegral j * ratioR, fromIntegral i * ratioC)
-             else computeS .
-                  -- R.map
-                  --   (\x ->
-                  --       let y = a * x + b
-                  --       in if y > 255
-                  --            then 255
-                  --            else if y < 0
-                  --                   then 0
-                  --                   else y) .
-                  RAU.pad [c', r'] padVal .
-                  fromFunction (Z :. rescaledR :. rescaledC) $
-                  \(Z :. j :. i) ->
-                     let (j', i') =
-                           rotatePixel
-                             (VU.fromListN 4 $
-                              P.map
-                                (\f -> f deg)
-                                [cos, sin, \x -> -(sin x), cos])
-                             ( fromIntegral $ div rescaledR 2
-                             , fromIntegral $ div rescaledC 2)
-                             (fromIntegral j, fromIntegral i)
-                     in if j' < 0 ||
-                           j' > (fromIntegral rescaledR - 1) ||
-                           i' < 0 || i' > (fromIntegral rescaledC - 1)
-                          then padVal
-                          else bicubicInterpolation
-                                 ds
-                                 (minVal, maxVal)
-                                 (j' * ratioR, i' * ratioC))
+       let rescaledR = round $ fromIntegral ny * sf
+           rescaledC = round $ fromIntegral nx * sf
+           ratioR = fromIntegral (m - 1) / fromIntegral (rescaledR - 1)
+           ratioC = fromIntegral (m - 1) / fromIntegral (rescaledC - 1)
+           (startR, lenR) =
+             if rescaledR > r'
+               then (div (rescaledR - r') 2, r')
+               else (0, rescaledR)
+           (startC, lenC) =
+             if rescaledC > c'
+               then (div (rescaledC - c') 2, c')
+               else (0, rescaledC)
+           rescaledArr =
+             if deg == 0
+               then fromFunction (Z :. rescaledR :. rescaledC) $ \(Z :. j :. i) ->
+                      bicubicInterpolation
+                        ds
+                        (minVal, maxVal)
+                        (fromIntegral j * ratioR, fromIntegral i * ratioC)
+               else fromFunction (Z :. rescaledR :. rescaledC) $ \(Z :. j :. i) ->
+                      let (j', i') =
+                            rotatePixel
+                              (VU.fromListN 4 $
+                               P.map
+                                 (\f -> f deg)
+                                 [cos, sin, \x -> -(sin x), cos])
+                              ( fromIntegral $ div rescaledR 2
+                              , fromIntegral $ div rescaledC 2)
+                              (fromIntegral j, fromIntegral i)
+                      in if j' < 0 ||
+                            j' > (fromIntegral rescaledR - 1) ||
+                            i' < 0 || i' > (fromIntegral rescaledC - 1)
+                           then padVal
+                           else bicubicInterpolation
+                                  ds
+                                  (minVal, maxVal)
+                                  (j' * ratioR, i' * ratioC)
+       in computeS . RAU.pad [c', r'] padVal $
+          if rescaledC > c' || rescaledR > r'
+            then RAU.crop [startC, startR] [lenC, lenR] $ rescaledArr
+            else rescaledArr)
     transformationList
   where
     minVal = 0
     maxVal = 255
     (Z :. ny :. nx) = extent arr
-    m =
-      ceiling
-        (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
+    m = max nx ny
+      -- ceiling
+      --   (sqrt . fromIntegral $ (nx ^ (2 :: Int) + ny ^ (2 :: Int)) :: Double)
     paddedImg = RAU.pad [m, m] padVal arr
     ds = computeDerivativeS (computeUnboxedS paddedImg)
 
@@ -643,3 +637,44 @@ shiftImage rowShift colShift padVal arr =
   [0 .. nf - 1]
   where
     (Z :. nf :. _ :. _) = extent arr
+
+
+{-# INLINE array2RepaArray #-}
+
+array2RepaArray
+  :: (IA.IArray arr Double)
+  => arr (Int, Int, Int) Double -> R.Array U DIM3 Double
+array2RepaArray array =
+  let (_, (nf, rows, cols)) = IA.bounds array
+  in fromListUnboxed (Z :. nf + 1 :. rows + 1 :. cols + 1) . IA.elems $ array
+  
+
+insertPatch
+  :: (R.Source s1 Double, R.Source s2 Double)
+  => R.Array s1 DIM3 Double
+  -> [((Int, Int), R.Array s2 DIM3 Double)]        -- (originIdx (not center), arr)
+  -> R.Array U DIM3 Double
+insertPatch arr patches
+  | nf1 /= nf2 || rows2 > rows1 || cols2 > cols1 = undefined
+  | otherwise =
+    array2RepaArray $
+    runSTUArray $ do
+      img <-
+        newListArray ((0, 0, 0), (nf1 - 1, rows1 - 1, cols1 - 1)) (R.toList arr)
+      M.mapM_
+        (\((i0, j0), patch) ->
+           M.mapM_
+             (\(i, j) ->
+                M.mapM_
+                  (\k ->
+                     writeArray
+                       img
+                       (k, (i + i0), (j + j0))
+                       (patch R.! (Z :. k :. i :. j)))
+                  [0 .. nf2 - 1])
+             [(i, j) | i <- [0 .. rows2 - 1], j <- [0 .. cols2 - 1]])
+        patches
+      return img
+  where
+    (Z :. nf1 :. rows1 :. cols1) = extent arr
+    (Z :. nf2 :. rows2 :. cols2) = extent . snd . L.head $ patches
