@@ -9,7 +9,7 @@ module CV.Filter.PinwheelWavelet
   , PinwheelWaveletConvolution
   , PinwheelWaveletPIConvolution
   , PinwheelWaveletPIExpansion(..)
-  -- , applyPinwheelWaveletConvolution
+  , applyPinwheelWaveletConvolution
   -- , applyPinwheelWaveletExpansion
   ) where
 
@@ -30,117 +30,102 @@ data PinwheelWaveletParams = PinwheelWaveletParams
   , pinwheelWaveletCols          :: !Int
   , pinwheelWaveletGaussianScale :: !Double
   , pinwheelWaveletScale         :: ![Double]
-  , pinwheelWaveletRadialScale   :: ![Double]
   , pinwheelWaveletRadialFreqs   :: ![Double]
   , pinwheelWaveletAngularFreqs  :: ![Int]
   , pinwheelWaveletRadius        :: ![Double]
   } deriving (Show, Read)
 
-type PinwheelWaveletExpansion = Filter PinwheelWaveletParams [[[[VU.Vector (Complex Double)]]]]
-type PinwheelWaveletConvolution = Filter PinwheelWaveletParams [[[[VS.Vector (Complex Double)]]]]
+type PinwheelWaveletExpansion = Filter PinwheelWaveletParams [[[VU.Vector (Complex Double)]]]
+type PinwheelWaveletConvolution = Filter PinwheelWaveletParams [[[VS.Vector (Complex Double)]]]
 data PinwheelWaveletPIConvolution = PinwheelWaveletPIConvolution (Filter PinwheelWaveletParams [[[[VS.Vector (Complex Double)]]]])
 data PinwheelWaveletPIExpansion = PinwheelWaveletPIExpansion (Filter PinwheelWaveletParams [[[[VU.Vector (Complex Double)]]]])
 
 instance FilterExpansion PinwheelWaveletExpansion where
   type FilterExpansionParameters PinwheelWaveletExpansion = PinwheelWaveletParams
   {-# INLINE makeFilterExpansion #-}
-  makeFilterExpansion params@(PinwheelWaveletParams rows cols gScale waveletScales radialScales rfs afs radiuses) rCenter cCenter =
+  makeFilterExpansion params@(PinwheelWaveletParams rows cols gScale waveletScales rfs afs radiuses) rCenter cCenter =
     Filter params $!
-    [ [ [ [ VU.fromListN (rows * cols) $
+    [ [ [ VU.fromListN (rows * cols) $
     makeFilterExpansionList
       rows
       cols
       rCenter
       cCenter
-      (pinwheelWavelet gScale radialScale waveletScale rf af radius)
+      (pinwheelWavelet gScale waveletScale rf af radius)
     | af <- afs
     , rf <- rfs
     ]
-    | radius <- radiuses
-    ]
     | waveletScale <- waveletScales
     ]
-    | radialScale <- radialScales
+    | radius <- radiuses
     ]
   {-# INLINE getFilterExpansionNum #-}
-  getFilterExpansionNum (Filter (PinwheelWaveletParams _ _ _ scales radialScales rfs afs radiuses) _) =
-    L.length scales * L.length afs * L.length radiuses * L.length radialScales *
-    L.length rfs
+  getFilterExpansionNum (Filter (PinwheelWaveletParams _ _ _ scales rfs afs radiuses) _) =
+    L.length scales * L.length afs * L.length radiuses * L.length rfs
   {-# INLINE applyFilterExpansion #-}
   applyFilterExpansion (Filter _ filters) =
     L.concatMap
       (\x ->
-         L.concatMap
-           (L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))))
-           filters)
+         L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))) filters)
   {-# INLINE getFilterExpansionList #-}
-  getFilterExpansionList = L.concatMap (L.concatMap L.concat) . getFilter
+  getFilterExpansionList = L.concatMap L.concat . getFilter
   
-instance FilterExpansion PinwheelWaveletPIExpansion where
-  type FilterExpansionParameters PinwheelWaveletPIExpansion = PinwheelWaveletParams
-  {-# INLINE makeFilterExpansion #-}
-  makeFilterExpansion params@(PinwheelWaveletParams rows cols gScale waveletScales radialScales rfs afs radiuses) rCenter cCenter =
-    PinwheelWaveletPIExpansion . Filter params $!
-    [ [ [ [ VU.fromListN (rows * cols) $
-    makeFilterExpansionList
-      rows
-      cols
-      rCenter
-      cCenter
-      (pinwheelWaveletPI gScale radialScale waveletScale rf af radius)
-    | af <- afs
-    , rf <- rfs
-    ]
-    | radius <- radiuses
-    ]
-    | waveletScale <- waveletScales
-    ]
-    | radialScale <- radialScales
-    ]
-  {-# INLINE getFilterExpansionNum #-}
-  getFilterExpansionNum (PinwheelWaveletPIExpansion (Filter (PinwheelWaveletParams _ _ _ scales radialScales rfs afs radiuses) _)) =
-    L.length scales * L.length afs * L.length radiuses * L.length radialScales *
-    L.length rfs
-  {-# INLINE applyFilterExpansion #-}
-  applyFilterExpansion (PinwheelWaveletPIExpansion (Filter _ filters)) =
-    L.concatMap
-      (\x ->
-         L.concatMap
-           (L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))))
-           filters)
-  {-# INLINE getFilterExpansionList #-}
-  getFilterExpansionList =
-    L.concatMap (L.concatMap L.concat) .
-    getFilter . (\(PinwheelWaveletPIExpansion x) -> x)
+-- instance FilterExpansion PinwheelWaveletPIExpansion where
+--   type FilterExpansionParameters PinwheelWaveletPIExpansion = PinwheelWaveletParams
+--   {-# INLINE makeFilterExpansion #-}
+--   makeFilterExpansion params@(PinwheelWaveletParams rows cols gScale waveletScales radialScales rfs afs radiuses) rCenter cCenter =
+--     PinwheelWaveletPIExpansion . Filter params $!
+--     [ [ [ [ VU.fromListN (rows * cols) $
+--     makeFilterExpansionList
+--       rows
+--       cols
+--       rCenter
+--       cCenter
+--       (pinwheelWaveletPI gScale radialScale waveletScale rf af radius)
+--     | af <- afs
+--     , rf <- rfs
+--     ]
+--     | radius <- radiuses
+--     ]
+--     | waveletScale <- waveletScales
+--     ]
+--     | radialScale <- radialScales
+--     ]
+--   {-# INLINE getFilterExpansionNum #-}
+--   getFilterExpansionNum (PinwheelWaveletPIExpansion (Filter (PinwheelWaveletParams _ _ _ scales radialScales rfs afs radiuses) _)) =
+--     L.length scales * L.length afs * L.length radiuses * L.length radialScales *
+--     L.length rfs
+--   {-# INLINE applyFilterExpansion #-}
+--   applyFilterExpansion (PinwheelWaveletPIExpansion (Filter _ filters)) =
+--     L.concatMap
+--       (\x ->
+--          L.concatMap
+--            (L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))))
+--            filters)
+--   {-# INLINE getFilterExpansionList #-}
+--   getFilterExpansionList =
+--     L.concatMap (L.concatMap L.concat) .
+--     getFilter . (\(PinwheelWaveletPIExpansion x) -> x)
 
 instance FilterConvolution PinwheelWaveletConvolution where
   type FilterConvolutionParameters PinwheelWaveletConvolution = PinwheelWaveletParams
   {-# INLINE makeFilterConvolution #-}
-  makeFilterConvolution plan params@(PinwheelWaveletParams rows cols gScale waveletScales radialScales rfs afs radiuses) filterType = do
+  makeFilterConvolution plan params@(PinwheelWaveletParams rows cols gScale waveletScales rfs afs radiuses) filterType = do
     let filterList =
           L.map
-            (\radialScale ->
+            (\radius ->
                L.map
                  (\waveletScale ->
                     L.map
-                      (\radius ->
-                         L.map
-                           (\(af, rf) ->
-                              VS.fromList . conjugateFunc filterType $!
-                              makeFilterConvolutionList
-                                rows
-                                cols
-                                (pinwheelWavelet
-                                   gScale
-                                   radialScale
-                                   waveletScale
-                                   rf
-                                   af
-                                   radius)) $
-                         [(af, rf) | af <- afs, rf <- rfs])
-                      radiuses)
+                      (\(af, rf) ->
+                         VS.fromList . conjugateFunc filterType $!
+                         makeFilterConvolutionList
+                           rows
+                           cols
+                           (pinwheelWavelet gScale waveletScale rf af radius)) $
+                    [(af, rf) | af <- afs, rf <- rfs])
                  waveletScales)
-            radialScales
+            radiuses
         filterTmp =
           VS.fromListN (rows * cols) . conjugateFunc filterType $!
           makeFilterConvolutionList
@@ -148,7 +133,6 @@ instance FilterConvolution PinwheelWaveletConvolution where
             cols
             (pinwheelWavelet
                gScale
-               (L.last radialScales)
                (L.last waveletScales)
                (L.last rfs)
                (L.last afs)
@@ -159,25 +143,21 @@ instance FilterConvolution PinwheelWaveletConvolution where
     filters <-
       Filter params <$!>
       M.mapM
-        (M.mapM (M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] []))))
+        (M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])))
         filterList
     return (p2, filters)
   {-# INLINE getFilterConvolutionNum #-}
-  getFilterConvolutionNum (Filter (PinwheelWaveletParams _ _ _ scales radialScales rfs afs radiuses) _) =
-    L.length scales * L.length afs * L.length radiuses * L.length radialScales *
-    L.length rfs
+  getFilterConvolutionNum (Filter (PinwheelWaveletParams _ _ _ scales rfs afs radiuses) _) =
+    L.length scales * L.length afs * L.length radiuses * L.length rfs
   {-# INLINE applyFilterConvolution #-}
-  applyFilterConvolution plan (Filter (PinwheelWaveletParams rows cols _ _ _ _ _ _) filters) xs = do
+  applyFilterConvolution plan (Filter (PinwheelWaveletParams rows cols _ _ _ _ _) filters) xs = do
     ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
     dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
       L.concatMap
-        (\x ->
-           L.concatMap
-             (L.concatMap (L.concatMap (L.map (VS.zipWith (*) x))))
-             filters) $
+        (\x -> L.concatMap (L.concatMap (L.map (VS.zipWith (*) x))) filters) $
       ys
   {-# INLINE getFilterConvolutionList #-}
-  getFilterConvolutionList = L.concatMap (L.concatMap L.concat) . getFilter
+  getFilterConvolutionList = L.concatMap L.concat . getFilter
 
 
 {-# INLINE pinwheelWavelet #-}
@@ -185,29 +165,26 @@ instance FilterConvolution PinwheelWaveletConvolution where
 pinwheelWavelet :: Double
                 -> Double
                 -> Double
-                -> Double
                 -> Int
                 -> Double
                 -> Int
                 -> Int
                 -> Complex Double
-pinwheelWavelet gaussianScale radialScale waveletScale rf af shift x y
+pinwheelWavelet gaussianScale waveletScale rf af shift x y
   | x == 0 && y == 0 && shift == 0 =
-    (radialScale ** (3 / 2) :+ 0) / (2 * pi * sqrt waveletScale :+ 0) *
-    (gaussian1D gaussianScale 0 :+ 0)
+    1 / (2 * pi * sqrt waveletScale :+ 0) * (gaussian1D gaussianScale 0 :+ 0)
   | x == 0 && y == 0 && shift /= 0 = 0
   | otherwise =
-    (radialScale ** (3 / 2) :+ 0) / (2 * pi * sqrt waveletScale :+ 0) *
+    1 / (2 * pi * sqrt waveletScale :+ 0) *
     (gaussian1D gaussianScale (r - r') :+ 0) *
     exp
       (0 :+ fromIntegral af * angleFunctionRad (fromIntegral x) (fromIntegral y)) *
     radialFunc rf r r'
   where
     r =
-      (log . sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) *
-      radialScale /
+      (log . sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) /
       waveletScale
-    r' = log shift --  / waveletScale
+    r' = (log shift)  / waveletScale
 
 
 -- instance FilterConvolution PinwheelWaveletPIConvolution where
@@ -329,24 +306,16 @@ radialFunc rFreq r r' = exp (0 :+ rFreq * ( r - r'))
 --           imgVecs)
 --     pFilters
 
--- {-# INLINE applyPinwheelWaveletConvolution #-}
+{-# INLINE applyPinwheelWaveletConvolution #-}
 
--- applyPinwheelWaveletConvolution
---   :: FFTW
---   -> PinwheelWaveletConvolution
---   -> [VS.Vector (Complex Double)]
---   -> IO [[[VS.Vector (Complex Double)]]]
--- applyPinwheelWaveletConvolution fftw (Filter (PinwheelWaveletParams rows cols _ _ _ _ _ _) pFilters) imgVecs = do
---   imgVecsF <- M.mapM (dft2d fftw rows cols) imgVecs
---   M.mapM
---     (\filters ->
---         L.concat <$>
---         M.mapM
---           (\imgVec ->
---               L.concat <$>
---               M.mapM
---                 (M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) imgVec)))
---                 filters)
---           imgVecsF)
---     pFilters
-
+applyPinwheelWaveletConvolution
+  :: DFTPlan
+  -> PinwheelWaveletConvolution
+  -> [VS.Vector (Complex Double)]
+  -> IO [[VS.Vector (Complex Double)]]
+applyPinwheelWaveletConvolution plan (Filter (PinwheelWaveletParams rows cols _ _ _ _ _) filters) xs = do
+  ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+  M.mapM
+    (dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+     L.concatMap (L.concatMap (\filter -> L.map (VS.zipWith (*) filter) ys)))
+    filters

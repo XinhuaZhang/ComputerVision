@@ -1,0 +1,10 @@
+export OMP_NUM_THREADS=16
+FLAG="--make -O2 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000  -funbox-strict-fields -fllvm -optlo-O3  -i../../../" #-fllvm -optlo-O3 -XBangPatterns
+OBJPATH="../../../Classifier/LibLinear/"
+SVMPATH="../../../Classifier/LibSVM/"
+LIBS="-lstdc++ -llapack -lblas  -lgomp -lfftw3 -lfftw3f -lfftw3l -lm" # -lfftw3 -lfftw3f -lfftw3l -lm
+LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
+
+cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPinwheelWaveletKMeansModel.hs -o trainPinwheelWaveletKMeansModel
+cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPinwheelWavelet.hs -o trainPinwheelWavelet
+cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPinwheelWavelet.hs -o predictPinwheelWavelet
