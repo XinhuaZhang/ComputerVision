@@ -23,6 +23,7 @@ import           Data.Vector.Unboxed          as VU
 import           Data.Word
 import           Prelude                      as P
 import           System.Random
+import Text.Printf
 
 data ImageTransformationParams = ImageTransformationParams
   { imageTransformationParamsRows :: !Int
@@ -482,6 +483,98 @@ padTransformImage padVal transformationList arr =
   [0 .. nf' - 1]
   where
     (Z :. nf' :. _ :. _) = extent arr
+    
+
+-- First pading image to be a square image then doing transformation,
+-- The output's size may vary for different scales.
+
+{-# INLINE transformGrayImage #-}   
+
+transformGrayImage
+  :: (R.Source s Double)
+  => Double
+  -> [ImageTransformation]
+  -> R.Array s DIM2 Double
+  -> [R.Array U DIM2 Double]
+transformGrayImage padVal transformationList arr =
+  L.map
+    (\(ImageTransformation r' c' deg sf a b) ->
+       let rescaledR = round $ fromIntegral ny * sf
+           rescaledC = round $ fromIntegral nx * sf
+           ratioR = fromIntegral (m - 1) / fromIntegral (rescaledR - 1)
+           ratioC = fromIntegral (m - 1) / fromIntegral (rescaledC - 1)
+           (startR, lenR) =
+             if rescaledR > r'
+               then (div (rescaledR - r') 2, r')
+               else (0, rescaledR)
+           (startC, lenC) =
+             if rescaledC > c'
+               then (div (rescaledC - c') 2, c')
+               else (0, rescaledC)
+           rescaledArr =
+             if deg == 0
+               then fromFunction (Z :. rescaledR :. rescaledC) $ \(Z :. j :. i) ->
+                      bicubicInterpolation
+                        ds
+                        (minVal, maxVal)
+                        (fromIntegral j * ratioR, fromIntegral i * ratioC)
+               else fromFunction (Z :. rescaledR :. rescaledC) $ \(Z :. j :. i) ->
+                      let (j', i') =
+                            rotatePixel
+                              (VU.fromListN 4 $
+                               P.map
+                                 (\f -> f deg)
+                                 [cos, sin, \x -> -(sin x), cos])
+                              ( fromIntegral $ div rescaledR 2
+                              , fromIntegral $ div rescaledC 2)
+                              (fromIntegral j, fromIntegral i)
+                      in if j' < 0 ||
+                            j' > (fromIntegral rescaledR - 1) ||
+                            i' < 0 || i' > (fromIntegral rescaledC - 1)
+                           then padVal
+                           else bicubicInterpolation
+                                  ds
+                                  (minVal, maxVal)
+                                  (j' * ratioR, i' * ratioC)
+       in computeS $
+          if rescaledC > c' || rescaledR > r'
+            then RAU.crop [startC, startR] [lenC, lenR] $ rescaledArr
+            else rescaledArr)
+    transformationList
+  where
+    minVal = 0
+    maxVal = 255
+    (Z :. ny :. nx) = extent arr
+    m = max nx ny
+    paddedImg = RAU.pad [m, m] padVal arr
+    ds = computeDerivativeS (computeUnboxedS paddedImg)
+
+
+{-# INLINE transformImage #-}   
+
+transformImage
+  :: (R.Source s Double)
+  => Double
+  -> [ImageTransformation]
+  -> R.Array s DIM3 Double
+  -> [R.Array U DIM3 Double]
+transformImage padVal transformationList arr =
+  L.zipWith
+    (\transfomation arrs ->
+       fromUnboxed
+         (Z :. nf' :. round (scaleFactor transfomation * fromIntegral rows) :.
+          round (scaleFactor transfomation * fromIntegral cols)) .
+       VU.concat . L.map toUnboxed $
+       arrs)
+    transformationList .
+  L.transpose .
+  L.map
+    (\i ->
+       transformGrayImage padVal transformationList . R.slice arr $
+       (Z :. i :. All :. All)) $
+  [0 .. nf' - 1]
+  where
+    (Z :. nf' :. rows :. cols) = extent arr
 
 
 {-# INLINE cartesian2polar2D #-}
@@ -645,9 +738,9 @@ array2RepaArray
   :: (IA.IArray arr Double)
   => arr (Int, Int, Int) Double -> R.Array U DIM3 Double
 array2RepaArray array =
-  let (_, (nf, rows, cols)) = IA.bounds array
-  in fromListUnboxed (Z :. nf + 1 :. rows + 1 :. cols + 1) . IA.elems $ array
-  
+  let ((nfLB, rowsLB, colsLB), (nfUB, rowsUB, colsUB)) = IA.bounds array
+  in fromListUnboxed (Z :. nfUB - nfLB + 1 :. rowsUB - rowsLB + 1 :. colsUB - colsLB + 1) . IA.elems $ array
+
 
 insertPatch
   :: (R.Source s1 Double, R.Source s2 Double)
@@ -667,10 +760,15 @@ insertPatch arr patches
              (\(i, j) ->
                 M.mapM_
                   (\k ->
-                     writeArray
-                       img
-                       (k, (i + i0), (j + j0))
-                       (patch R.! (Z :. k :. i :. j)))
+                     let x = patch R.! (Z :. k :. i :. j)
+                     in unless
+                          (x == 0)
+                          (-- if (i+i0) >= rows1 || (j+j0) >= cols1
+                           --    then error $ printf "insertPatch: out of boundary\n(i0,j0): (%d,%d)\n(i,j): (%d,%d)\n(rows1,cols1): (%d,%d)\n" i0 j0 i j rows1 cols1
+                           --    else
+                             writeArray img (k, (i + i0), (j + j0)) x)
+                        -- error $ printf "insertPatch: out of boundary\n(i0,j0): (%d,%d)\n(i,j): (%d,%d)\n(rows1,cols1): (%d,%d)\n(rows1,cols1): (%d,%d)\n" i0 j0 i j rows1 cols1 rows2 cols2
+                  )
                   [0 .. nf2 - 1])
              [(i, j) | i <- [0 .. rows2 - 1], j <- [0 .. cols2 - 1]])
         patches
