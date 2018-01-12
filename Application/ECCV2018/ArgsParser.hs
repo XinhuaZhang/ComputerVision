@@ -33,6 +33,13 @@ data Flag
   | Radius Double
   | LabelFile FilePath
   | NumScatteringLayer Int
+  | FourierMellin
+  | Pinwheel
+  | PinwheelFan
+  | PinwheelRing
+  | PinwheelBlob
+  | InvariantFeature
+  | CenterLength Int
   deriving (Show)
 
 data Params = Params
@@ -64,6 +71,9 @@ data Params = Params
   , radius                        :: Double
   , labelFile                     :: FilePath
   , numScatteringLayer            :: Int
+  , filterType                    :: String
+  , invariantFeatureFlag          :: Bool
+  , centerLength                  :: Int
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -184,6 +194,37 @@ options =
       ["NumScatteringLayer"]
       (ReqArg (NumScatteringLayer . readInt) "INT")
       "Set the number of scattering layer."
+  , Option
+      ['z']
+      ["FourierMellin"]
+      (NoArg FourierMellin)
+      "Use FourierMellin Filters"
+  , Option
+      ['z']
+      ["Pinwheel"]
+      (NoArg Pinwheel)
+      "Use Gaussian-windowed Pinwheel Filters"
+  , Option ['z'] ["PinwheelFan"] (NoArg PinwheelFan) "Use PinwheelFan Filters"
+  , Option
+      ['z']
+      ["PinwheelRing"]
+      (NoArg PinwheelRing)
+      "Use PinwheelRing Filters"
+  , Option
+      ['z']
+      ["PinwheelBlob"]
+      (NoArg PinwheelBlob)
+      "Use PinwheelBlob Filters"
+  , Option
+      ['z']
+      ["InvariantFeature"]
+      (NoArg InvariantFeature)
+      "Use invariant features"
+  ,  Option
+       ['z']
+       ["CenterLength"]
+       (ReqArg (CenterLength . readInt) "INT")
+       "Set the length of center part which is consider as a object."
   ]
 
 readInt :: String -> Int
@@ -240,6 +281,9 @@ parseFlag flags = go flags defaultFlag
       , radius = 1
       , labelFile = ""
       , numScatteringLayer = 1
+      , filterType = ""
+      , invariantFeatureFlag = False
+      , centerLength = 0
       }
     go [] params = params
     go (x:xs) params =
@@ -273,6 +317,13 @@ parseFlag flags = go flags defaultFlag
         Radius v -> go xs (params {radius = v})
         LabelFile str -> go xs (params {labelFile = str})
         NumScatteringLayer v -> go xs (params {numScatteringLayer = v})
+        FourierMellin -> go xs (params {filterType = "FourierMellin"})
+        Pinwheel -> go xs (params {filterType = "Pinwheel"})
+        PinwheelFan -> go xs (params {filterType = "PinwheelFan"})
+        PinwheelRing -> go xs (params {filterType = "PinwheelRing"})
+        PinwheelBlob -> go xs (params {filterType = "PinwheelBlob"})
+        InvariantFeature -> go xs (params {invariantFeatureFlag = True})
+        CenterLength v -> go xs (params {centerLength = v})
 
 
 parseArgs :: [String] -> IO Params

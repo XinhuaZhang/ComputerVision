@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 module CV.Filter.FourierMellinTransform
   ( module F
-  , FourierMellinTransformParamsGrid(..)
+  , FourierMellinTransformParams(..)
   , FourierMellinTransformExpansion
   , FourierMellinTransformConvolution
   ) where
@@ -16,20 +16,20 @@ import           Data.List              as L
 import           Data.Vector.Storable   as VS
 import           Data.Vector.Unboxed    as VU
 
-data FourierMellinTransformParamsGrid = FourierMellinTransformParamsGrid
-  { getFourierMellinTransformGridRows        :: !Int
-  , getFourierMellinTransformGridCols        :: !Int
-  , getFourierMellinTransformGridRadialFreq  :: ![Double]
-  , getFourierMellinTransformGridAngularFreq :: ![Int]
+data FourierMellinTransformParams = FourierMellinTransformParams
+  { getFourierMellinTransformRows        :: !Int
+  , getFourierMellinTransformCols        :: !Int
+  , getFourierMellinTransformRadialFreq  :: ![Double]
+  , getFourierMellinTransformAngularFreq :: ![Int]
   } deriving (Show, Read)
 
-type FourierMellinTransformExpansion = Filter FourierMellinTransformParamsGrid [[VU.Vector (Complex Double)]]
-type FourierMellinTransformConvolution = Filter FourierMellinTransformParamsGrid [[VS.Vector (Complex Double)]]
+type FourierMellinTransformExpansion = Filter FourierMellinTransformParams [[VU.Vector (Complex Double)]]
+type FourierMellinTransformConvolution = Filter FourierMellinTransformParams [[VS.Vector (Complex Double)]]
 
 instance FilterExpansion FourierMellinTransformExpansion where
-  type FilterExpansionParameters FourierMellinTransformExpansion = FourierMellinTransformParamsGrid
+  type FilterExpansionParameters FourierMellinTransformExpansion = FourierMellinTransformParams
   {-# INLINE makeFilterExpansion #-}
-  makeFilterExpansion params@(FourierMellinTransformParamsGrid rows cols rfs afs) rCenter cCenter =
+  makeFilterExpansion params@(FourierMellinTransformParams rows cols rfs afs) rCenter cCenter =
     Filter params $!
     [ [ VU.fromListN (rows * cols) $
     makeFilterExpansionList
@@ -43,7 +43,7 @@ instance FilterExpansion FourierMellinTransformExpansion where
     | rf <- rfs
     ]
   {-# INLINE getFilterExpansionNum #-}
-  getFilterExpansionNum (Filter (FourierMellinTransformParamsGrid _ _ rfs afs) _) =
+  getFilterExpansionNum (Filter (FourierMellinTransformParams _ _ rfs afs) _) =
     L.length rfs * L.length afs
   {-# INLINE applyFilterExpansion #-}
   applyFilterExpansion (Filter _ filters) =
@@ -53,9 +53,9 @@ instance FilterExpansion FourierMellinTransformExpansion where
 
 
 instance FilterConvolution FourierMellinTransformConvolution where
-  type FilterConvolutionParameters FourierMellinTransformConvolution = FourierMellinTransformParamsGrid
+  type FilterConvolutionParameters FourierMellinTransformConvolution = FourierMellinTransformParams
   {-# INLINE makeFilterConvolution #-}
-  makeFilterConvolution plan params@(FourierMellinTransformParamsGrid rows cols rfs afs) filterType = do
+  makeFilterConvolution plan params@(FourierMellinTransformParams rows cols rfs afs) filterType = do
     let filterTemp =
           VS.fromList . conjugateFunc filterType $!
           makeFilterConvolutionList
@@ -82,10 +82,10 @@ instance FilterConvolution FourierMellinTransformConvolution where
       M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])) filterList
     return (p2, filters)
   {-# INLINE getFilterConvolutionNum #-}
-  getFilterConvolutionNum (Filter (FourierMellinTransformParamsGrid _ _ rfs afs) _) =
+  getFilterConvolutionNum (Filter (FourierMellinTransformParams _ _ rfs afs) _) =
     L.length rfs * L.length afs
   {-# INLINE applyFilterConvolution #-}
-  applyFilterConvolution plan (Filter (FourierMellinTransformParamsGrid rows cols _ _) filters) xs = do
+  applyFilterConvolution plan (Filter (FourierMellinTransformParams rows cols _ _) filters) xs = do
     ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
     dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
       L.concatMap (\x -> L.concatMap (L.map (VS.zipWith (*) x)) filters) $

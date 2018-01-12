@@ -34,23 +34,52 @@ main = do
         , Par.batchSize = AP.batchSize params
         }
       filterParams =
-        PinwheelWaveletParams
-        { pinwheelWaveletRows = rows
-        , pinwheelWaveletCols = cols
-        , pinwheelWaveletGaussianScale = 0.1 * pi
-        , pinwheelWaveletScale = L.map (\x -> 2 ** (x / 8)) [0 .. 0]
-        , pinwheelWaveletRadialFreqs = L.map (\x -> x / 8 * pi) [0, 6, 8]
-        , pinwheelWaveletAngularFreqs = [-7 .. 7]
-        , pinwheelWaveletRadius = [3, 5, 7, 9, 11]
-        }
+        case filterType params of
+          "PinwheelFan" ->
+            PinwheelWaveletFanParams
+              PinwheelFanParams
+              { pinwheelFanRows = rows
+              , pinwheelFanCols = cols
+              , pinwheelFanGaussianScale = 0.1 * pi
+              , pinwheelFanScale = L.map (\x -> 2 ** (x / 1)) [0 .. 1]
+              , pinwheelFanRadialFreqs = [0 .. 7] -- L.map (\x -> x / 8 * pi) [0, 6, 8, 10]
+              , pinwheelFanAngularFreqs = [0 .. 7]
+              , pinwheelFanTheta = L.map (* (2 * pi)) [0.05,0.1 .. 1]
+              }
+          "PinwheelRing" ->
+            PinwheelWaveletRingParams
+              PinwheelRingParams
+              { pinwheelRingRows = rows
+              , pinwheelRingCols = cols
+              , pinwheelRingGaussianScale = 0.15 * pi
+              , pinwheelRingScale = L.map (\x -> 2 ** (x / 4)) [0 .. 2]
+              , pinwheelRingRadialFreqs = [0 .. 7] -- L.map (\x -> x / 8 * pi) [0, 6, 8, 10]
+              , pinwheelRingAngularFreqs = [0 .. 7]
+              , pinwheelRingRadius = [4,6,8]
+              }
+          "PinwheelBlob" ->
+            PinwheelWaveletBlobParams
+              PinwheelBlobParams
+              { pinwheelBlobRows = rows
+              , pinwheelBlobCols = cols
+              , pinwheelBlobGaussianScale = 4 * pi
+              , pinwheelBlobScale = [1]
+              , pinwheelBlobFreqs = 0.5 * pi
+              , pinwheelBlobOrientation = [0,10 .. 360 - 10]
+              , pinwheelBlobThetaShift = [0,32 .. 127 - 32] -- [0,127]
+              , pinwheelBlobRadiusShift = [22,24,26,28] -- [0,32]
+              }
+          _ -> error "TrainPinwheelWaveletKMeansModel: filter name error."
+  print filterParams
   (plan, filters) <-
-    makeFilterConvolution getEmptyPlan filterParams Normal :: IO (DFTPlan, PinwheelWaveletConvolution)
+    makePinwheelWaveletFilterConvolution getEmptyPlan filterParams Normal
   writeFile (paramsFileName params) . show $ filterParams
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
     pinwheelWaveletConvolutionConduit parallelParams plan filters =$=
-    listConduit =$=
-    trainFeatureConduit parallelParams (stride params) =$=
+    (if invariantFeatureFlag params
+       then invariantFeatureExtractionConduit parallelParams (stride params)
+       else nonInvariantFeatureExtractionConduit parallelParams (stride params)) =$=
     kmeansSink
       parallelParams
       (numGMMExample params)

@@ -1,30 +1,30 @@
 module Application.ECCV2018.Convolution.Conduit where
 
-import           Control.Monad                as M
+import           Control.Monad                  as M
 import           Control.Monad.IO.Class
-import           Control.Monad.Parallel       as MP
+import           Control.Monad.Parallel         as MP
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Filter.PinwheelWavelet
+import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           CV.Utility.Utility
-import           Data.Array.Repa              as R
+import           Data.Array.Repa                as R
 import           Data.Complex
 import           Data.Conduit
-import           Data.Conduit.List            as CL
-import           Data.List                    as L
-import           Data.Vector.Storable         as VS
-import           Data.Vector.Unboxed          as VU
+import           Data.Conduit.List              as CL
+import           Data.List                      as L
+import           Data.Vector.Storable           as VS
+import           Data.Vector.Unboxed            as VU
 
 
 -- output list: layers
 filterConvolutionConduit
-  :: (FilterConvolution a)
-  => ParallelParams
+  :: ParallelParams
   -> DFTPlan
-  -> [a]
-  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) [LabeledArray DIM3 Double]
+  -> PolarSeparableFilterConvolution
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) [[LabeledArray DIM3 Double]]
 filterConvolutionConduit parallelParams dftPlan filters = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -38,26 +38,24 @@ filterConvolutionConduit parallelParams dftPlan filters = do
                let imgVecs =
                      L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
                filteredImages <-
-                 L.concat <$>
-                 M.mapM
-                   (\filter' -> applyFilterConvolution dftPlan filter' imgVecs)
-                   filters
+                 applyPolarSeparableFilterConvolution dftPlan filters imgVecs
                return
-                 [ LabeledArray label .
-                   fromUnboxed (Z :. L.length filteredImages :. rows :. cols) .
-                 -- rescaleUnboxedVector (0, 1) .
-                   VU.map magnitude . VS.convert . VS.concat $
-                   filteredImages
+                 [ [ LabeledArray label .
+                     fromUnboxed (Z :. L.length filteredImages :. rows :. cols) .
+                     -- rescaleUnboxedVector (0, 1) .
+                     VU.map magnitude . VS.convert . VS.concat $
+                     filteredImages
+                   ]
                  ])
             xs
         sourceList ys
         filterConvolutionConduit parallelParams dftPlan filters)
 
--- output list: radius, layers
+-- output list: layers, free degrees
 pinwheelWaveletConvolutionConduit
   :: ParallelParams
   -> DFTPlan
-  -> PinwheelWaveletConvolution
+  -> PinwheelWaveletFilterConvolution
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) [[LabeledArray DIM3 Double]]
 pinwheelWaveletConvolutionConduit parallelParams plan filter = do
   xs <- CL.take (batchSize parallelParams)
@@ -72,21 +70,21 @@ pinwheelWaveletConvolutionConduit parallelParams plan filter = do
                let imgVecs =
                      L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
                filteredImages <-
-                 applyPinwheelWaveletConvolution plan filter imgVecs
-               return .
-                 L.map
-                   (\filteredImage ->
-                      [ LabeledArray label .
+                 applyPinwheelWaveletFilterConvolution plan filter imgVecs
+               return
+                 [ L.map
+                     (\filteredImage ->
+                        LabeledArray label .
                         fromUnboxed
                           (Z :. L.length filteredImage :. rows :. cols) .
-                      -- rescaleUnboxedVector (0, 1) .
+                        -- rescaleUnboxedVector (0, 1) .
                         VU.map magnitude . VS.convert . VS.concat $
-                        filteredImage
-                      ]) $
-                 filteredImages) $
+                        filteredImage) $
+                   filteredImages
+                 ]) $
           xs
         sourceList ys
         pinwheelWaveletConvolutionConduit parallelParams plan filter)
 
-listConduit :: Conduit [a] (ResourceT IO) a
-listConduit = awaitForever sourceList
+-- concatInvariantConduit :: Conduit [[a]] (ResourceT IO)  [a]
+-- concatInvariantConduit = awaitForever 

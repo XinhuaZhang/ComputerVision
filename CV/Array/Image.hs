@@ -689,6 +689,53 @@ cartesian2logpolarImage ts rs (cRow, cCol) logpolarR (CartesianImage valueRange 
     (Z :. nf :. _ :. _) = extent arr
 cartesian2logpolarImage _ _ _ _ _ =
   error "cartesian2logpolarImage: input is not a CartesianImage."  
+  
+{-# INLINE logpolar2Cartesian2D #-}
+
+logpolar2Cartesian2D
+  :: (R.Source s Double)
+  => Int
+  -> Int
+  -> Double
+  -> (Double, Double)
+  -> (Double, Double)
+  -> R.Array s DIM2 Double
+  -> R.Array D DIM2 Double
+logpolar2Cartesian2D rows cols polarR valRange (centerR, centerC) arr =
+  let ds = computeDerivativeS . computeS . delay $ arr
+      (Z :. ts :. rs) = extent arr
+      deltaTheta = 2 * pi / fromIntegral ts
+      deltaR = (log polarR) / fromIntegral rs
+  in fromFunction
+       (Z :. rows :. cols)
+       (\(Z :. r :. c) ->
+          let x = (fromIntegral r) - centerR
+              y = (fromIntegral c) - centerC
+              theta = angleFunctionRad x y
+              radius = log . sqrt $ x ^ (2 :: Int) + y ^ (2 :: Int)
+          in bicubicInterpolation
+               ds
+               valRange
+               (theta / deltaTheta, radius / deltaR))
+               
+{-# INLINE logpolar2CartesianImage #-}
+
+logpolar2CartesianImage :: Int
+                        -> Int
+                        -> (Double, Double)
+                        -> ImageCoordinates
+                        -> ImageCoordinates
+logpolar2CartesianImage rows cols center (LogpolarImage polarR valRange arr) =
+  let (Z :. nf :. _ :. _) = extent arr
+  in CartesianImage valRange . fromUnboxed (Z :. nf :. rows :. cols) . VU.concat $
+     [ toUnboxed .
+     computeS .
+     logpolar2Cartesian2D rows cols polarR valRange center . R.slice arr $
+     (Z :. i :. All :. All)
+     | i <- [0 .. nf - 1]
+     ]
+logpolar2CartesianImage _ _ _ _ =
+  error "logpolar2Cartesian2D: image type is not LogpolarImage."
 
 {-# INLINE shiftGrayImage #-}
 

@@ -5,7 +5,8 @@ import           Classifier.LibLinear
 import           Control.Monad                            as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Filter.PinwheelWavelet
+import           CV.Filter.FourierMellinTransform
+import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel                      as Par
 import           Data.Array.Repa
 import           Data.Binary
@@ -20,23 +21,21 @@ main = do
   args <- getArgs
   params <- parseArgs args
   print params
-  filterParams <-
-    fmap (\x -> read x :: PinwheelWaveletParams) . readFile $
-    (paramsFileName params)
-  kmeansModel <- decodeFile (kmeansFile params)
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
         , Par.batchSize = AP.batchSize params
         }
+  kmeansModel <- decodeFile (kmeansFile params)
+  filterParams <-
+    fmap (\x -> read x :: PolarSeparableFilterParams) . readFile $
+    (paramsFileName params)
   (plan, filters) <-
-    makePinwheelWaveletFilterConvolution getEmptyPlan filterParams Normal
+    makePolarSeparableFilterConvolution getEmptyPlan filterParams
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    pinwheelWaveletConvolutionConduit parallelParams plan filters =$=
-    (if invariantFeatureFlag params
-       then invariantFeatureExtractionConduit parallelParams (stride params)
-       else nonInvariantFeatureExtractionConduit parallelParams (stride params)) =$=
+    filterConvolutionConduit parallelParams plan filters =$=
+    invariantFeatureExtractionConduit parallelParams (stride params) =$=
     kmeansConduit parallelParams kmeansModel =$=
     featureConduit =$=
     predict (modelName params) ((modelName params) L.++ ".out")

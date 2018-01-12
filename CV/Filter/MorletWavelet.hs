@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances    #-}
+ {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 module CV.Filter.MorletWavelet
@@ -36,15 +36,15 @@ instance FilterExpansion MorletWaveletExpansion where
   makeFilterExpansion params@(MorletWaveletParams rows cols freq gScale oris scales) rCenter cCenter =
     Filter params $!
     [ [ let beta =
-              (L.sum . makeFilterExpansionList rows cols rCenter cCenter $
+              (L.sum . makeFilterExpansionListPeriod rows cols rCenter cCenter $
                betaFunction freq gScale ori a) /
               (2 * pi * gScale ^ (2 :: Int) :+ 0)
             alpha =
               (sqrt a :+ 0) /
-              (sqrt . L.sum . makeFilterExpansionList rows cols rCenter cCenter $
+              (sqrt . L.sum . makeFilterExpansionListPeriod rows cols rCenter cCenter $
                alphaFunction freq gScale ori a beta)
         in VU.fromListN (rows * cols) $
-           makeFilterExpansionList
+           makeFilterExpansionListPeriod
              rows
              cols
              rCenter
@@ -64,44 +64,63 @@ instance FilterExpansion MorletWaveletExpansion where
 instance FilterConvolution MorletWaveletConvolution where
   type FilterConvolutionParameters MorletWaveletConvolution = MorletWaveletParams
   {-# INLINE makeFilterConvolution #-}
-  makeFilterConvolution fftw params@(MorletWaveletParams rows cols freq gScale oris scales) filterType =
-    Filter params <$!>
-    M.mapM
-      ((\ori ->
-           M.mapM
-             (\a ->
-                 let rCenter = div rows 2
-                     cCenter = div cols 2
-                     beta =
-                       (L.sum . makeFilterExpansionList rows cols rCenter cCenter $
-                        betaFunction freq gScale ori a) /
-                       (2 * pi * gScale ^ (2 :: Int) :+ 0)
-                     alpha =
-                       (sqrt a :+ 0) /
-                       (sqrt .
-                        L.sum . makeFilterExpansionList rows cols rCenter cCenter $
-                        alphaFunction freq gScale ori a beta)
-                 in dft2d fftw rows cols .
-                    VS.fromListN (rows * cols) . conjugateFunc filterType $!
-                    makeFilterConvolutionList
-                      rows
-                      cols
-                      (morletWavelet freq gScale ori a alpha beta))
-             scales) .
-       deg2Rad)
-      oris
+  makeFilterConvolution plan params@(MorletWaveletParams rows cols freq gScale oris' scales) filterType = do
+    let rCenter = div rows 2
+        cCenter = div cols 2
+        oris = L.map deg2Rad oris'
+        filterList =
+          L.map
+            (\ori ->
+               L.map
+                 (\a ->
+                    let beta =
+                          (L.sum .
+                           makeFilterExpansionList rows cols rCenter cCenter $
+                           betaFunction freq gScale ori a) /
+                          (2 * pi * gScale ^ (2 :: Int) :+ 0)
+                        alpha =
+                          (sqrt a :+ 0) /
+                          (sqrt .
+                           L.sum .
+                           makeFilterExpansionList rows cols rCenter cCenter $
+                           alphaFunction freq gScale ori a beta)
+                    in VS.fromList . conjugateFunc filterType $!
+                       makeFilterConvolutionList
+                         rows
+                         cols
+                         (morletWavelet freq gScale ori a alpha beta))
+                 scales)
+            oris
+        b =
+          (L.sum . makeFilterExpansionList rows cols rCenter cCenter $
+           betaFunction freq gScale (L.last oris) (L.last scales)) /
+          (2 * pi * gScale ^ (2 :: Int) :+ 0)
+        a =
+          (sqrt (L.last scales) :+ 0) /
+          (sqrt . L.sum . makeFilterExpansionList rows cols rCenter cCenter $
+           alphaFunction freq gScale (L.last oris) (L.last scales) b)
+        filterTmp =
+          VS.fromList . conjugateFunc filterType $
+          makeFilterConvolutionList
+            rows
+            cols
+            (morletWavelet freq gScale (L.last oris) (L.last scales) a b)
+    lock <- getFFTWLock
+    (p1, vec) <- dft2dPlan lock plan rows cols filterTmp
+    (p2, _) <- idft2dPlan lock p1 rows cols vec
+    filters <-
+      Filter params <$!>
+      M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])) filterList
+    return (p2, filters)
   {-# INLINE getFilterConvolutionNum #-}
   getFilterConvolutionNum (Filter (MorletWaveletParams _ _ _ _ oris scales) _) =
     L.length scales * L.length oris
   {-# INLINE applyFilterConvolution #-}
-  applyFilterConvolution fftw (Filter (MorletWaveletParams rows cols _ _ _ _) filters) xs = do
-    ys <- M.mapM (dft2d fftw rows cols) xs
-    L.concat <$>
-      M.mapM
-        (\x ->
-            L.concat <$>
-            M.mapM (M.mapM (idft2d fftw rows cols . VS.zipWith (*) x)) filters)
-        ys
+  applyFilterConvolution plan (Filter (MorletWaveletParams rows cols _ _ _ _) filters) xs = do
+    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+    dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+      L.concatMap (\x -> L.concatMap (L.map (VS.zipWith (*) x)) filters) $
+      ys
   {-# INLINE getFilterConvolutionList #-}
   getFilterConvolutionList = L.concat . getFilter
 

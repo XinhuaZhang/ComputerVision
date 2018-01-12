@@ -1,11 +1,13 @@
 #!/bin/bash
+FLAG="--make -O3 -j4 -threaded -rtsopts -i../../" #-fllvm -optlo-O3 -XBangPatterns
 LIBS="-lstdc++ -llapack -lblas -lfftw3 -lfftw3f -lfftw3l -lm" # 
 # ghc -i../.. -j4 -O2 $LIBS Main.hs -o main
 # ghc -i../.. -j4 -O2 $LIBS PlotGabor.hs -o plotGabor
-#ghc -i../.. -j4 -O2 $LIBS PlotMorletWavelet.hs -o plotMorletWavelet
+cabal exec -- ghc $FLAG $LIBS PlotMorletWavelet.hs -o plotMorletWavelet
 # ghc -i../.. -j4 -O2 $LIBS PlotPinwheels.hs -o plotPinwheels
 # ghc -i../.. -j4 -O2 $LIBS PlotPinwheelRing.hs -o plotPinwheelRing
-ghc -i../.. -j4 -O2 $LIBS PlotPinwheelWavelet.hs -o plotPinwheelWavelet
+cabal exec -- ghc $FLAG $LIBS PlotPinwheelWavelet.hs -o plotPinwheelWavelet -fsimpl-tick-factor=1000
+cabal exec -- ghc $FLAG $LIBS PlotPolarSeparableFilter.hs -o plotPolarSeparableFilter -fsimpl-tick-factor=1000
 
 # ghc -i../.. -j4 -O2 PlotFilteredImage.hs -o plot
 

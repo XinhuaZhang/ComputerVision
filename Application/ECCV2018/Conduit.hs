@@ -9,6 +9,7 @@ import           CV.Array.LabeledArray
 import           CV.Statistics.KMeans
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
+import           CV.Utility.Utility
 import           Data.Array.Repa              as R
 import           Data.Binary
 import           Data.Complex
@@ -19,48 +20,13 @@ import           Data.Vector.Unboxed          as VU
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
 
--- input list: layer
--- output list: layer, position
-trainFeatureConduit
+-- input list: layer, free degrees
+-- output list: layer, free degrees
+invariantFeatureExtractionConduit
   :: ParallelParams
   -> Int
-  -> Conduit [LabeledArray DIM3 Double] (ResourceT IO) (Double, [[VU.Vector Double]])
-trainFeatureConduit parallelParams stride = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (\y ->
-                   let label = (\(LabeledArray label _) -> label) . L.head $ y
-                       zs =
-                         L.map
-                           (\(LabeledArray _ arr) ->
-                              let downsampledArr =
-                                    downsample [stride, stride, 1] arr
-                                  (Z :. _ :. rows :. cols) =
-                                    extent downsampledArr
-                              in [ toUnboxed . computeS . R.slice downsampledArr $
-                                 (Z :. All :. i :. j)
-                                 | i <- [0 .. rows - 1]
-                                 , j <- [0 .. cols - 1]
-                                 ]) $
-                         y
-                   in (fromIntegral label, zs))
-                xs
-        sourceList ys
-        trainFeatureConduit parallelParams stride)
-
-
--- input list: radius, layer
--- output list: radius, layer, position
-predictFeatureConduit
-  :: ParallelParams
-  -> Int
-  -> Conduit [[LabeledArray DIM3 Double]] (ResourceT IO) (Double, [[[VU.Vector Double]]])
-predictFeatureConduit parallelParams stride = do
+  -> Conduit [[LabeledArray DIM3 Double]] (ResourceT IO) (Double, [[VU.Vector Double]])
+invariantFeatureExtractionConduit parallelParams stride = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -74,7 +40,57 @@ predictFeatureConduit parallelParams stride = do
                          y
                        zs =
                          L.map
-                           (L.map
+                           (L.concatMap
+                              (\(LabeledArray _ arr) ->
+                                 let downsampledArr =
+                                       downsample [stride, stride, 1] arr
+                                     (Z :. _ :. rows :. cols) =
+                                       extent downsampledArr
+                                 in [ l2norm .
+                                    -- rescaleUnboxedVector (0, 1) .
+                                    toUnboxed .
+                                    computeS . R.slice downsampledArr $
+                                    (Z :. All :. i :. j)
+                                    | i <-
+                                        generateCenters
+                                          rows
+                                          (round $ fromIntegral rows / 3 * 2) --  i <- generateCenters rows (div rows 2 - 1) -- [0 .. rows - 1]
+                                    , j <-
+                                        generateCenters
+                                          cols
+                                          (round $ fromIntegral cols / 3 * 2) -- j <- generateCenters cols (div cols 2 - 1) -- [0 .. cols - 1]
+                                    ]))
+                           y
+                   in (fromIntegral label, zs))
+                xs
+        sourceList ys
+        invariantFeatureExtractionConduit parallelParams stride)
+        
+-- input list: layer, free degrees
+-- output list: layer, free degrees
+nonInvariantFeatureExtractionConduit
+  :: ParallelParams
+  -> Int
+  -> Conduit [[LabeledArray DIM3 Double]] (ResourceT IO) (Double, [[VU.Vector Double]])
+nonInvariantFeatureExtractionConduit parallelParams stride = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\y ->
+                   let label =
+                         (\(LabeledArray label _) -> label) . L.head . L.head $
+                         y
+                       zs =
+                         L.map
+                           (L.map (-- rescaleUnboxedVector (0, 1)
+                                   l2norm .
+                                   VU.concat) .
+                            L.transpose .
+                            L.map
                               (\(LabeledArray _ arr) ->
                                  let downsampledArr =
                                        downsample [stride, stride, 1] arr
@@ -83,17 +99,17 @@ predictFeatureConduit parallelParams stride = do
                                  in [ toUnboxed .
                                     computeS . R.slice downsampledArr $
                                     (Z :. All :. i :. j)
-                                    | i <- [0 .. rows - 1]
-                                    , j <- [0 .. cols - 1]
+                                    | i <- generateCenters rows (div rows 2 - 1) -- generateCenters rows (div rows 2 - 1) -- [0 .. rows - 1]
+                                    , j <- generateCenters rows (div cols 2 - 1)  -- generateCenters cols (div cols 2 - 1) -- [0 .. cols - 1]
                                     ]))
                            y
                    in (fromIntegral label, zs))
                 xs
         sourceList ys
-        predictFeatureConduit parallelParams stride)
+        nonInvariantFeatureExtractionConduit parallelParams stride)
 
 -- from outter-most to inner-most:
--- layer, position
+-- layer, free degrees
 kmeansConduit
   :: ParallelParams
   -> [KMeansModel]
@@ -112,26 +128,7 @@ kmeansConduit parallelParams models = do
         kmeansConduit parallelParams models)
 
 -- from outter-most to inner-most:
--- radisu,layer, position
-kmeansPredictConduit
-  :: ParallelParams
-  -> [KMeansModel]
-  -> Conduit (Double, [[[VU.Vector Double]]]) (ResourceT IO) (Double, [VU.Vector Double])
-kmeansPredictConduit parallelParams models = do
-  xs <- CL.take (batchSize parallelParams)
-  unless
-    (L.null xs)
-    (do let ys =
-              parMapChunk
-                parallelParams
-                rdeepseq
-                (second $ L.map (VU.concat . L.zipWith (vlad . center) models))
-                xs
-        sourceList ys
-        kmeansPredictConduit parallelParams models)
-
--- from outter-most to inner-most:
--- layer, position
+-- layer, free degrees
 kmeansSink
   :: ParallelParams
   -> Int
@@ -158,6 +155,16 @@ featurePtrConduit =
 featureConduit :: Conduit (a, VU.Vector Double) (ResourceT IO) (a, [C'feature_node])
 featureConduit = awaitForever (yield . second (getFeature . Dense . VU.toList))
 
-featurePredictConduit :: Conduit (a, [VU.Vector Double]) (ResourceT IO) (a, [[C'feature_node]])
-featurePredictConduit =
-  awaitForever (yield . second (L.map (getFeature . Dense . VU.toList)))
+{-# INLINE generateCenters #-}
+
+generateCenters :: Int -> Int -> [Int]
+generateCenters len n
+  | len == n = [0 .. len - 1]
+  | odd n = L.map (\x -> x * dist + center) [-m .. m]
+  | otherwise = error "generateCenters: numGrid is even."
+  -- | otherwise = L.map fromIntegral [stride,2 * stride .. n * stride]
+  where
+    stride = div len (n + 1)
+    center = div len 2
+    dist = 1
+    m = div n 2

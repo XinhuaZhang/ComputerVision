@@ -81,7 +81,7 @@ predict predictModel output = do
        L.replicate ((maxLabel - minLabel + 1) ^ (2 :: Int)) $
        0)
   let percent = fromIntegral correct / (fromIntegral total :: Double) * 100
-      str = show percent
+      str = show percent L.++ " %"
       confusionList =
         L.groupBy (\((i, _), _) ((j, _), _) -> i == j) . assocs $ arr
       sList = L.map (L.sum . L.map snd) confusionList
@@ -155,7 +155,7 @@ predictVote predictModel output = do
        L.replicate ((maxLabel - minLabel + 1) ^ (2 :: Int)) $
        0)
   let percent = fromIntegral correct / (fromIntegral total :: Double) * 100
-      str = show percent L.++ "%%"
+      str = show percent L.++ "%"
       confusionList =
         L.groupBy (\((i, _), _) ((j, _), _) -> i == j) . assocs $ arr
       sList = L.map (L.sum . L.map snd) confusionList

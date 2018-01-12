@@ -5,9 +5,10 @@ module CV.Filter
   ) where
 
 import           Control.DeepSeq      (NFData, rnf)
-import           CV.Utility.FFT       (FFTW)
 import           CV.Utility.DFT
+import           CV.Utility.FFT       (FFTW)
 import           Data.Complex
+import           Data.List            as L
 import           Data.Vector.Storable as VS
 import           Data.Vector.Unboxed  as VU
 
@@ -57,6 +58,19 @@ makeFilterExpansionList rows cols rCenter cCenter f =
   | r <- [0 .. rows - 1]
   , c <- [0 .. cols - 1] ]
 
+{-# INLINE makeFilterExpansionListPeriod #-}
+
+makeFilterExpansionListPeriod :: Int -> Int -> Int -> Int -> (Int -> Int -> a) -> [a]
+makeFilterExpansionListPeriod rows cols rCenter cCenter f =
+  [ let func x center len =
+          L.minimumBy
+            (\a b -> compare (abs a) (abs b))
+            [x - center, x - center + len, x - center - len]
+    in f (func r rCenter rows) (func c cCenter cols)
+  | r <- [0 .. rows - 1]
+  , c <- [0 .. cols - 1]
+  ]
+
 {-# INLINE makeFilterConvolutionList #-}
 
 makeFilterConvolutionList :: Int -> Int -> (Int -> Int -> a) -> [a]
@@ -80,5 +94,5 @@ conjugateFunc :: ConvolutionalFilterType
               -> ([Complex Double] -> [Complex Double])
 conjugateFunc x =
   case x of
-    Normal -> id
+    Normal    -> id
     Conjugate -> Prelude.map conjugate
