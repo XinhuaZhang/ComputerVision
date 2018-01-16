@@ -62,7 +62,7 @@ main = do
               PinwheelBlobParams
               { pinwheelBlobRows = rows
               , pinwheelBlobCols = cols
-              , pinwheelBlobGaussianScale = 4 * pi
+              , pinwheelBlobGaussianScale = 2 * pi
               , pinwheelBlobScale = [1]
               , pinwheelBlobFreqs = 0.5 * pi
               , pinwheelBlobOrientation = [0,10 .. 360 - 10]

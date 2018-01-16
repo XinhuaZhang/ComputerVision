@@ -1,5 +1,6 @@
 module Application.ECCV2018.ArgsParser where
 
+import           CV.Filter.PolarSeparableFilterType
 import           Data.Maybe
 import           System.Console.GetOpt
 import           Text.Read
@@ -34,7 +35,7 @@ data Flag
   | LabelFile FilePath
   | NumScatteringLayer Int
   | FourierMellin
-  | Pinwheel
+  | GaussianPinwheel
   | PinwheelFan
   | PinwheelRing
   | PinwheelBlob
@@ -71,7 +72,7 @@ data Params = Params
   , radius                        :: Double
   , labelFile                     :: FilePath
   , numScatteringLayer            :: Int
-  , filterType                    :: String
+  , filterType                    :: [PolarSeparableFilterType]
   , invariantFeatureFlag          :: Bool
   , centerLength                  :: Int
   } deriving (Show)
@@ -201,9 +202,9 @@ options =
       "Use FourierMellin Filters"
   , Option
       ['z']
-      ["Pinwheel"]
-      (NoArg Pinwheel)
-      "Use Gaussian-windowed Pinwheel Filters"
+      ["GaussianPinwheel"]
+      (NoArg GaussianPinwheel)
+      "Use Gaussian-windowed GaussianPinwheel Filters"
   , Option ['z'] ["PinwheelFan"] (NoArg PinwheelFan) "Use PinwheelFan Filters"
   , Option
       ['z']
@@ -281,7 +282,7 @@ parseFlag flags = go flags defaultFlag
       , radius = 1
       , labelFile = ""
       , numScatteringLayer = 1
-      , filterType = ""
+      , filterType = []
       , invariantFeatureFlag = False
       , centerLength = 0
       }
@@ -317,11 +318,27 @@ parseFlag flags = go flags defaultFlag
         Radius v -> go xs (params {radius = v})
         LabelFile str -> go xs (params {labelFile = str})
         NumScatteringLayer v -> go xs (params {numScatteringLayer = v})
-        FourierMellin -> go xs (params {filterType = "FourierMellin"})
-        Pinwheel -> go xs (params {filterType = "Pinwheel"})
-        PinwheelFan -> go xs (params {filterType = "PinwheelFan"})
-        PinwheelRing -> go xs (params {filterType = "PinwheelRing"})
-        PinwheelBlob -> go xs (params {filterType = "PinwheelBlob"})
+        FourierMellin ->
+          go
+            xs
+            (params {filterType = FourierMellinFilterType : filterType params})
+        GaussianPinwheel ->
+          go
+            xs
+            (params
+             {filterType = GaussianPinwheelFilterType : filterType params})
+        PinwheelFan ->
+          go
+            xs
+            (params {filterType = PinwheelFanFilterType : filterType params})
+        PinwheelRing ->
+          go
+            xs
+            (params {filterType = PinwheelRingFilterType : filterType params})
+        PinwheelBlob ->
+          go
+            xs
+            (params {filterType = PinwheelBlobFilterType : filterType params})
         InvariantFeature -> go xs (params {invariantFeatureFlag = True})
         CenterLength v -> go xs (params {centerLength = v})
 

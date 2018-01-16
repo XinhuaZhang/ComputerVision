@@ -152,6 +152,13 @@ instance FilterConvolution GaussianFilterConvolution where
     dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
       L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $
       ys
+  {-# INLINE applyInvariantFilterConvolution #-}
+  applyInvariantFilterConvolution plan (Filter (GaussianFilterParams _ rows cols) filters) xs = do
+    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+    fmap (\x -> [x]) .
+      dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+      L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $
+      ys
 
 
 {-# INLINE makeFilterConvolution1DList #-}
@@ -199,4 +206,10 @@ instance FilterConvolution GaussianFilterConvolution1D where
   applyFilterConvolution plan (GaussianFilterConvolution1D (GaussianFilter1DParams _ n) filters) xs = do
     ys <- dftExecuteBatch plan (DFTPlanID DFT1DG [n] [0]) xs
     dftExecuteBatch plan (DFTPlanID IDFT1DG [n] [0]) .
+      L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $ys
+  {-# INLINE applyInvariantFilterConvolution #-}
+  applyInvariantFilterConvolution plan (GaussianFilterConvolution1D (GaussianFilter1DParams _ n) filters) xs = do
+    ys <- dftExecuteBatch plan (DFTPlanID DFT1DG [n] [0]) xs
+    fmap (\x -> [x]) .
+      dftExecuteBatch plan (DFTPlanID IDFT1DG [n] [0]) .
       L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $ys

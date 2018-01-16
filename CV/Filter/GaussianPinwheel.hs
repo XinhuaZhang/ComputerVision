@@ -1,97 +1,72 @@
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-module CV.Filter.GaussianPinwheel where
+module CV.Filter.GaussianPinwheel
+  ( module F
+  , GaussianPinwheelExpansion
+  , GaussianPinwheelConvolution
+  , makeGaussianPinwheelFilterExpansion
+  , makeGaussianPinwheelFilterConvolution
+  , applyGaussianPinwheelFilterConvolution
+  ) where
 
-import           Control.Monad            as M
-import           CV.Filter
---import           CV.Filter.GaussianFilter
+import           Control.Arrow
+import           Control.Monad                      as M
+import           CV.Filter                          as F
+import           CV.Filter.PolarSeparableFilterType as F
 import           CV.Utility.Coordinates
-import           Data.Array.Repa          as R
-import           Data.Complex             as C
-import           Data.List                as L
-import           Data.Vector.Storable     as VS
-import           Data.Vector.Unboxed      as VU
+import           Data.Array.Repa                    as R
+import           Data.Complex                       as C
+import           Data.List                          as L
+import           Data.Vector.Storable               as VS
+import           Data.Vector.Unboxed                as VU
 
 
-data GaussianPinwheelParams = GaussianPinwheelParams
-  { getGaussianPinwheelRows        :: !Int
-  , getGaussianPinwheelCols        :: !Int
-  , getGaussianPinwheelScale       :: ![Double]
-  , getGaussianPinwheelRadialFreq  :: ![Int]
-  , getGaussianPinwheelAngularFreq :: ![Int]
-  } deriving (Show, Read)
-  
-type GaussianPinwheelExpansion = Filter GaussianPinwheelParams [[[VU.Vector (Complex Double)]]]
-type GaussianPinwheelConvolution = Filter GaussianPinwheelParams [[[VS.Vector (Complex Double)]]]
+
+newtype GaussianPinwheelExpansion = GaussianPinwheelExpansion (Filter PolarSeparableFilterParams [[[VU.Vector (Complex Double)]]])
+newtype GaussianPinwheelConvolution = GaussianPinwheelConvolution (Filter PolarSeparableFilterParams [[[VS.Vector (Complex Double)]]])
 
 instance FilterExpansion GaussianPinwheelExpansion where
-  type FilterExpansionParameters GaussianPinwheelExpansion = GaussianPinwheelParams
+  type FilterExpansionParameters GaussianPinwheelExpansion = PolarSeparableFilterParams
   {-# INLINE makeFilterExpansion #-}
-  makeFilterExpansion params@(GaussianPinwheelParams rows cols scales rfs afs) rCenter cCenter =
-    Filter params $!
-    [ [ [ VU.fromList $!
-    makeFilterExpansionList rows cols rCenter cCenter (pinwheels scale rf af)
-    | af <- afs
-    ]
-    | rf <- rfs
-    ]
-    | scale <- scales
-    ]
+  makeFilterExpansion params rCenter cCenter =
+    GaussianPinwheelExpansion . Filter params $
+    makeGaussianPinwheelFilterExpansion params rCenter cCenter
   {-# INLINE getFilterExpansionNum #-}
-  getFilterExpansionNum (Filter (GaussianPinwheelParams _ _ scales rfs afs) _) =
+  getFilterExpansionNum (GaussianPinwheelExpansion (Filter (GaussianPinwheelParams _ _ scales rfs afs) _)) =
     L.length scales * L.length rfs * L.length afs
   {-# INLINE applyFilterExpansion #-}
-  applyFilterExpansion (Filter _ filters) =
+  applyFilterExpansion (GaussianPinwheelExpansion (Filter _ filters)) =
     L.concatMap
       (\x ->
          L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))) filters)
   {-# INLINE getFilterExpansionList #-}
-  getFilterExpansionList = L.concatMap L.concat . getFilter
+  getFilterExpansionList (GaussianPinwheelExpansion x) =
+    L.concatMap L.concat . getFilter $ x
 
 
 instance FilterConvolution GaussianPinwheelConvolution where
-  type FilterConvolutionParameters GaussianPinwheelConvolution = GaussianPinwheelParams
+  type FilterConvolutionParameters GaussianPinwheelConvolution = PolarSeparableFilterParams
   {-# INLINE makeFilterConvolution #-}
   makeFilterConvolution plan params@(GaussianPinwheelParams rows cols scales rfs afs) filterType = do
-    let filterList =
-          L.map
-            (\scale ->
-               L.map
-                 (\rf ->
-                    L.map
-                      (VS.fromListN (rows * cols) .
-                       conjugateFunc filterType .
-                       makeFilterConvolutionList rows cols . pinwheels scale rf)
-                      afs)
-                 rfs)
-            scales
-        filterTemp =
-          VS.fromListN (rows * cols) .
-          conjugateFunc filterType . makeFilterConvolutionList rows cols $
-          pinwheels (L.last scales) (L.last rfs) (L.last afs)
-    lock <- getFFTWLock
-    (p1, vec) <- dft2dPlan lock plan rows cols filterTemp
-    (p2, _) <- idft2dPlan lock p1 rows cols vec
-    filters <-
-      Filter params <$!>
-      M.mapM
-        (M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])))
-        filterList
-    return (p2, filters)
+    second (GaussianPinwheelConvolution . Filter params) <$>
+      makeGaussianPinwheelFilterConvolution plan params filterType
   {-# INLINE getFilterConvolutionNum #-}
-  getFilterConvolutionNum (Filter (GaussianPinwheelParams _ _ scales rfs afs) _) =
+  getFilterConvolutionNum (GaussianPinwheelConvolution (Filter (GaussianPinwheelParams _ _ scales rfs afs) _)) =
     L.length scales * L.length rfs * L.length afs
   {-# INLINE applyFilterConvolution #-}
-  applyFilterConvolution plan (Filter (GaussianPinwheelParams rows cols _ _ _) filters) xs = do
+  applyFilterConvolution plan (GaussianPinwheelConvolution (Filter (GaussianPinwheelParams rows cols _ _ _) filters)) xs = do
     ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
     dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
       L.concatMap
         (\x -> L.concatMap (L.concatMap (L.map (VS.zipWith (*) x))) filters) $
       ys
+  {-# INLINE applyInvariantFilterConvolution #-}
+  applyInvariantFilterConvolution plan (GaussianPinwheelConvolution (Filter (GaussianPinwheelParams rows cols _ _ _) filters)) xs =
+    applyGaussianPinwheelFilterConvolution plan rows cols filters xs
   {-# INLINE getFilterConvolutionList #-}
-  getFilterConvolutionList = L.concatMap L.concat . getFilter
+  getFilterConvolutionList (GaussianPinwheelConvolution x) =
+    L.concatMap L.concat . getFilter $ x
 
 {-# INLINE ejx #-}
 
@@ -136,3 +111,69 @@ gaussian2D'' freq sd i j -- =
     exp (-(log r) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
   where
     r = sqrt $ fromIntegral (i * i + j * j)
+    
+{-# INLINE makeGaussianPinwheelFilterExpansion #-}
+
+makeGaussianPinwheelFilterExpansion :: PolarSeparableFilterParams -> Int -> Int -> [[[VU.Vector (Complex Double)]]]
+makeGaussianPinwheelFilterExpansion params@(GaussianPinwheelParams rows cols scales rfs afs) rCenter cCenter =
+  [ [ [ VU.fromList $
+  makeFilterExpansionList rows cols rCenter cCenter (pinwheels scale rf af)
+  | af <- afs
+  ]
+  | rf <- rfs
+  ]
+  | scale <- scales
+  ]
+makeGaussianPinwheelFilterExpansion _ _ _ =
+  error "makeGaussianPinwheelFilterExpansion: filter parameter type error."
+
+makeGaussianPinwheelFilterConvolution
+  :: DFTPlan
+  -> PolarSeparableFilterParams
+  -> ConvolutionalFilterType
+  -> IO (DFTPlan, [[[VS.Vector (Complex Double)]]])
+makeGaussianPinwheelFilterConvolution plan (GaussianPinwheelParams rows cols scales rfs afs) filterType = do
+  let filterList =
+        L.map
+          (\scale ->
+             L.map
+               (\rf ->
+                  L.map
+                    (VS.fromListN (rows * cols) .
+                     conjugateFunc filterType .
+                     makeFilterConvolutionList rows cols . pinwheels scale rf)
+                    afs)
+               rfs)
+          scales
+      filterTemp =
+        VS.fromListN (rows * cols) .
+        conjugateFunc filterType . makeFilterConvolutionList rows cols $
+        pinwheels (L.last scales) (L.last rfs) (L.last afs)
+  lock <- getFFTWLock
+  (p1, vec) <- dft2dPlan lock plan rows cols filterTemp
+  (p2, _) <- idft2dPlan lock p1 rows cols vec
+  filters <-
+    M.mapM
+      (M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])))
+      filterList
+  return (p2, filters)
+makeGaussianPinwheelFilterConvolution _ _ _ =
+  error "makeGaussianPinwheelFilterConvolution: filter parameter type error."
+
+
+{-# INLINE applyGaussianPinwheelFilterConvolution #-}
+
+applyGaussianPinwheelFilterConvolution
+  :: DFTPlan
+  -> Int
+  -> Int
+  -> [[[VS.Vector (Complex Double)]]]
+  -> [VS.Vector (Complex Double)]
+  -> IO [[VS.Vector (Complex Double)]]
+applyGaussianPinwheelFilterConvolution plan rows cols filters xs = do
+  ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+  fmap (\x -> [x]) .
+    dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+    L.concatMap
+      (\x -> L.concatMap (L.concatMap (L.map (VS.zipWith (*) x))) filters) $
+    ys

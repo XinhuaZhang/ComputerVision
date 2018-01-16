@@ -5,7 +5,6 @@ import           Classifier.LibLinear
 import           Control.Monad                            as M
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
-import           CV.Filter.FourierMellinTransform
 import           CV.Filter.PolarSeparableFilter
 import           CV.Utility.Parallel                      as Par
 import           Data.Array.Repa
@@ -27,14 +26,14 @@ main = do
         , Par.batchSize = AP.batchSize params
         }
   kmeansModel <- decodeFile (kmeansFile params)
-  filterParams <-
-    fmap (\x -> read x :: PolarSeparableFilterParams) . readFile $
+  filterParamsList <-
+    fmap (\x -> read x :: [PolarSeparableFilterParams]) . readFile $
     (paramsFileName params)
   (plan, filters) <-
-    makePolarSeparableFilterConvolution getEmptyPlan filterParams
+    makePolarSeparableFilterConvolutionList getEmptyPlan filterParamsList
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    filterConvolutionConduit parallelParams plan filters =$=
+    polarSeparableFilterConvolutionConduit parallelParams plan filters =$=
     invariantFeatureExtractionConduit parallelParams (stride params) =$=
     kmeansConduit parallelParams kmeansModel =$=
     featureConduit =$=

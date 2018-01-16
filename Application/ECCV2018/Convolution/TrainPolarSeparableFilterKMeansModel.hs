@@ -18,6 +18,58 @@ import           Data.List                                as L
 import           Data.Vector.Unboxed                      as VU
 import           System.Environment
 
+{-# INLINE filterParamsFunc #-}
+
+filterParamsFunc :: Int
+                 -> Int
+                 -> PolarSeparableFilterType
+                 -> PolarSeparableFilterParams
+filterParamsFunc rows cols FourierMellinFilterType =
+  FourierMellinTransformParams
+  { getFourierMellinTransformRows = rows
+  , getFourierMellinTransformCols = cols
+  , getFourierMellinTransformRadialFreq = [0 .. 7]
+  , getFourierMellinTransformAngularFreq = [0 .. 7]
+  }
+filterParamsFunc rows cols GaussianPinwheelFilterType =
+  GaussianPinwheelParams
+  { getGaussianPinwheelRows = rows
+  , getGaussianPinwheelCols = cols
+  , getGaussianPinwheelScale = L.map (* pi) [0.3]
+  , getGaussianPinwheelRadialFreq = [0 .. 7]
+  , getGaussianPinwheelAngularFreq = [-7 .. 7]
+  }
+filterParamsFunc rows cols PinwheelFanFilterType =
+  PinwheelFanParams
+  { pinwheelFanRows = rows
+  , pinwheelFanCols = cols
+  , pinwheelFanGaussianScale = 0.1 * pi
+  , pinwheelFanScale = L.map (\x -> 2 ** (x / 1)) [0 .. 1]
+  , pinwheelFanRadialFreqs = [0 .. 7] -- L.map (\x -> x / 8 * pi) [0, 6, 8, 10]
+  , pinwheelFanAngularFreqs = [0 .. 7]
+  , pinwheelFanTheta = L.map (* (2 * pi)) [0.05,0.1 .. 1]
+  }  
+filterParamsFunc rows cols PinwheelRingFilterType =
+  PinwheelRingParams
+  { pinwheelRingRows = rows
+  , pinwheelRingCols = cols
+  , pinwheelRingGaussianScale = 0.15 * pi
+  , pinwheelRingScale = L.map (\x -> 2 ** (x / 4)) [0 .. 2]
+  , pinwheelRingRadialFreqs = [0 .. 7] -- L.map (\x -> x / 8 * pi) [0, 6, 8, 10]
+  , pinwheelRingAngularFreqs = [0 .. 7]
+  , pinwheelRingRadius = [4, 6, 8]
+  }
+filterParamsFunc rows cols PinwheelBlobFilterType =
+  PinwheelBlobParams
+  { pinwheelBlobRows = rows
+  , pinwheelBlobCols = cols
+  , pinwheelBlobGaussianScale = 2 * pi
+  , pinwheelBlobScale = [1]
+  , pinwheelBlobFreqs = 0.5 * pi
+  , pinwheelBlobOrientation = [0,10 .. 360 - 10]
+  , pinwheelBlobThetaShift = [0,32 .. 127 - 32] -- [0,127]
+  , pinwheelBlobRadiusShift = [22, 24, 26, 28] -- [0,32]
+  }  
 
 main = do
   args <- getArgs
@@ -33,33 +85,14 @@ main = do
         { Par.numThread = AP.numThread params
         , Par.batchSize = AP.batchSize params
         }
-      filterParams =
-        case (filterType params) of
-          "FourierMellin" ->
-            PolarSeparableFilterFourierMellinParams
-              FourierMellinTransformParams
-              { getFourierMellinTransformRows = rows
-              , getFourierMellinTransformCols = cols
-              , getFourierMellinTransformRadialFreq = [0 .. 7]
-              , getFourierMellinTransformAngularFreq = [0 .. 7]
-              }
-          "Pinwheel" ->
-            PolarSeparableFilterGaussianPinwheelParams
-              GaussianPinwheelParams
-              { getGaussianPinwheelRows = rows
-              , getGaussianPinwheelCols = cols
-              , getGaussianPinwheelScale = L.map (* pi) [0.3]
-              , getGaussianPinwheelRadialFreq = [0 .. 7]
-              , getGaussianPinwheelAngularFreq = [-7 .. 7]
-              }
-          _ -> error "TrainKMeansModel: filter type error."
-  print filterParams
+      filterParamsList = L.map (filterParamsFunc rows cols) (filterType params)
+  print filterParamsList
   (plan, filters) <-
-    makePolarSeparableFilterConvolution getEmptyPlan filterParams
-  writeFile (paramsFileName params) . show $ filterParams
+    makePolarSeparableFilterConvolutionList getEmptyPlan filterParamsList
+  writeFile (paramsFileName params) . show $ filterParamsList
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    filterConvolutionConduit parallelParams plan filters =$=
+    polarSeparableFilterConvolutionConduit parallelParams plan filters =$=
     invariantFeatureExtractionConduit parallelParams (stride params) =$=
     kmeansSink
       parallelParams
@@ -67,3 +100,4 @@ main = do
       (numGaussian params)
       (kmeansFile params)
       (threshold params)
+  undefined

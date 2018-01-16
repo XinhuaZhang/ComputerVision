@@ -121,6 +121,13 @@ instance FilterConvolution MorletWaveletConvolution where
     dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
       L.concatMap (\x -> L.concatMap (L.map (VS.zipWith (*) x)) filters) $
       ys
+  {-# INLINE applyInvariantFilterConvolution #-}
+  applyInvariantFilterConvolution plan (Filter (MorletWaveletParams rows cols _ _ _ _) filters) xs = do
+    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+    fmap (\x -> [x]) .
+      dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+      L.concatMap (\x -> L.concatMap (L.map (VS.zipWith (*) x)) filters) $
+      ys
   {-# INLINE getFilterConvolutionList #-}
   getFilterConvolutionList = L.concat . getFilter
 

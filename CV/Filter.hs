@@ -21,14 +21,12 @@ data ConvolutionalFilterType
   | Conjugate
   deriving (Show, Read)
 
-instance Functor (Filter a) where
-  fmap f (Filter x y) = Filter x $! f y
 
 instance (NFData a, NFData b) =>
          NFData (Filter a b) where
   rnf (Filter x y) = rnf x `seq` rnf y `seq` ()
 
-class FilterExpansion a  where
+class FilterExpansion a where
   type FilterExpansionParameters a :: *
   getFilterExpansionNum :: a -> Int
   getFilterExpansionList :: a -> [VU.Vector (Complex Double)]
@@ -36,19 +34,23 @@ class FilterExpansion a  where
   applyFilterExpansion :: a -> [VU.Vector (Complex Double)] -> [Complex Double]
 
 class FilterConvolution a where
-  type FilterConvolutionParameters a :: *
+  type FilterConvolutionParameters a
   getFilterConvolutionNum :: a -> Int
   getFilterConvolutionList :: a -> [VS.Vector (Complex Double)]
-  makeFilterConvolution
-    :: DFTPlan
-    -> FilterConvolutionParameters a
-    -> ConvolutionalFilterType
-    -> IO (DFTPlan, a)
+  makeFilterConvolution :: DFTPlan
+                        -> FilterConvolutionParameters a
+                        -> ConvolutionalFilterType
+                        -> IO (DFTPlan, a)
   applyFilterConvolution
     :: DFTPlan
     -> a
     -> [VS.Vector (Complex Double)]
     -> IO [VS.Vector (Complex Double)]
+  applyInvariantFilterConvolution
+    :: DFTPlan
+    -> a
+    -> [VS.Vector (Complex Double)]
+    -> IO [[VS.Vector (Complex Double)]]
 
 {-# INLINE makeFilterExpansionList #-}
 
