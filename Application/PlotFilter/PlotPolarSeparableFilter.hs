@@ -28,9 +28,9 @@ filterParamsFunc rows cols "GaussianPinwheel" =
   GaussianPinwheelParams
   { getGaussianPinwheelRows = rows
   , getGaussianPinwheelCols = cols
-  , getGaussianPinwheelScale = L.map (* pi) [0.3]
-  , getGaussianPinwheelRadialFreq = [0 .. 3]
-  , getGaussianPinwheelAngularFreq = [-3 .. 3]
+  , getGaussianPinwheelScale = L.map (* pi) [0.25]
+  , getGaussianPinwheelRadialFreq = [0 .. 2]
+  , getGaussianPinwheelAngularFreq = [-2 .. 2]
   }
 filterParamsFunc rows cols "PinwheelFan" =
   PinwheelFanParams
@@ -48,9 +48,9 @@ filterParamsFunc rows cols "PinwheelRing" =
   , pinwheelRingCols = cols
   , pinwheelRingGaussianScale = 0.1 * pi
   , pinwheelRingScale = L.map (\x -> 2 ** (x / 4)) [0 .. 0]
-  , pinwheelRingRadialFreqs = [0 .. 3] -- L.map (\x -> x / 8 * pi) [0, 6, 8, 10]
-  , pinwheelRingAngularFreqs = [0 .. 3]
-  , pinwheelRingRadius = [4, 6, 8]
+  , pinwheelRingRadialFreqs = [5] -- L.map (\x -> x / 8 * pi) [0, 6, 8, 10]
+  , pinwheelRingAngularFreqs = [5]
+  , pinwheelRingRadius = [5,6,7]
   }
 filterParamsFunc rows cols "PinwheelBlob" =
   PinwheelBlobParams

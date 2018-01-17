@@ -1,16 +1,23 @@
 export OMP_NUM_THREADS=16
-FLAG="--make -O2 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000  -funbox-strict-fields -fllvm -optlo-O3  -i../../../" #-fllvm -optlo-O3 -XBangPatterns
+FLAG="--make -O2 -j4 -threaded -rtsopts -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000  -funbox-strict-fields -fllvm -optlo-O3  -i../../../ -fsimpl-tick-factor=1000" #-fllvm -optlo-O3 -XBangPatterns
 OBJPATH="../../../Classifier/LibLinear/"
 SVMPATH="../../../Classifier/LibSVM/"
 LIBS="-lstdc++ -llapack -lblas  -lgomp -lfftw3 -lfftw3f -lfftw3l -lm" # -lfftw3 -lfftw3f -lfftw3l -lm
 LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
 
-cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPinwheelWaveletKMeansModel.hs -o trainPinwheelWaveletKMeansModel -fsimpl-tick-factor=1000
-cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPinwheelWavelet.hs -o trainPinwheelWavelet &
-cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPinwheelWavelet.hs -o predictPinwheelWavelet &
-wait
+## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPinwheelWaveletKMeansModel.hs -o trainPinwheelWaveletKMeansModel -fsimpl-tick-factor=1000
+## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPinwheelWavelet.hs -o trainPinwheelWavelet &
+## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPinwheelWavelet.hs -o predictPinwheelWavelet &
+## wait
 
-cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterKMeansModel.hs -o trainPolarSeparableFilterKMeansModel 
-cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilter.hs -o trainPolarSeparableFilter &
-cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilter.hs -o predictPolarSeparableFilter &
+## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterKMeansModel.hs -o trainPolarSeparableFilterKMeansModel 
+## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilter.hs -o trainPolarSeparableFilter &
+## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilter.hs -o predictPolarSeparableFilter &
+## wait
+
+cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparablePredictor.hs -o trainPolarSeparablePredictor
+
+cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterKMeansModelObjectPredictor.hs -o trainPolarSeparableFilterKMeansModelObjectPredictor &
+cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterObjectPredictor.hs -o trainPolarSeparableFilterObjectPredictor &
+cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilterObjectPredictor.hs -o predictPolarSeparableFilterObjectPredictor &
 wait

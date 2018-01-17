@@ -105,7 +105,7 @@ gaussian2D''
   :: (Floating a, Ord a)
     => Int -> a -> Int -> Int -> a
 gaussian2D'' freq sd i j -- =
-  | r == 0 = 1 / ((2 * pi) * sd * sd)
+  | r == 0 = 0 -- 1 / ((2 * pi) * sd * sd)
   | otherwise =
     1 / ((2 * pi) * sd * sd) *
     exp (-(log r) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
@@ -137,13 +137,15 @@ makeGaussianPinwheelFilterConvolution plan (GaussianPinwheelParams rows cols sca
         L.map
           (\scale ->
              L.map
-               (\rf ->
+               (\af ->
                   L.map
-                    (VS.fromListN (rows * cols) .
-                     conjugateFunc filterType .
-                     makeFilterConvolutionList rows cols . pinwheels scale rf)
-                    afs)
-               rfs)
+                    (\rf ->
+                       VS.fromList .
+                       conjugateFunc filterType .
+                       makeFilterConvolutionList rows cols $
+                       pinwheels scale rf af)
+                    rfs)
+               afs)
           scales
       filterTemp =
         VS.fromListN (rows * cols) .

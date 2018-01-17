@@ -109,11 +109,11 @@ nonInvariantFeatureExtractionConduit parallelParams stride = do
         nonInvariantFeatureExtractionConduit parallelParams stride)
 
 -- from outter-most to inner-most:
--- layer, free degrees
+-- layer, filterType, free degrees
 kmeansConduit
   :: ParallelParams
-  -> [KMeansModel]
-  -> Conduit (Double, [[VU.Vector Double]]) (ResourceT IO) (Double, VU.Vector Double)
+  -> [[KMeansModel]]
+  -> Conduit (Double, [[[VU.Vector Double]]]) (ResourceT IO) (Double, VU.Vector Double)
 kmeansConduit parallelParams models = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -122,25 +122,31 @@ kmeansConduit parallelParams models = do
               parMapChunk
                 parallelParams
                 rdeepseq
-                (second $ VU.concat . L.zipWith (vlad . center) models)
+                (second $
+                 VU.concat .
+                 L.zipWith
+                   (\model zs -> VU.concat $ L.zipWith (vlad . center) model zs)
+                   models)
                 xs
         sourceList ys
         kmeansConduit parallelParams models)
 
 -- from outter-most to inner-most:
--- layer, free degrees
+-- layer, filterType,  free degrees
 kmeansSink
   :: ParallelParams
   -> Int
   -> Int
   -> FilePath
   -> Double
-  -> Sink (Double, [[VU.Vector Double]]) (ResourceT IO) [KMeansModel]
+  -> Sink (Double, [[[VU.Vector Double]]]) (ResourceT IO) [[KMeansModel]]
 kmeansSink parallelParams numExample numGaussian kmeansFile threshold = do
   xs <- CL.take numExample
-  let ys = L.map L.concat . L.transpose . snd . L.unzip $ xs
+  let ys =
+        L.map (L.map L.concat . L.transpose) . L.transpose . snd . L.unzip $ xs
   model <-
-    liftIO . M.mapM (kmeans parallelParams numGaussian kmeansFile threshold) $
+    liftIO .
+    M.mapM (M.mapM (kmeans parallelParams numGaussian kmeansFile threshold)) $
     ys
   liftIO $ encodeFile kmeansFile model
   return model

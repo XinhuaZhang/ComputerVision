@@ -91,7 +91,7 @@ polarSeparableFilterConvolutionConduit
   :: ParallelParams
   -> DFTPlan
   -> [PolarSeparableFilter PolarSeparableFilterConvolution]
-  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) [[LabeledArray DIM3 Double]]
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [[[R.Array U DIM3 Double]]])
 polarSeparableFilterConvolutionConduit parallelParams plan filters = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -104,8 +104,7 @@ polarSeparableFilterConvolutionConduit parallelParams plan filters = do
             (\(LabeledArray label x) -> do
                let imgVecs =
                      L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
-               filteredImages <-
-                 L.concat <$>
+               filteredImagesList <-
                  M.mapM
                    (\filter ->
                       applyPolarSeparableInvariantFilterConvolution
@@ -114,16 +113,17 @@ polarSeparableFilterConvolutionConduit parallelParams plan filters = do
                         imgVecs)
                    filters
                return
-                 [ L.map
-                     (\filteredImage ->
-                        LabeledArray label .
-                        fromUnboxed
-                          (Z :. L.length filteredImage :. rows :. cols) .
-                        -- rescaleUnboxedVector (0, 1) .
-                        VU.map magnitude . VS.convert . VS.concat $
-                        filteredImage) $
-                   filteredImages
-                 ]) $
+                 ( fromIntegral label
+                 , [ L.map
+                       (L.map
+                          (\filteredImage ->
+                             fromUnboxed
+                               (Z :. L.length filteredImage :. rows :. cols) .
+                                                       -- rescaleUnboxedVector (0, 1) .
+                             VU.map magnitude . VS.convert . VS.concat $
+                             filteredImage))
+                       filteredImagesList
+                   ])) $
           xs
         sourceList ys
         polarSeparableFilterConvolutionConduit parallelParams plan filters)
