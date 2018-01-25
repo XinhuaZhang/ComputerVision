@@ -7,6 +7,7 @@ module CV.Filter.GaussianPinwheel
   , GaussianPinwheelConvolution
   , makeGaussianPinwheelFilterExpansion
   , makeGaussianPinwheelFilterConvolution
+  , makeGaussianPinwheelFilterConvolutionPI
   , applyGaussianPinwheelFilterConvolution
   ) where
 
@@ -98,6 +99,16 @@ pinwheels scale rf af x y
   | otherwise =
     (gaussian2D'' rf scale x y :+ 0) * angularFunc af x y *
     radialFunc scale af rf x y
+    
+
+{-# INLINE pinwheelsPI #-}
+
+pinwheelsPI :: Double -> Int -> Int -> (Int -> Int -> Complex Double)
+pinwheelsPI scale rf af x y
+  | scale == 0 = angularFunc af x y * radialFunc scale af rf x y
+  | otherwise =
+    (gaussian2D'' rf scale x y :+ 0) * angularFunc af (-x) (-y) *
+    radialFunc scale af rf x y
 
 
 {-# INLINE gaussian2D'' #-}
@@ -105,7 +116,7 @@ gaussian2D''
   :: (Floating a, Ord a)
     => Int -> a -> Int -> Int -> a
 gaussian2D'' freq sd i j -- =
-  | r == 0 = 0 -- 1 / ((2 * pi) * sd * sd)
+  | r == 0 = 1 / ((2 * pi) * sd * sd)
   | otherwise =
     1 / ((2 * pi) * sd * sd) *
     exp (-(log r) ^ (2 :: Int) / (2 * (sd ^ (2 :: Int))))
@@ -126,6 +137,8 @@ makeGaussianPinwheelFilterExpansion params@(GaussianPinwheelParams rows cols sca
   ]
 makeGaussianPinwheelFilterExpansion _ _ _ =
   error "makeGaussianPinwheelFilterExpansion: filter parameter type error."
+  
+{-# INLINE makeGaussianPinwheelFilterConvolution #-}
 
 makeGaussianPinwheelFilterConvolution
   :: DFTPlan
@@ -161,6 +174,43 @@ makeGaussianPinwheelFilterConvolution plan (GaussianPinwheelParams rows cols sca
   return (p2, filters)
 makeGaussianPinwheelFilterConvolution _ _ _ =
   error "makeGaussianPinwheelFilterConvolution: filter parameter type error."
+  
+{-# INLINE makeGaussianPinwheelFilterConvolutionPI #-}
+
+makeGaussianPinwheelFilterConvolutionPI
+  :: DFTPlan
+  -> PolarSeparableFilterParams
+  -> ConvolutionalFilterType
+  -> IO (DFTPlan, [[[VS.Vector (Complex Double)]]])
+makeGaussianPinwheelFilterConvolutionPI plan (GaussianPinwheelParams rows cols scales rfs afs) filterType = do
+  let filterList =
+        L.map
+          (\scale ->
+             L.map
+               (\af ->
+                  L.map
+                    (\rf ->
+                       VS.fromList .
+                       conjugateFunc filterType .
+                       makeFilterConvolutionList rows cols $
+                       pinwheelsPI scale rf af)
+                    rfs)
+               afs)
+          scales
+      filterTemp =
+        VS.fromListN (rows * cols) .
+        conjugateFunc filterType . makeFilterConvolutionList rows cols $
+        pinwheelsPI (L.last scales) (L.last rfs) (L.last afs)
+  lock <- getFFTWLock
+  (p1, vec) <- dft2dPlan lock plan rows cols filterTemp
+  (p2, _) <- idft2dPlan lock p1 rows cols vec
+  filters <-
+    M.mapM
+      (M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])))
+      filterList
+  return (p2, filters)
+makeGaussianPinwheelFilterConvolutionPI _ _ _ =
+  error "makeGaussianPinwheelFilterConvolutionPI: filter parameter type error."
 
 
 {-# INLINE applyGaussianPinwheelFilterConvolution #-}

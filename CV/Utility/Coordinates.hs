@@ -6,6 +6,7 @@ module CV.Utility.Coordinates where
 angleFunctionDeg
   :: (Floating a, Ord a)
   => a -> a -> a
+angleFunctionDeg 0 0 = 0
 angleFunctionDeg i 0
   | i > 0 = 0.0
   | otherwise = 180.0
@@ -27,6 +28,7 @@ angleFunctionDeg i j
 angleFunctionRad
   :: (Floating a, Ord a)
   => a -> a -> a
+angleFunctionRad 0 0 = 0
 angleFunctionRad i 0
   | i > 0 = 0.0
   | otherwise = 1.0 * pi

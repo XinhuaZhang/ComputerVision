@@ -9,6 +9,7 @@ module CV.Filter.PinwheelRing
   , applyPinwheelRingFilterConvolution
   , makePinwheelRingFilterExpansion
   , makePinwheelRingFilterConvolution
+  , makePinwheelRingFilterConvolutionPI
   -- , applyPinwheelRingExpansion
   ) where
 
@@ -42,15 +43,15 @@ pinwheelRing :: Double
              -> Complex Double
 pinwheelRing gaussianScale waveletScale rf af shift x y
   | x == 0 && y == 0 && shift == 0 =
-    1 / (2 * pi * sqrt waveletScale :+ 0) * (gaussian1D gaussianScale 0 :+ 0)
+    0 -- 1 / (2 * pi * sqrt waveletScale :+ 0) * (gaussian1D gaussianScale 0 :+ 0)
   | x == 0 && y == 0 && shift /= 0 = 0
   | otherwise =
     1 / (2 * pi * sqrt waveletScale :+ 0) *
     (gaussian1D gaussianScale (r - r') :+ 0) *
     exp
-      (0 :+ fromIntegral af * angleFunctionRad (fromIntegral x) (fromIntegral y)) *
-    exp (0 :+ rf * (r - r')) -- /
-    -- (cr :+ 0)
+      (0 :+ (fromIntegral af * angleFunctionRad (fromIntegral x) (fromIntegral y))) *
+    exp (0 :+ rf * (r - r')) /
+    (cr :+ 0)
   where
     cr = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     r =
@@ -59,7 +60,38 @@ pinwheelRing gaussianScale waveletScale rf af shift x y
     r' =
       if shift == 0
         then 0
-        else (log shift) / waveletScale
+        else (log shift) -- / waveletScale
+        
+{-# INLINE pinwheelRingPI #-}
+
+pinwheelRingPI :: Double
+             -> Double
+             -> Double
+             -> Int
+             -> Double
+             -> Int
+             -> Int
+             -> Complex Double
+pinwheelRingPI gaussianScale waveletScale rf af shift x y
+  | x == 0 && y == 0 && shift == 0 =
+    0 -- 1 / (2 * pi * sqrt waveletScale :+ 0) * (gaussian1D gaussianScale 0 :+ 0)
+  | x == 0 && y == 0 && shift /= 0 = 0
+  | otherwise =
+    1 / (2 * pi * sqrt waveletScale :+ 0) *
+    (gaussian1D gaussianScale (r - r') :+ 0) *
+    exp
+      (0 :+ fromIntegral af * angleFunctionRad (fromIntegral (-x)) (fromIntegral (-y))) *
+    exp (0 :+ rf * (r - r')) /
+    (cr :+ 0)
+  where
+    cr = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    r =
+      (log . sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)) /
+      waveletScale
+    r' =
+      if shift == 0
+        then 0
+        else (log shift) -- / waveletScale
 
 instance FilterExpansion PinwheelRingExpansion where
   type FilterExpansionParameters PinwheelRingExpansion = PolarSeparableFilterParams
@@ -202,9 +234,53 @@ makePinwheelRingFilterConvolution plan (PinwheelRingParams rows cols gScale wave
       (M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])))
       filterList
   return (p2, filters)
-
 makePinwheelRingFilterConvolution _ _ _ =
   error "makePinwheelRingFilterConvolution: filter parameter type error."
+  
+{-# INLINE makePinwheelRingFilterConvolutionPI #-}
+
+makePinwheelRingFilterConvolutionPI
+  :: DFTPlan
+  -> PolarSeparableFilterParams
+  -> ConvolutionalFilterType
+  -> IO (DFTPlan, [[[VS.Vector (Complex Double)]]])
+makePinwheelRingFilterConvolutionPI plan (PinwheelRingParams rows cols gScale waveletScales rfs afs radiuses) filterType = do
+  let filterList =
+        L.map
+          (\radius ->
+             L.map
+               (\waveletScale ->
+                  L.map
+                    (\(af, rf) ->
+                       VS.fromList . conjugateFunc filterType $!
+                       makeFilterConvolutionList
+                         rows
+                         cols
+                         (pinwheelRingPI gScale waveletScale rf af radius)) $
+                  [(af, rf) | af <- afs, rf <- rfs])
+               waveletScales)
+          radiuses
+      filterTmp =
+        VS.fromListN (rows * cols) . conjugateFunc filterType $!
+        makeFilterConvolutionList
+          rows
+          cols
+          (pinwheelRingPI
+             gScale
+             (L.last waveletScales)
+             (L.last rfs)
+             (L.last afs)
+             (L.last radiuses))
+  lock <- getFFTWLock
+  (p1, vec) <- dft2dPlan lock plan rows cols filterTmp
+  (p2, _) <- idft2dPlan lock p1 rows cols vec
+  filters <-
+    M.mapM
+      (M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])))
+      filterList
+  return (p2, filters)
+makePinwheelRingFilterConvolutionPI _ _ _ =
+  error "makePinwheelRingFilterConvolutionPI: filter parameter type error."
 
 {-# INLINE applyPinwheelRingFilterConvolution #-}
 

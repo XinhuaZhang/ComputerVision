@@ -36,6 +36,7 @@ data Flag
   | NumScatteringLayer Int
   | FourierMellin
   | GaussianPinwheel
+  | InverseGaussianPinwheel
   | PinwheelFan
   | PinwheelRing
   | PinwheelBlob
@@ -205,6 +206,11 @@ options =
       ["GaussianPinwheel"]
       (NoArg GaussianPinwheel)
       "Use Gaussian-windowed GaussianPinwheel Filters"
+  ,  Option
+       ['z']
+       ["InverseGaussianPinwheel"]
+       (NoArg InverseGaussianPinwheel)
+       "Use Donut-windowed GaussianPinwheel Filters"
   , Option ['z'] ["PinwheelFan"] (NoArg PinwheelFan) "Use PinwheelFan Filters"
   , Option
       ['z']
@@ -327,6 +333,13 @@ parseFlag flags = go flags defaultFlag
             xs
             (params
              {filterType = GaussianPinwheelFilterType : filterType params})
+        InverseGaussianPinwheel ->
+          go
+            xs
+            (params
+             { filterType =
+                 InverseGaussianPinwheelFilterType : filterType params
+             })
         PinwheelFan ->
           go
             xs

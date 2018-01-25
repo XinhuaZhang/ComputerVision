@@ -28,9 +28,9 @@ filterParamsFunc rows cols "GaussianPinwheel" =
   GaussianPinwheelParams
   { getGaussianPinwheelRows = rows
   , getGaussianPinwheelCols = cols
-  , getGaussianPinwheelScale = L.map (* pi) [0.25]
-  , getGaussianPinwheelRadialFreq = [0 .. 2]
-  , getGaussianPinwheelAngularFreq = [-2 .. 2]
+  , getGaussianPinwheelScale = L.map (* pi) [0.3,0.35]
+  , getGaussianPinwheelRadialFreq = [3]
+  , getGaussianPinwheelAngularFreq = [3]
   }
 filterParamsFunc rows cols "PinwheelFan" =
   PinwheelFanParams
@@ -46,11 +46,11 @@ filterParamsFunc rows cols "PinwheelRing" =
   PinwheelRingParams
   { pinwheelRingRows = rows
   , pinwheelRingCols = cols
-  , pinwheelRingGaussianScale = 0.1 * pi
-  , pinwheelRingScale = L.map (\x -> 2 ** (x / 4)) [0 .. 0]
+  , pinwheelRingGaussianScale = 0.75 * pi
+  , pinwheelRingScale = L.map (\x -> 2 ** (x / 1)) [0 .. 0]
   , pinwheelRingRadialFreqs = [5] -- L.map (\x -> x / 8 * pi) [0, 6, 8, 10]
   , pinwheelRingAngularFreqs = [5]
-  , pinwheelRingRadius = [5,6,7]
+  , pinwheelRingRadius = [8]
   }
 filterParamsFunc rows cols "PinwheelBlob" =
   PinwheelBlobParams
@@ -89,8 +89,8 @@ concatStr (x:xs) = x L.++ "_" L.++ (concatStr xs)
 main = do
   xs <- getArgs -- name: FourierMellin, GaussianPinwheel, PinwheelFan,
                 -- PinwheelRing, PinwheeBlog
-  let rows = 64
-      cols = 64
+  let rows = 96
+      cols = 96
       filterParamsList = L.map (filterParamsFunc rows cols) xs
       filters =
         L.concatMap

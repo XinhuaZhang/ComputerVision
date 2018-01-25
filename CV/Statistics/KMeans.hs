@@ -280,3 +280,5 @@ vlad center' =
   where
     k = V.length center'
     vecLen = VU.length . V.head $ center'
+    
+

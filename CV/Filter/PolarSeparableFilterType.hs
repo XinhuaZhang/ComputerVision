@@ -9,6 +9,7 @@ import           Data.Vector.Unboxed  as VU
 data PolarSeparableFilterType
   = FourierMellinFilterType
   | GaussianPinwheelFilterType
+  | InverseGaussianPinwheelFilterType
   | PinwheelFanFilterType
   | PinwheelRingFilterType
   | PinwheelBlobFilterType
@@ -24,6 +25,11 @@ data PolarSeparableFilterParams
                           ,  getGaussianPinwheelScale       :: ![Double]
                           ,  getGaussianPinwheelRadialFreq  :: ![Int]
                           ,  getGaussianPinwheelAngularFreq :: ![Int]}
+  | InverseGaussianPinwheelParams { getInverseGaussianPinwheelRows :: !Int
+                                 ,  getInverseGaussianPinwheelCols :: !Int
+                                 ,  getInverseGaussianPinwheelScale :: ![Double]
+                                 ,  getInverseGaussianPinwheelRadialFreq :: ![Int]
+                                 ,  getInverseGaussianPinwheelAngularFreq :: ![Int]}
   | PinwheelFanParams { pinwheelFanRows          :: !Int
                      ,  pinwheelFanCols          :: !Int
                      ,  pinwheelFanGaussianScale :: !Double
@@ -58,6 +64,7 @@ data PolarSeparableFilter a =
 data PolarSeparableFilterExpansion
   = FourierMellinFilterExpansion  [[VU.Vector (Complex Double)]]
   | GaussianPinwheelFilterExpansion [[[VU.Vector (Complex Double)]]]
+  | InverseGaussianPinwheelFilterExpansion [[[VU.Vector (Complex Double)]]]
   | PinwheelFanFilterExpansion [[[VU.Vector (Complex Double)]]]
   | PinwheelRingFilterExpansion [[[VU.Vector (Complex Double)]]]
   | PinwheelBlobFilterExpansion [[VU.Vector (Complex Double)]]
@@ -65,6 +72,7 @@ data PolarSeparableFilterExpansion
 data PolarSeparableFilterConvolution
   = FourierMellinFilterConvolution [[VS.Vector (Complex Double)]]
   | GaussianPinwheelFilterConvolution [[[VS.Vector (Complex Double)]]]
+  | InverseGaussianPinwheelFilterConvolution [[[VS.Vector (Complex Double)]]]
   | PinwheelFanFilterConvolution [[[VS.Vector (Complex Double)]]]
   | PinwheelRingFilterConvolution [[[VS.Vector (Complex Double)]]]
   | PinwheelBlobFilterConvolution [[VS.Vector (Complex Double)]]

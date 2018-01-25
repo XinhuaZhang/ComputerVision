@@ -4,6 +4,7 @@ OBJPATH="../../../Classifier/LibLinear/"
 SVMPATH="../../../Classifier/LibSVM/"
 LIBS="-lstdc++ -llapack -lblas  -lgomp -lfftw3 -lfftw3f -lfftw3l -lm" # -lfftw3 -lfftw3f -lfftw3l -lm
 LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
+CabalFlag="--sandbox-config-file=../cabal.sandbox.config"
 
 ## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPinwheelWaveletKMeansModel.hs -o trainPinwheelWaveletKMeansModel -fsimpl-tick-factor=1000
 ## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPinwheelWavelet.hs -o trainPinwheelWavelet &
@@ -15,9 +16,9 @@ LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
 ## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilter.hs -o predictPolarSeparableFilter &
 ## wait
 
-cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparablePredictor.hs -o trainPolarSeparablePredictor
+cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparablePredictor.hs -o trainPolarSeparablePredictor
 
-cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterKMeansModelObjectPredictor.hs -o trainPolarSeparableFilterKMeansModelObjectPredictor &
-cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterObjectPredictor.hs -o trainPolarSeparableFilterObjectPredictor &
-cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilterObjectPredictor.hs -o predictPolarSeparableFilterObjectPredictor &
+cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterKMeansModelObjectPredictor.hs -o trainPolarSeparableFilterKMeansModelObjectPredictor &
+cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterObjectPredictor.hs -o trainPolarSeparableFilterObjectPredictor &
+cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilterObjectPredictor.hs -o predictPolarSeparableFilterObjectPredictor &
 wait

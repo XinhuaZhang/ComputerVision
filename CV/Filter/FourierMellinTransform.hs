@@ -8,6 +8,7 @@ module CV.Filter.FourierMellinTransform
   , fourierMellinTransform
   , makeFourierMellinTransformFilterExpansion
   , makeFourierMellinTransformFilterConvolution
+  , makeFourierMellinTransformFilterConvolutionPI
   , applyFourierMellinTransformFilterConvolution
   ) where
 
@@ -77,6 +78,17 @@ fourierMellinTransform rf af x y
   where
     r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     theta = angleFunctionRad (fromIntegral x) (fromIntegral y)
+    
+
+{-# INLINE fourierMellinTransformPI #-}
+
+fourierMellinTransformPI ::  Double -> Int -> Int -> Int -> Complex Double
+fourierMellinTransformPI rf af x y
+  | x == 0 && y == 0 = 0
+  | otherwise = (r ** ((-1) :+ (-rf))) * exp (0 :+ (fromIntegral (-af) * theta))
+  where
+    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    theta = angleFunctionRad (fromIntegral (-x)) (fromIntegral (-y))
 
 {-# INLINE makeFourierMellinTransformFilterExpansion #-}
 
@@ -135,6 +147,42 @@ makeFourierMellinTransformFilterConvolution plan (FourierMellinTransformParams r
 makeFourierMellinTransformFilterConvolution _ _ _ =
   error
     "makeFourierMellinTransformFilterConvolution: filter parameter type error."
+    
+{-# INLINE makeFourierMellinTransformFilterConvolutionPI #-}
+
+makeFourierMellinTransformFilterConvolutionPI
+  :: DFTPlan
+  -> PolarSeparableFilterParams
+  -> ConvolutionalFilterType
+  -> IO (DFTPlan, [[VS.Vector (Complex Double)]])
+makeFourierMellinTransformFilterConvolutionPI plan (FourierMellinTransformParams rows cols rfs afs) filterType = do
+  let filterTemp =
+        VS.fromList . conjugateFunc filterType $!
+        makeFilterConvolutionList
+          rows
+          cols
+          (fourierMellinTransformPI (L.last rfs) (L.last afs))
+      filterList =
+        L.map
+          (\rf ->
+             L.map
+               (\af ->
+                  VS.fromList . conjugateFunc filterType $!
+                  makeFilterConvolutionList
+                    rows
+                    cols
+                    (fourierMellinTransformPI rf af))
+               afs)
+          rfs
+  lock <- getFFTWLock
+  (p1, vec) <- dft2dPlan lock plan rows cols filterTemp
+  (p2, _) <- idft2dPlan lock p1 rows cols vec
+  filters <-
+    M.mapM (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] [])) filterList
+  return (p2, filters)
+makeFourierMellinTransformFilterConvolutionPI _ _ _ =
+  error
+    "makeFourierMellinTransformFilterConvolutionPI: filter parameter type error."
     
 {-# INLINE applyFourierMellinTransformFilterConvolution #-}
 
