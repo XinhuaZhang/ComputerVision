@@ -57,9 +57,10 @@ data PolarSeparableFilterParams
 instance NFData PolarSeparableFilterParams where
   rnf !_ = ()
 
-data PolarSeparableFilter a =
-  PolarSeparableFilter PolarSeparableFilterParams
-                       a
+data PolarSeparableFilter a = PolarSeparableFilter
+  { getPolarSeparableFilterParams :: PolarSeparableFilterParams
+  , getPolarSeparableFilter :: a
+  }
 
 data PolarSeparableFilterExpansion
   = FourierMellinFilterExpansion  [[VU.Vector (Complex Double)]]

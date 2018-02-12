@@ -58,50 +58,50 @@ pinwheelFan gaussianScale waveletScale rf af thetaShift x y
       waveletScale
 
 
-instance FilterExpansion PinwheelFanExpansion where
-  type FilterExpansionParameters PinwheelFanExpansion = PolarSeparableFilterParams
-  {-# INLINE makeFilterExpansion #-}
-  makeFilterExpansion params rCenter cCenter =
-    PinwheelFanExpansion . Filter params $
-    makePinwheelFanFilterExpansion params rCenter cCenter
-  {-# INLINE getFilterExpansionNum #-}
-  getFilterExpansionNum (PinwheelFanExpansion (Filter (PinwheelFanParams _ _ _ scales rfs afs radiuses) _)) =
-    L.length scales * L.length afs * L.length radiuses * L.length rfs
-  {-# INLINE applyFilterExpansion #-}
-  applyFilterExpansion (PinwheelFanExpansion (Filter _ filters)) =
-    L.concatMap
-      (\x ->
-         L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))) filters)
-  {-# INLINE getFilterExpansionList #-}
-  getFilterExpansionList (PinwheelFanExpansion x) =
-    L.concatMap L.concat . getFilter $ x
+-- instance FilterExpansion PinwheelFanExpansion where
+--   type FilterExpansionParameters PinwheelFanExpansion = PolarSeparableFilterParams
+--   {-# INLINE makeFilterExpansion #-}
+--   makeFilterExpansion params rCenter cCenter =
+--     PinwheelFanExpansion . Filter params $
+--     makePinwheelFanFilterExpansion params rCenter cCenter
+--   {-# INLINE getFilterExpansionNum #-}
+--   getFilterExpansionNum (PinwheelFanExpansion (Filter (PinwheelFanParams _ _ _ scales rfs afs radiuses) _)) =
+--     L.length scales * L.length afs * L.length radiuses * L.length rfs
+--   {-# INLINE applyFilterExpansion #-}
+--   applyFilterExpansion (PinwheelFanExpansion (Filter _ filters)) =
+--     L.concatMap
+--       (\x ->
+--          L.concatMap (L.concatMap (L.map (VU.sum . VU.zipWith (*) x))) filters)
+--   {-# INLINE getFilterExpansionList #-}
+--   getFilterExpansionList (PinwheelFanExpansion x) =
+--     L.concatMap L.concat . getFilter $ x
 
-instance FilterConvolution PinwheelFanConvolution where
-  type FilterConvolutionParameters PinwheelFanConvolution = PolarSeparableFilterParams
-  {-# INLINE makeFilterConvolution #-}
-  makeFilterConvolution plan params filterType =
-    second (PinwheelFanConvolution . Filter params) <$>
-    makePinwheelFanFilterConvolution plan params filterType
-  {-# INLINE getFilterConvolutionNum #-}
-  getFilterConvolutionNum (PinwheelFanConvolution (Filter (PinwheelFanParams _ _ _ scales rfs afs shifts) _)) =
-    L.length scales * L.length afs * L.length shifts * L.length rfs
-  {-# INLINE applyFilterConvolution #-}
-  applyFilterConvolution plan (PinwheelFanConvolution (Filter (PinwheelFanParams rows cols _ _ _ _ _) filters)) xs = do
-    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
-    dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
-      L.concatMap
-        (\x -> L.concatMap (L.concatMap (L.map (VS.zipWith (*) x))) filters) $
-      ys
-  {-# INLINE applyInvariantFilterConvolution #-}
-  applyInvariantFilterConvolution plan (PinwheelFanConvolution (Filter (PinwheelFanParams rows cols _ _ _ _ _) filters)) xs = do
-    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
-    M.mapM
-      (dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
-       L.concatMap (L.concatMap (\filter -> L.map (VS.zipWith (*) filter) ys)))
-      filters
-  {-# INLINE getFilterConvolutionList #-}
-  getFilterConvolutionList (PinwheelFanConvolution x) =
-    L.concatMap L.concat . getFilter $ x
+-- instance FilterConvolution PinwheelFanConvolution where
+--   type FilterConvolutionParameters PinwheelFanConvolution = PolarSeparableFilterParams
+--   {-# INLINE makeFilterConvolution #-}
+--   makeFilterConvolution plan params filterType =
+--     second (PinwheelFanConvolution . Filter params) <$>
+--     makePinwheelFanFilterConvolution plan params filterType
+--   {-# INLINE getFilterConvolutionNum #-}
+--   getFilterConvolutionNum (PinwheelFanConvolution (Filter (PinwheelFanParams _ _ _ scales rfs afs shifts) _)) =
+--     L.length scales * L.length afs * L.length shifts * L.length rfs
+--   {-# INLINE applyFilterConvolution #-}
+--   applyFilterConvolution plan (PinwheelFanConvolution (Filter (PinwheelFanParams rows cols _ _ _ _ _) filters)) xs = do
+--     ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+--     dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+--       L.concatMap
+--         (\x -> L.concatMap (L.concatMap (L.map (VS.zipWith (*) x))) filters) $
+--       ys
+--   {-# INLINE applyInvariantFilterConvolution #-}
+--   applyInvariantFilterConvolution plan (PinwheelFanConvolution (Filter (PinwheelFanParams rows cols _ _ _ _ _) filters)) xs = do
+--     ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+--     M.mapM
+--       (dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+--        L.concatMap (L.concatMap (\filter -> L.map (VS.zipWith (*) filter) ys)))
+--       filters
+--   {-# INLINE getFilterConvolutionList #-}
+--   getFilterConvolutionList (PinwheelFanConvolution x) =
+--     L.concatMap L.concat . getFilter $ x
 
 {-# INLINE makePinwheelFanFilterExpansion #-}
 

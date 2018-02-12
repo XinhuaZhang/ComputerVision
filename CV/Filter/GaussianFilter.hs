@@ -57,6 +57,16 @@ gaussian2D sd i j =
   1 / ((2 * pi) * sd * sd) * exp (-r / (2 * (sd ^ (2 :: Int))))
   where
     r = fromIntegral (i * i + j * j)
+    
+{-# INLINE inverseGaussian2D #-}
+
+inverseGaussian2D
+  :: (Floating a)
+  => a -> Int -> Int -> a
+inverseGaussian2D sd i j =
+  1 / ((2 * pi) * sd * sd) * (1 - exp (-r / (2 * (sd ^ (2 :: Int)))))
+  where
+    r = fromIntegral (i * i + j * j)
 
 
 {-# INLINE gaussian2D' #-}
@@ -119,46 +129,46 @@ disk sd i j
   where
     r = sqrt $ fromIntegral (i * i + j * j)
 
-instance FilterConvolution GaussianFilterConvolution where
-  type FilterConvolutionParameters GaussianFilterConvolution = GaussianFilterParams
-  {-# INLINE getFilterConvolutionNum #-}
-  getFilterConvolutionNum (Filter (GaussianFilterParams x _ _) _) = L.length x
-  {-# INLINE getFilterConvolutionList #-}
-  getFilterConvolutionList (Filter _ filters) = filters
-  {-# INLINE makeFilterConvolution #-}
-  makeFilterConvolution plan params@(GaussianFilterParams scales rows cols) filterType = do
-    let filterList =
-          L.map
-            (VS.fromList .
-             conjugateFunc filterType .
-             L.map (:+ 0) . makeFilterConvolutionList rows cols . gaussian2D)
-            scales
-        filterList1 =
-          L.map
-            (VS.fromList .
-             conjugateFunc filterType .
-             L.map (:+ 0) . makeFilterConvolutionList rows cols . gaussian2D)
-            scales
-    lock <- getFFTWLock
-    (p1, vec) <- dft2dPlan lock plan rows cols . L.last $ filterList1
-    (p2, _) <- idft2dPlan lock p1 rows cols vec
-    filters <-
-      Filter params <$!>
-      dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] []) filterList
-    return (p2, filters)
-  {-# INLINE applyFilterConvolution #-}
-  applyFilterConvolution plan (Filter (GaussianFilterParams _ rows cols) filters) xs = do
-    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
-    dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
-      L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $
-      ys
-  {-# INLINE applyInvariantFilterConvolution #-}
-  applyInvariantFilterConvolution plan (Filter (GaussianFilterParams _ rows cols) filters) xs = do
-    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
-    fmap (\x -> [x]) .
-      dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
-      L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $
-      ys
+-- instance FilterConvolution GaussianFilterConvolution where
+--   type FilterConvolutionParameters GaussianFilterConvolution = GaussianFilterParams
+--   {-# INLINE getFilterConvolutionNum #-}
+--   getFilterConvolutionNum (Filter (GaussianFilterParams x _ _) _) = L.length x
+--   {-# INLINE getFilterConvolutionList #-}
+--   getFilterConvolutionList (Filter _ filters) = filters
+--   {-# INLINE makeFilterConvolution #-}
+--   makeFilterConvolution plan params@(GaussianFilterParams scales rows cols) filterType = do
+--     let filterList =
+--           L.map
+--             (VS.fromList .
+--              conjugateFunc filterType .
+--              L.map (:+ 0) . makeFilterConvolutionList rows cols . gaussian2D)
+--             scales
+--         filterList1 =
+--           L.map
+--             (VS.fromList .
+--              conjugateFunc filterType .
+--              L.map (:+ 0) . makeFilterConvolutionList rows cols . gaussian2D)
+--             scales
+--     lock <- getFFTWLock
+--     (p1, vec) <- dft2dPlan lock plan rows cols . L.last $ filterList1
+--     (p2, _) <- idft2dPlan lock p1 rows cols vec
+--     filters <-
+--       Filter params <$!>
+--       dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] []) filterList
+--     return (p2, filters)
+--   {-# INLINE applyFilterConvolution #-}
+--   applyFilterConvolution plan (Filter (GaussianFilterParams _ rows cols) filters) xs = do
+--     ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+--     dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+--       L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $
+--       ys
+--   {-# INLINE applyInvariantFilterConvolution #-}
+--   applyInvariantFilterConvolution plan (Filter (GaussianFilterParams _ rows cols) filters) xs = do
+--     ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+--     fmap (\x -> [x]) .
+--       dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+--       L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $
+--       ys
 
 
 {-# INLINE makeFilterConvolution1DList #-}
@@ -174,42 +184,42 @@ makeFilterConvolution1DList n f =
     in f . fromIntegral $ x
   | r <- [0 .. n - 1] ]
 
-instance FilterConvolution GaussianFilterConvolution1D where
-  type FilterConvolutionParameters GaussianFilterConvolution1D = GaussianFilter1DParams
-  {-# INLINE getFilterConvolutionNum #-}
-  getFilterConvolutionNum (GaussianFilterConvolution1D (GaussianFilter1DParams x _) _) =
-    L.length x
-  {-# INLINE getFilterConvolutionList #-}
-  getFilterConvolutionList (GaussianFilterConvolution1D _ filters) = filters
-  {-# INLINE makeFilterConvolution #-}
-  makeFilterConvolution plan params@(GaussianFilter1DParams scales n) filterType = do
-    let filterList =
-          L.map
-            (VS.fromList .
-             conjugateFunc filterType .
-             L.map (:+ 0) . makeFilterConvolution1DList n . gaussian1D)
-            scales
-        filterList1 =
-          L.map
-            (VS.fromList .
-             conjugateFunc filterType .
-             L.map (:+ 0) . makeFilterConvolution1DList n . gaussian1D)
-            scales
-    lock <- getFFTWLock
-    (p1, vec) <- dft1dGPlan lock plan [n] [0] . L.last $ filterList1
-    (p2, _) <- idft1dGPlan lock p1 [n] [0] vec
-    filters <-
-      GaussianFilterConvolution1D params <$!>
-      dftExecuteBatch p2 (DFTPlanID DFT1DG [n] [0]) filterList
-    return (p2, filters)
-  {-# INLINE applyFilterConvolution #-}
-  applyFilterConvolution plan (GaussianFilterConvolution1D (GaussianFilter1DParams _ n) filters) xs = do
-    ys <- dftExecuteBatch plan (DFTPlanID DFT1DG [n] [0]) xs
-    dftExecuteBatch plan (DFTPlanID IDFT1DG [n] [0]) .
-      L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $ys
-  {-# INLINE applyInvariantFilterConvolution #-}
-  applyInvariantFilterConvolution plan (GaussianFilterConvolution1D (GaussianFilter1DParams _ n) filters) xs = do
-    ys <- dftExecuteBatch plan (DFTPlanID DFT1DG [n] [0]) xs
-    fmap (\x -> [x]) .
-      dftExecuteBatch plan (DFTPlanID IDFT1DG [n] [0]) .
-      L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $ys
+-- instance FilterConvolution GaussianFilterConvolution1D where
+--   type FilterConvolutionParameters GaussianFilterConvolution1D = GaussianFilter1DParams
+--   {-# INLINE getFilterConvolutionNum #-}
+--   getFilterConvolutionNum (GaussianFilterConvolution1D (GaussianFilter1DParams x _) _) =
+--     L.length x
+--   {-# INLINE getFilterConvolutionList #-}
+--   getFilterConvolutionList (GaussianFilterConvolution1D _ filters) = filters
+--   {-# INLINE makeFilterConvolution #-}
+--   makeFilterConvolution plan params@(GaussianFilter1DParams scales n) filterType = do
+--     let filterList =
+--           L.map
+--             (VS.fromList .
+--              conjugateFunc filterType .
+--              L.map (:+ 0) . makeFilterConvolution1DList n . gaussian1D)
+--             scales
+--         filterList1 =
+--           L.map
+--             (VS.fromList .
+--              conjugateFunc filterType .
+--              L.map (:+ 0) . makeFilterConvolution1DList n . gaussian1D)
+--             scales
+--     lock <- getFFTWLock
+--     (p1, vec) <- dft1dGPlan lock plan [n] [0] . L.last $ filterList1
+--     (p2, _) <- idft1dGPlan lock p1 [n] [0] vec
+--     filters <-
+--       GaussianFilterConvolution1D params <$!>
+--       dftExecuteBatch p2 (DFTPlanID DFT1DG [n] [0]) filterList
+--     return (p2, filters)
+--   {-# INLINE applyFilterConvolution #-}
+--   applyFilterConvolution plan (GaussianFilterConvolution1D (GaussianFilter1DParams _ n) filters) xs = do
+--     ys <- dftExecuteBatch plan (DFTPlanID DFT1DG [n] [0]) xs
+--     dftExecuteBatch plan (DFTPlanID IDFT1DG [n] [0]) .
+--       L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $ys
+--   {-# INLINE applyInvariantFilterConvolution #-}
+--   applyInvariantFilterConvolution plan (GaussianFilterConvolution1D (GaussianFilter1DParams _ n) filters) xs = do
+--     ys <- dftExecuteBatch plan (DFTPlanID DFT1DG [n] [0]) xs
+--     fmap (\x -> [x]) .
+--       dftExecuteBatch plan (DFTPlanID IDFT1DG [n] [0]) .
+--       L.concatMap (\x -> L.map (VS.zipWith (*) x) filters) $ys

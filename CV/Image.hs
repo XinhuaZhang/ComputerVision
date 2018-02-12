@@ -1,5 +1,8 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 module CV.Image where
 
+import           Control.DeepSeq
 import           Data.Array.Repa as R
 
 data Image a = Image
@@ -9,9 +12,12 @@ data Image a = Image
 
 instance Functor Image where
   fmap f (Image d img) = Image d (f img)
-
+  
 type ImageRepa = Image (Array U DIM3 Double)
 
+instance NFData ImageRepa where
+  rnf (Image d img) = d `seq` deepSeqArray img ()
+  
 data ImageCoordinates
   = CartesianImage { getCartesianImageValueRange :: (Double, Double)
                    , getCartesianImage           :: Array U DIM3 Double}

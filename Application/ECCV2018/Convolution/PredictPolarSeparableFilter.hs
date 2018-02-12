@@ -26,15 +26,54 @@ main = do
         , Par.batchSize = AP.batchSize params
         }
   kmeansModel <- decodeFile (kmeansFile params)
-  filterParamsList <-
-    fmap (\x -> read x :: [PolarSeparableFilterParams]) . readFile $
+  (filterParamsList:invariantScatteringFilterParamsList:_) <-
+    fmap (\x -> read x :: [[PolarSeparableFilterParams]]) . readFile $
     (paramsFileName params)
-  (plan, filters) <-
+  (_plan, filters) <-
     makePolarSeparableFilterConvolutionList getEmptyPlan filterParamsList
-  runResourceT $
-    CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    polarSeparableFilterConvolutionConduit parallelParams plan filters =$=
-    invariantFeatureExtractionConduit parallelParams (stride params) =$=
-    kmeansConduit parallelParams kmeansModel =$=
-    featureConduit =$=
-    predict (modelName params) ((modelName params) L.++ ".out")
+  (plan, invariantScatteringFilters) <-
+    makePolarSeparableFilterConvolutionList
+      _plan
+      invariantScatteringFilterParamsList
+  if pcaFlag params
+    then do
+      pcaModel <- decodeFile (pcaFile params)
+      runResourceT $
+        CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+        (if variedSizeImageFlag params
+           then polarSeparableFilterConvolutionConduitVariedSize
+                  parallelParams
+                  plan
+                  filters
+                  invariantScatteringFilters
+                  (numScatteringLayer params)
+           else polarSeparableFilterConvolutionConduit
+                  parallelParams
+                  plan
+                  filters
+                  invariantScatteringFilters
+                  (numScatteringLayer params)) =$=
+        invariantFeatureExtractionConduit parallelParams (stride params) =$=
+        kmeansConduit parallelParams kmeansModel =$=
+        pcaConduit parallelParams pcaModel =$=
+        featureConduit =$=
+        predict (modelName params) ((modelName params) L.++ ".out")
+    else runResourceT $
+         CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+         (if variedSizeImageFlag params
+            then polarSeparableFilterConvolutionConduitVariedSize
+                   parallelParams
+                   plan
+                   filters
+                   invariantScatteringFilters
+                   (numScatteringLayer params)
+            else polarSeparableFilterConvolutionConduit
+                   parallelParams
+                   plan
+                   filters
+                   invariantScatteringFilters
+                   (numScatteringLayer params)) =$=
+         invariantFeatureExtractionConduit parallelParams (stride params) =$=
+         kmeansConduit parallelParams kmeansModel =$=
+         featureConduit =$=
+         predict (modelName params) ((modelName params) L.++ ".out")

@@ -11,6 +11,7 @@ data Flag
   | C Double
   | ModelName String
   | OriginModelName String
+  | ObjectModelName String
   | FindC
   | BatchSize Int
   | GMMFile String
@@ -27,7 +28,7 @@ data Flag
   | NumBin Int
   | GaussianScale [Double]
   | KMeansFile String
-  | DataFile String
+  | FolderName String
   | FFTWWisdomFilePath FilePath
   | LogpolarFlag
   | NumGrid Int
@@ -42,6 +43,8 @@ data Flag
   | PinwheelBlob
   | InvariantFeature
   | CenterLength Int
+  | VariedSizeImage
+  | PCAFlag
   deriving (Show)
 
 data Params = Params
@@ -50,6 +53,7 @@ data Params = Params
   , c                             :: Double
   , modelName                     :: String
   , originModelName               :: String
+  , objectModelName               :: String
   , findC                         :: Bool
   , batchSize                     :: Int
   , gmmFile                       :: String
@@ -66,7 +70,7 @@ data Params = Params
   , numBin                        :: Int
   , gaussianScale                 :: [Double]
   , kmeansFile                    :: String
-  , dataFile                      :: String
+  , folderName                    :: String
   , fftwWisdomPath                :: FilePath
   , logpolarFlag                  :: Bool
   , numGrid                       :: Int
@@ -76,6 +80,8 @@ data Params = Params
   , filterType                    :: [PolarSeparableFilterType]
   , invariantFeatureFlag          :: Bool
   , centerLength                  :: Int
+  , variedSizeImageFlag           :: Bool
+  , pcaFlag                       :: Bool
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -107,6 +113,11 @@ options =
       ["OriginModelName"]
       (ReqArg OriginModelName "NAME")
       "SVM model name for origin predictor."
+  , Option
+      ['z']
+      ["ObjectModelName"]
+      (ReqArg ObjectModelName "NAME")
+      "SVM model name for object predictor."
   , Option ['z'] ["GMMFile"] (ReqArg GMMFile "FILE") "GMM data file."
   , Option ['z'] ["PCAFile"] (ReqArg PCAFile "FILE") "PCA data file."
   , Option
@@ -175,9 +186,9 @@ options =
   , Option ['z'] ["KMeansFile"] (ReqArg KMeansFile "FILE") "KMeans data file."
   , Option
       ['z']
-      ["DataFile"]
-      (ReqArg DataFile "FILE")
-      "Data file, such as convolution result and vlad"
+      ["FolderName"]
+      (ReqArg FolderName "FILE")
+      "Name of folder."
   , Option ['z'] ["fftwPath"] (ReqArg FFTWWisdomFilePath "FILE") ""
   , Option
       ['z']
@@ -206,11 +217,11 @@ options =
       ["GaussianPinwheel"]
       (NoArg GaussianPinwheel)
       "Use Gaussian-windowed GaussianPinwheel Filters"
-  ,  Option
-       ['z']
-       ["InverseGaussianPinwheel"]
-       (NoArg InverseGaussianPinwheel)
-       "Use Donut-windowed GaussianPinwheel Filters"
+  , Option
+      ['z']
+      ["InverseGaussianPinwheel"]
+      (NoArg InverseGaussianPinwheel)
+      "Use Donut-windowed GaussianPinwheel Filters"
   , Option ['z'] ["PinwheelFan"] (NoArg PinwheelFan) "Use PinwheelFan Filters"
   , Option
       ['z']
@@ -227,11 +238,17 @@ options =
       ["InvariantFeature"]
       (NoArg InvariantFeature)
       "Use invariant features"
-  ,  Option
-       ['z']
-       ["CenterLength"]
-       (ReqArg (CenterLength . readInt) "INT")
-       "Set the length of center part which is consider as a object."
+  , Option
+      ['z']
+      ["CenterLength"]
+      (ReqArg (CenterLength . readInt) "INT")
+      "Set the length of center part which is consider as a object."
+  , Option
+      ['z']
+      ["VariedSizeImage"]
+      (NoArg VariedSizeImage)
+      "The sizes of images vary."
+  , Option ['z'] ["PCA"] (NoArg PCAFlag) "Use PCA."
   ]
 
 readInt :: String -> Int
@@ -265,6 +282,7 @@ parseFlag flags = go flags defaultFlag
       , numThread = 1
       , modelName = "model"
       , originModelName = "origin_model"
+      , objectModelName = "object_model"
       , findC = False
       , batchSize = 1
       , gmmFile = "gmm.dat"
@@ -281,7 +299,7 @@ parseFlag flags = go flags defaultFlag
       , numBin = 1
       , gaussianScale = [1]
       , kmeansFile = "kmeans.dat"
-      , dataFile = "data.dat"
+      , folderName = ""
       , fftwWisdomPath = "fftwWisdom.dat"
       , logpolarFlag = False
       , numGrid = 1
@@ -291,6 +309,8 @@ parseFlag flags = go flags defaultFlag
       , filterType = []
       , invariantFeatureFlag = False
       , centerLength = 0
+      , variedSizeImageFlag = False
+      , pcaFlag = False
       }
     go [] params = params
     go (x:xs) params =
@@ -300,6 +320,7 @@ parseFlag flags = go flags defaultFlag
         C v -> go xs (params {c = v})
         ModelName str -> go xs (params {modelName = str})
         OriginModelName str -> go xs (params {originModelName = str})
+        ObjectModelName str -> go xs (params {objectModelName = str})
         FindC -> go xs (params {findC = True})
         BatchSize x' -> go xs (params {batchSize = x'})
         GMMFile str -> go xs (params {gmmFile = str})
@@ -317,7 +338,7 @@ parseFlag flags = go flags defaultFlag
         NumBin v -> go xs (params {numBin = v})
         GaussianScale v -> go xs (params {gaussianScale = v})
         KMeansFile str -> go xs (params {kmeansFile = str})
-        DataFile str -> go xs (params {dataFile = str})
+        FolderName str -> go xs (params {folderName = str})
         FFTWWisdomFilePath str -> go xs (params {fftwWisdomPath = str})
         LogpolarFlag -> go xs (params {logpolarFlag = True})
         NumGrid v -> go xs (params {numGrid = v})
@@ -354,6 +375,8 @@ parseFlag flags = go flags defaultFlag
             (params {filterType = PinwheelBlobFilterType : filterType params})
         InvariantFeature -> go xs (params {invariantFeatureFlag = True})
         CenterLength v -> go xs (params {centerLength = v})
+        VariedSizeImage -> go xs (params {variedSizeImageFlag = True})
+        PCAFlag -> go xs (params {pcaFlag = True})
 
 
 parseArgs :: [String] -> IO Params

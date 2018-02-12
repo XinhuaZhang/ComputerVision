@@ -24,26 +24,42 @@ main = do
   args <- getArgs
   params <- parseArgs args
   print params
-  ((LabeledArray _ img):_) <-
-    runResourceT $
-    CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    CL.take 1
-  filterParamsList <-
-    (\x -> read x :: [PolarSeparableFilterParams]) <$>
-    readFile (paramsFileName params)
-  let (Z :. _ :. rows :. cols) = extent img
-      parallelParams =
+  -- ((LabeledArray _ img):_) <-
+  --   runResourceT $
+  --   CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
+  --   CL.take 1
+  (filterParamsList:invariantScatteringFilterParamsList:_) <-
+    fmap (\x -> read x :: [[PolarSeparableFilterParams]]) . readFile $
+    (paramsFileName params)
+      -- (Z :. _ :. rows :. cols) = extent img
+  let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params
         , Par.batchSize = AP.batchSize params
         }
-      filterParamsList = L.map (filterParamsFunc rows cols) (filterType params)
+      -- filterParamsList = L.map (filterParamsFunc rows cols) (filterType params)
   M.mapM_ print filterParamsList
-  (plan, filters) <-
+  (_plan, filters) <-
     makePolarSeparableFilterConvolutionList getEmptyPlan filterParamsList
+  (plan, invariantScatteringFilters) <-
+    makePolarSeparableFilterConvolutionList
+      _plan
+      invariantScatteringFilterParamsList
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    polarSeparableFilterConvolutionConduit parallelParams plan filters =$=
+    (if variedSizeImageFlag params
+       then polarSeparableFilterConvolutionConduitVariedSize
+              parallelParams
+              plan
+              filters
+              invariantScatteringFilters
+              (numScatteringLayer params)
+       else polarSeparableFilterConvolutionConduit
+              parallelParams
+              plan
+              filters
+              invariantScatteringFilters
+              (numScatteringLayer params)) =$=
     getOriginFeatureConduit parallelParams (originModelName params) =$=
     kmeansSink
       parallelParams

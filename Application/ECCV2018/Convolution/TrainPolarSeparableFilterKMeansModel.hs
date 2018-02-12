@@ -34,13 +34,35 @@ main = do
         , Par.batchSize = AP.batchSize params
         }
       filterParamsList = L.map (filterParamsFunc rows cols) (filterType params)
-  print filterParamsList
-  (plan, filters) <-
+      invariantScatteringFilterParamsList =
+        L.map
+          (invariantScatteringFilterParamsFunc rows cols)
+          (filterType params)
+  M.mapM_ print filterParamsList
+  M.mapM_ print invariantScatteringFilterParamsList
+  (_plan, filters) <-
     makePolarSeparableFilterConvolutionList getEmptyPlan filterParamsList
-  writeFile (paramsFileName params) . show $ filterParamsList
+  (plan, invariantScatteringFilters) <-
+    makePolarSeparableFilterConvolutionList
+      _plan
+      invariantScatteringFilterParamsList
+  writeFile (paramsFileName params) . show $
+    [filterParamsList, invariantScatteringFilterParamsList]
   runResourceT $
     CB.sourceFile (inputFile params) $$ readLabeledImagebinaryConduit =$=
-    polarSeparableFilterConvolutionConduit parallelParams plan filters =$=
+    (if variedSizeImageFlag params
+       then polarSeparableFilterConvolutionConduitVariedSize
+              parallelParams
+              plan
+              filters
+              invariantScatteringFilters
+              (numScatteringLayer params)
+       else polarSeparableFilterConvolutionConduit
+              parallelParams
+              plan
+              filters
+              invariantScatteringFilters
+              (numScatteringLayer params)) =$=
     invariantFeatureExtractionConduit parallelParams (stride params) =$=
     kmeansSink
       parallelParams
@@ -48,4 +70,3 @@ main = do
       (numGaussian params)
       (kmeansFile params)
       (threshold params)
-  undefined

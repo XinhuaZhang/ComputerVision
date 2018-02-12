@@ -23,13 +23,25 @@ rescaleUnboxedVector (lb, ub) xs
   where
     minV = VU.minimum xs
     maxV = VU.maximum xs
+    
+
+{-# INLINE rescaleUnboxedVectorList #-}
+
+rescaleUnboxedVectorList :: (Double, Double) -> [VU.Vector Double] -> [VU.Vector Double]
+rescaleUnboxedVectorList (lb, ub) xs
+  | minV == maxV = xs
+  | otherwise =
+    L.map (VU.map (\x -> (x - minV) / (maxV - minV) * (ub - lb) + lb)) xs
+  where
+    minV = L.minimum . L.map VU.minimum $ xs
+    maxV = L.maximum . L.map VU.maximum $ xs 
 
 {-# INLINE l2norm #-}
 
 l2norm :: VU.Vector Double -> VU.Vector Double
 l2norm vec
-  | s < 10 ** (-6) = VU.replicate (VU.length vec) 0
-  -- | s == 0 = vec
+  -- | s < 10 ** (-6) = VU.replicate (VU.length vec) 0
+  | s == 0 = vec
   | otherwise = VU.map (/ s) vec
   where
     s = sqrt . VU.sum . VU.map (^ (2 :: Int)) $ vec

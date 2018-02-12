@@ -270,15 +270,37 @@ normalizeVec vec
 vlad :: ClusterCenter -> [VU.Vector Double] -> VU.Vector Double
 vlad center' =
   normalizeVec .
+  VU.map (\x -> (signum x) * sqrt (abs x)) .
   VU.concat .
   V.toList .
   V.accum (VU.zipWith (+)) (V.replicate k (VU.replicate vecLen 0)) .
   L.map
     (\vec ->
-        let idx = V.minIndex . V.map (distFunc vec) $ center'
-        in (idx, VU.zipWith (-) vec (center' V.! idx)))
+       let idx = V.minIndex . V.map (distFunc vec) $ center'
+       in (idx, VU.zipWith (-) vec (center' V.! idx)))
   where
     k = V.length center'
     vecLen = VU.length . V.head $ center'
     
 
+-- {-# INLINE vlad #-}
+
+-- vlad :: ClusterCenter -> [VU.Vector Double] -> VU.Vector Double
+-- vlad center' =
+--   normalizeVec .
+--   VU.map (\x -> (signum x) * sqrt (abs x)) .
+--   VU.concat .
+--   V.toList .
+--   V.accum (VU.zipWith (+)) (V.replicate k (VU.replicate vecLen 0)) .
+--   L.concatMap
+--     (\vec ->
+--        let xs =
+--              L.take 4 .
+--              fst .
+--              L.unzip .
+--              L.sortOn snd . V.toList . V.imap (\i c -> (i, distFunc vec $ c)) $
+--              center'
+--        in L.map (\i -> (i, VU.zipWith (-) vec (center' V.! i))) xs)
+--   where
+--     k = V.length center'
+--     vecLen = VU.length . V.head $ center'

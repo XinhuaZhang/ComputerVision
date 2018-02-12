@@ -33,45 +33,45 @@ newtype PinwheelBlobExpansion =
 newtype PinwheelBlobConvolution =
   PinwheelBlobConvolution (Filter PolarSeparableFilterParams [[VS.Vector (Complex Double)]])
 
-instance FilterExpansion PinwheelBlobExpansion where
-  type FilterExpansionParameters PinwheelBlobExpansion = PolarSeparableFilterParams
-  {-# INLINE makeFilterExpansion #-}
-  makeFilterExpansion params@(PinwheelBlobParams rows cols gScale wScales freq oris tShifts rShifts) rCenter cCenter =
-    PinwheelBlobExpansion . Filter params $
-    makePinwheelBlobFilterExpansion params rCenter cCenter
-  {-# INLINE getFilterExpansionNum #-}
-  getFilterExpansionNum (PinwheelBlobExpansion (Filter (PinwheelBlobParams _ _ _ wScales _ oris tShifts rShifts) _)) =
-    L.length wScales * L.length oris * L.length tShifts * L.length rShifts
-  {-# INLINE getFilterExpansionList #-}
-  getFilterExpansionList (PinwheelBlobExpansion x) = L.concat . getFilter $ x
-  {-# INLINE applyFilterExpansion #-}
-  applyFilterExpansion _ = error "applyFilterExpansion: not implemented yet."
+-- instance FilterExpansion PinwheelBlobExpansion where
+--   type FilterExpansionParameters PinwheelBlobExpansion = PolarSeparableFilterParams
+--   {-# INLINE makeFilterExpansion #-}
+--   makeFilterExpansion params@(PinwheelBlobParams rows cols gScale wScales freq oris tShifts rShifts) rCenter cCenter =
+--     PinwheelBlobExpansion . Filter params $
+--     makePinwheelBlobFilterExpansion params rCenter cCenter
+--   {-# INLINE getFilterExpansionNum #-}
+--   getFilterExpansionNum (PinwheelBlobExpansion (Filter (PinwheelBlobParams _ _ _ wScales _ oris tShifts rShifts) _)) =
+--     L.length wScales * L.length oris * L.length tShifts * L.length rShifts
+--   {-# INLINE getFilterExpansionList #-}
+--   getFilterExpansionList (PinwheelBlobExpansion x) = L.concat . getFilter $ x
+--   {-# INLINE applyFilterExpansion #-}
+--   applyFilterExpansion _ = error "applyFilterExpansion: not implemented yet."
 
-instance FilterConvolution PinwheelBlobConvolution where
-  type FilterConvolutionParameters PinwheelBlobConvolution = PolarSeparableFilterParams
-  {-# INLINE makeFilterConvolution #-}
-  makeFilterConvolution plan params@(PinwheelBlobParams rows cols gScale wScales freq oris tShifts rShifts) filterType = do
-    second (PinwheelBlobConvolution . Filter params) <$>
-      makePinwheelBlobFilterConvolution plan params filterType
-  {-# INLINE getFilterConvolutionNum #-}
-  getFilterConvolutionNum (PinwheelBlobConvolution (Filter (PinwheelBlobParams _ _ _ wScales _ oris tShifts rShifts) _)) =
-    L.length wScales * L.length oris * L.length tShifts * L.length rShifts
-  {-# INLINE applyFilterConvolution #-}
-  applyFilterConvolution plan (PinwheelBlobConvolution (Filter (PinwheelBlobParams rows cols _ _ _ _ _ _) filters)) xs = do
-    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
-    dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
-      L.concatMap (\x -> L.concatMap (L.map (VS.zipWith (*) x)) filters) $
-      ys
-  {-# INLINE applyInvariantFilterConvolution #-}
-  applyInvariantFilterConvolution plan (PinwheelBlobConvolution (Filter (PinwheelBlobParams rows cols _ _ _ _ _ _) filters)) xs = do
-    ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
-    M.mapM
-      (dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
-       L.concatMap (\filter -> L.map (VS.zipWith (*) filter) ys))
-      filters
-  {-# INLINE getFilterConvolutionList #-}
-  getFilterConvolutionList (PinwheelBlobConvolution x) =
-    L.concat . getFilter $ x
+-- instance FilterConvolution PinwheelBlobConvolution where
+--   type FilterConvolutionParameters PinwheelBlobConvolution = PolarSeparableFilterParams
+--   {-# INLINE makeFilterConvolution #-}
+--   makeFilterConvolution plan params@(PinwheelBlobParams rows cols gScale wScales freq oris tShifts rShifts) filterType = do
+--     second (PinwheelBlobConvolution . Filter params) <$>
+--       makePinwheelBlobFilterConvolution plan params filterType
+--   {-# INLINE getFilterConvolutionNum #-}
+--   getFilterConvolutionNum (PinwheelBlobConvolution (Filter (PinwheelBlobParams _ _ _ wScales _ oris tShifts rShifts) _)) =
+--     L.length wScales * L.length oris * L.length tShifts * L.length rShifts
+--   {-# INLINE applyFilterConvolution #-}
+--   applyFilterConvolution plan (PinwheelBlobConvolution (Filter (PinwheelBlobParams rows cols _ _ _ _ _ _) filters)) xs = do
+--     ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+--     dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+--       L.concatMap (\x -> L.concatMap (L.map (VS.zipWith (*) x)) filters) $
+--       ys
+--   {-# INLINE applyInvariantFilterConvolution #-}
+--   applyInvariantFilterConvolution plan (PinwheelBlobConvolution (Filter (PinwheelBlobParams rows cols _ _ _ _ _ _) filters)) xs = do
+--     ys <- dftExecuteBatch plan (DFTPlanID DFT2D [rows, cols] []) xs
+--     M.mapM
+--       (dftExecuteBatch plan (DFTPlanID IDFT2D [rows, cols] []) .
+--        L.concatMap (\filter -> L.map (VS.zipWith (*) filter) ys))
+--       filters
+--   {-# INLINE getFilterConvolutionList #-}
+--   getFilterConvolutionList (PinwheelBlobConvolution x) =
+--     L.concat . getFilter $ x
 
 {-# INLINE filterExpansionList2ConvolutionList #-}
 
@@ -189,20 +189,21 @@ makePinwheelBlobFilterConvolution
   -> ConvolutionalFilterType
   -> IO (DFTPlan, [[VS.Vector (Complex Double)]])
 makePinwheelBlobFilterConvolution plan params@(PinwheelBlobParams rows cols gScale wScales freq oris tShifts rShifts) filterType = do
-  let (PinwheelBlobExpansion (Filter _ filterList)) =
-        (makeFilterExpansion params (div rows 2) (div cols 2) :: PinwheelBlobExpansion)
-      (PinwheelBlobExpansion (Filter _ filterList1)) =
-        (makeFilterExpansion params (div rows 2) (div cols 2) :: PinwheelBlobExpansion)
-      filterTmp =
-        VS.fromList .
-        conjugateFunc filterType .
-        filterExpansionList2ConvolutionList rows cols . L.last . L.last $
-        filterList1
-  lock <- getFFTWLock
-  (p1, vec) <- dft2dPlan lock plan rows cols filterTmp
-  (p2, _) <- idft2dPlan lock p1 rows cols vec
-  filters <-
-    (M.mapM
-       (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] []) . L.map VU.convert))
-      filterList
-  return (p2, filters)
+  -- let (PinwheelBlobExpansion (Filter _ filterList)) =
+  --       (makeFilterExpansion params (div rows 2) (div cols 2) :: PinwheelBlobExpansion)
+  --     (PinwheelBlobExpansion (Filter _ filterList1)) =
+  --       (makeFilterExpansion params (div rows 2) (div cols 2) :: PinwheelBlobExpansion)
+  --     filterTmp =
+  --       VS.fromList .
+  --       conjugateFunc filterType .
+  --       filterExpansionList2ConvolutionList rows cols . L.last . L.last $
+  --       filterList1
+  -- lock <- getFFTWLock
+  -- (p1, vec) <- dft2dPlan lock plan rows cols filterTmp
+  -- (p2, _) <- idft2dPlan lock p1 rows cols vec
+  -- filters <-
+  --   (M.mapM
+  --      (dftExecuteBatch p2 (DFTPlanID DFT2D [rows, cols] []) . L.map VU.convert))
+  --     filterList
+  -- return (p2, filters)
+  undefined

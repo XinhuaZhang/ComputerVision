@@ -7,6 +7,7 @@ import           Control.Monad.IO.Class       (liftIO)
 import           Control.Monad.Trans.Resource
 import           CV.Array.LabeledArray
 import           CV.Statistics.KMeans
+import           CV.Statistics.PCA
 import           CV.Utility.Parallel
 import           CV.Utility.RepaArrayUtility
 import           CV.Utility.Utility
@@ -25,7 +26,7 @@ import           Foreign.Ptr
 invariantFeatureExtractionConduit
   :: ParallelParams
   -> Int
-  -> Conduit [[LabeledArray DIM3 Double]] (ResourceT IO) (Double, [[VU.Vector Double]])
+  -> Conduit (Double, [[[R.Array U DIM3 Double]]]) (ResourceT IO) (Double, [[[VU.Vector Double]]])
 invariantFeatureExtractionConduit parallelParams stride = do
   xs <- CL.take (batchSize parallelParams)
   unless
@@ -34,38 +35,29 @@ invariantFeatureExtractionConduit parallelParams stride = do
               parMapChunk
                 parallelParams
                 rdeepseq
-                (\y ->
-                   let label =
-                         (\(LabeledArray label _) -> label) . L.head . L.head $
-                         y
-                       zs =
+                (\(label, y) ->
+                   let zs =
                          L.map
-                           (L.concatMap
-                              (\(LabeledArray _ arr) ->
-                                 let downsampledArr =
-                                       downsample [stride, stride, 1] arr
-                                     (Z :. _ :. rows :. cols) =
-                                       extent downsampledArr
-                                 in [ l2norm .
-                                    -- rescaleUnboxedVector (0, 1) .
-                                    toUnboxed .
-                                    computeS . R.slice downsampledArr $
-                                    (Z :. All :. i :. j)
-                                    | i <-
-                                        generateCenters
-                                          rows
-                                          (round $ fromIntegral rows / 3 * 2) --  i <- generateCenters rows (div rows 2 - 1) -- [0 .. rows - 1]
-                                    , j <-
-                                        generateCenters
-                                          cols
-                                          (round $ fromIntegral cols / 3 * 2) -- j <- generateCenters cols (div cols 2 - 1) -- [0 .. cols - 1]
-                                    ]))
+                           (L.map
+                              (L.concatMap
+                                 (\arr ->
+                                    let downsampledArr =
+                                          downsample [stride, stride, 1] arr
+                                        (Z :. _ :. rows :. cols) =
+                                          extent downsampledArr
+                                    in [ l2norm .
+                                       toUnboxed .
+                                       computeS . R.slice downsampledArr $
+                                       (Z :. All :. i :. j)
+                                       | i <- [0 .. rows - 1]
+                                       , j <- [0 .. cols - 1]
+                                       ])))
                            y
-                   in (fromIntegral label, zs))
+                   in (label, zs))
                 xs
         sourceList ys
         invariantFeatureExtractionConduit parallelParams stride)
-        
+
 -- input list: layer, free degrees
 -- output list: layer, free degrees
 nonInvariantFeatureExtractionConduit
@@ -174,3 +166,37 @@ generateCenters len n
     center = div len 2
     dist = 1
     m = div n 2
+
+pcaSink
+  :: ParallelParams
+  -> FilePath
+  -> Int
+  -> Int
+  -> Sink (Double, VU.Vector Double) (ResourceT IO) (PCAMatrix Double, [(Double, VU.Vector Double)])
+pcaSink parallelParams filePath numPrincipal numTrain = do
+  xs <- CL.take numTrain
+  let (labels, ys) = L.unzip $ xs
+      (pcaMat, _, _) = pcaSVD parallelParams numPrincipal ys
+      vecs =
+        parMapChunk parallelParams rdeepseq (pcaReduction pcaMat) .
+        snd . L.unzip $
+        xs
+  liftIO $ encodeFile filePath pcaMat
+  return (pcaMat, L.zip labels vecs)
+
+pcaConduit
+  :: ParallelParams
+  -> PCAMatrix Double
+  -> Conduit (Double, VU.Vector Double) (ResourceT IO) (Double, VU.Vector Double)
+pcaConduit parallelParams pcaMat = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (second (pcaReduction pcaMat))
+                xs
+        sourceList ys
+        pcaConduit parallelParams pcaMat)

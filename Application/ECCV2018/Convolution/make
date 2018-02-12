@@ -11,10 +11,10 @@ CabalFlag="--sandbox-config-file=../cabal.sandbox.config"
 ## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPinwheelWavelet.hs -o predictPinwheelWavelet &
 ## wait
 
-## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterKMeansModel.hs -o trainPolarSeparableFilterKMeansModel 
-## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilter.hs -o trainPolarSeparableFilter &
-## cabal exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilter.hs -o predictPolarSeparableFilter &
-## wait
+cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterKMeansModel.hs -o trainPolarSeparableFilterKMeansModel 
+cabal $CabalFlag  exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilter.hs -o trainPolarSeparableFilter &
+cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilter.hs -o predictPolarSeparableFilter &
+wait
 
 cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparablePredictor.hs -o trainPolarSeparablePredictor
 

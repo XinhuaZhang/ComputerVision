@@ -85,14 +85,48 @@ import           Data.Vector.Unboxed            as VU
 --           xs
 --         sourceList ys
 --         pinwheelWaveletConvolutionConduit parallelParams plan filter)
-        
+
+{-# INLINE polarSeparableFilterConvolutionMagnitude #-}
+
+polarSeparableFilterConvolutionMagnitude
+  :: DFTPlan
+  -> PolarSeparableFilter PolarSeparableFilterConvolution
+  -> [VS.Vector Double]
+  -> IO [[VS.Vector Double]]
+polarSeparableFilterConvolutionMagnitude plan filter imgVecs = do
+  xs <-
+    applyPolarSeparableInvariantFilterConvolution plan filter .
+    L.map (VS.map (:+ 0)) $
+    imgVecs
+  return $ L.map (\filteredImage -> L.map (VS.map magnitude) $ filteredImage) xs
+
+{-# INLINE polarSeparableFilterConvolutionRecursive #-}
+
+polarSeparableFilterConvolutionRecursive
+  :: DFTPlan
+  -> [PolarSeparableFilter PolarSeparableFilterConvolution]
+  -> [[[VS.Vector Double]]]
+  -> Int
+  -> IO [[[[VS.Vector Double]]]]
+polarSeparableFilterConvolutionRecursive _ _ _ 0 = error "polarSeparableFilterConvolutionRecursive: layer number is 0."
+polarSeparableFilterConvolutionRecursive _ _ xs 1 = return []
+polarSeparableFilterConvolutionRecursive plan filters xs n = do
+  ys <-
+    M.zipWithM
+      (\filter (x:_) -> polarSeparableFilterConvolutionMagnitude plan filter x)
+      filters
+      xs
+  zs <- polarSeparableFilterConvolutionRecursive plan filters ys (n - 1)
+  return (ys : zs)
 
 polarSeparableFilterConvolutionConduit
   :: ParallelParams
   -> DFTPlan
   -> [PolarSeparableFilter PolarSeparableFilterConvolution]
+  -> [PolarSeparableFilter PolarSeparableFilterConvolution]
+  -> Int
   -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [[[R.Array U DIM3 Double]]])
-polarSeparableFilterConvolutionConduit parallelParams plan filters = do
+polarSeparableFilterConvolutionConduit parallelParams plan filters invariantScatteringFilters numLayer = do
   xs <- CL.take (batchSize parallelParams)
   unless
     (L.null xs)
@@ -102,31 +136,219 @@ polarSeparableFilterConvolutionConduit parallelParams plan filters = do
           liftIO $
           MP.mapM
             (\(LabeledArray label x) -> do
-               let imgVecs =
-                     L.map (VU.convert . VU.map (:+ 0)) . arrayToUnboxed $ x
-               filteredImagesList <-
+               let imgVecs = L.map VU.convert . arrayToUnboxed $ x
+               firstLayer <-
                  M.mapM
                    (\filter ->
-                      applyPolarSeparableInvariantFilterConvolution
+                      polarSeparableFilterConvolutionMagnitude
                         plan
                         filter
                         imgVecs)
                    filters
+               resetLayers <-
+                 polarSeparableFilterConvolutionRecursive
+                   plan
+                   invariantScatteringFilters
+                   firstLayer
+                   numLayer
                return
                  ( fromIntegral label
-                 , [ L.map
-                       (L.map
-                          (\filteredImage ->
-                             fromUnboxed
-                               (Z :. L.length filteredImage :. rows :. cols) .
-                                                       -- rescaleUnboxedVector (0, 1) .
-                             VU.map magnitude . VS.convert . VS.concat $
-                             filteredImage))
-                       filteredImagesList
-                   ])) $
+                 , L.map
+                     (L.map
+                        (L.map
+                           (\zs ->
+                              fromUnboxed (Z :. L.length zs :. rows :. cols) .
+                              VS.convert . VS.concat $
+                              zs))) $
+                   (firstLayer : resetLayers))) $
           xs
         sourceList ys
-        polarSeparableFilterConvolutionConduit parallelParams plan filters)
+        polarSeparableFilterConvolutionConduit
+          parallelParams
+          plan
+          filters
+          invariantScatteringFilters
+          numLayer)
+        
+
+{-# INLINE polarSeparableFilterConvolutionMagnitudeVariedSize #-}
+
+polarSeparableFilterConvolutionMagnitudeVariedSize
+  :: DFTPlan
+  -> PolarSeparableFilter PolarSeparableFilterConvolution
+  -> Int
+  -> Int
+  -> [VS.Vector Double]
+  -> IO [[VS.Vector Double]]
+polarSeparableFilterConvolutionMagnitudeVariedSize plan filter rows cols imgVecs = do
+  xs <-
+    applyPolarSeparableInvariantFilterConvolutionVariedSize
+      plan
+      filter
+      rows
+      cols .
+    L.map (VS.map (:+ 0)) $
+    imgVecs
+  return $ L.map (\filteredImage -> L.map (VS.map magnitude) $ filteredImage) xs
+  
+
+{-# INLINE polarSeparableFilterConvolutionRecursiveVariedSize #-}
+
+polarSeparableFilterConvolutionRecursiveVariedSize
+  :: DFTPlan
+  -> [PolarSeparableFilter PolarSeparableFilterConvolution]
+  -> Int
+  -> Int
+  -> [[[VS.Vector Double]]]
+  -> Int
+  -> IO [[[[VS.Vector Double]]]]
+polarSeparableFilterConvolutionRecursiveVariedSize _ _ _ _ _ 0 = error "polarSeparableFilterConvolutionRecursiveVariedSize: layer number is 0."
+polarSeparableFilterConvolutionRecursiveVariedSize _ _ _ _ xs 1 = return []
+polarSeparableFilterConvolutionRecursiveVariedSize plan filters rows cols xs n = do
+  ys <-
+    M.zipWithM
+      (\filter (x:_) ->
+         polarSeparableFilterConvolutionMagnitudeVariedSize
+           plan
+           filter
+           rows
+           cols
+           x)
+      filters
+      xs
+  zs <-
+    polarSeparableFilterConvolutionRecursiveVariedSize
+      plan
+      filters
+      rows
+      cols
+      ys
+      (n - 1)
+  return (ys : zs)
+
+polarSeparableFilterConvolutionConduitVariedSize
+  :: ParallelParams
+  -> DFTPlan
+  -> [PolarSeparableFilter PolarSeparableFilterConvolution]
+  -> [PolarSeparableFilter PolarSeparableFilterConvolution]
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (Double, [[[R.Array U DIM3 Double]]])
+polarSeparableFilterConvolutionConduitVariedSize parallelParams plan filters invariantScatteringFilters numLayer = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do newPlan <-
+          liftIO .
+          makePolarSeparableFilterConvolutionPlan
+            plan
+            (getPolarSeparableFilterParams . L.head $ filters) .
+          L.map
+            (\(LabeledArray _ arr) ->
+               let (Z :. _ :. rows :. cols) = extent arr
+               in (rows, cols)) $
+          xs
+        ys <-
+          liftIO $
+          MP.mapM
+            (\(LabeledArray label x) -> do
+               let imgVecs = L.map VU.convert . arrayToUnboxed $ x
+                   (Z :. nf :. rows :. cols) = extent x
+               if (rows, cols) /=
+                  (getPolarSeparableConvolutionFilterDims . L.head $ filters)
+                 then do
+                   firstLayer <-
+                     M.mapM
+                       (\filter ->
+                          polarSeparableFilterConvolutionMagnitudeVariedSize
+                            newPlan
+                            filter
+                            rows
+                            cols
+                            imgVecs)
+                       filters
+                   resetLayers <-
+                     polarSeparableFilterConvolutionRecursiveVariedSize
+                       newPlan
+                       invariantScatteringFilters
+                       rows
+                       cols
+                       firstLayer
+                       numLayer
+                   return
+                     ( fromIntegral label
+                     , L.map
+                         (L.map
+                            (L.map
+                               (\zs ->
+                                  fromUnboxed (Z :. L.length zs :. rows :. cols) .
+                                  VS.convert . VS.concat $
+                                  zs))) $
+                       (firstLayer : resetLayers))
+                 else do
+                   firstLayer <-
+                     M.mapM
+                       (\filter ->
+                          polarSeparableFilterConvolutionMagnitude
+                            newPlan
+                            filter
+                            imgVecs)
+                       filters
+                   resetLayers <-
+                     polarSeparableFilterConvolutionRecursive
+                       newPlan
+                       invariantScatteringFilters
+                       firstLayer
+                       numLayer
+                   return
+                     ( fromIntegral label
+                     , L.map
+                         (L.map
+                            (L.map
+                               (\zs ->
+                                  fromUnboxed (Z :. L.length zs :. rows :. cols) .
+                                  VS.convert . VS.concat $
+                                  zs))) $
+                       (firstLayer : resetLayers))
+               -- filteredImagesList <-
+               --   if (rows, cols) /=
+               --      (getPolarSeparableConvolutionFilterDims . L.head $ filters)
+               --     then M.mapM
+               --            (\filter ->
+               --               applyPolarSeparableInvariantFilterConvolutionVariedSize
+               --                 newPlan
+               --                 filter
+               --                 rows
+               --                 cols
+               --                 imgVecs)
+               --            filters
+               --     else M.mapM
+               --            (\filter ->
+               --               applyPolarSeparableInvariantFilterConvolution
+               --                 newPlan
+               --                 filter
+               --                 imgVecs)
+               --            filters
+               -- return
+               --   ( fromIntegral label
+               --   , [ L.map
+               --         (L.map
+               --            (\filteredImage ->
+               --               fromUnboxed
+               --                 (Z :. L.length filteredImage :. rows :. cols) .
+               --               -- rescaleUnboxedVector (0, 1) .
+               --               VU.map magnitude . VS.convert . VS.concat $
+               --               filteredImage))
+               --         filteredImagesList
+               --     ])
+             ) $
+          xs
+        sourceList ys
+        polarSeparableFilterConvolutionConduitVariedSize
+          parallelParams
+          newPlan
+          filters
+          invariantScatteringFilters
+          numLayer)
 
 -- concatInvariantConduit :: Conduit [[a]] (ResourceT IO)  [a]
 -- concatInvariantConduit = awaitForever 

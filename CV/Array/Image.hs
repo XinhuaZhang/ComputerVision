@@ -419,11 +419,14 @@ padTransformGrayImage padVal transformationList arr =
                else (0, rescaledC)
            rescaledArr =
              if deg == 0
-               then fromFunction (Z :. rescaledR :. rescaledC) $ \(Z :. j :. i) ->
-                      bicubicInterpolation
-                        ds
-                        (minVal, maxVal)
-                        (fromIntegral j * ratioR, fromIntegral i * ratioC)
+               then if sf == 1
+                      then paddedImg
+                      else fromFunction (Z :. rescaledR :. rescaledC) $ \(Z :. j :. i) ->
+                             bicubicInterpolation
+                               ds
+                               (minVal, maxVal)
+                               ( fromIntegral j * ratioR
+                               , fromIntegral i * ratioC)
                else fromFunction (Z :. rescaledR :. rescaledC) $ \(Z :. j :. i) ->
                       let (j', i') =
                             rotatePixel
@@ -469,23 +472,24 @@ padTransformImage
 padTransformImage padVal transformationList arr =
   L.zipWith
     (\transfomation arrs ->
-        fromUnboxed
-          (Z :. nf' :. imageTransformationRows transfomation :.
-           imageTransformationCols transfomation) .
-        VU.concat . L.map toUnboxed $
-        arrs)
+       fromUnboxed
+         (Z :. nf' :. imageTransformationRows transfomation :.
+          imageTransformationCols transfomation) .
+       VU.concat . L.map toUnboxed $
+       arrs)
     transformationList .
   L.transpose .
   L.map
     (\i ->
-        padTransformGrayImage padVal transformationList . R.slice arr $
-        (Z :. i :. All :. All)) $
+       padTransformGrayImage (arr R.! (Z :. i :. 0 :. 0)) transformationList .
+       R.slice arr $
+       (Z :. i :. All :. All)) $
   [0 .. nf' - 1]
   where
     (Z :. nf' :. _ :. _) = extent arr
     
 
--- First pading image to be a square image then doing transformation,
+-- First padding image to be a square image then doing transformation,
 -- The output's size may vary for different scales.
 
 {-# INLINE transformGrayImage #-}   
@@ -795,7 +799,16 @@ insertPatch
   -> [((Int, Int), R.Array s2 DIM3 Double)]        -- (originIdx (not center), arr)
   -> R.Array U DIM3 Double
 insertPatch arr patches
-  | nf1 /= nf2 || rows2 > rows1 || cols2 > cols1 = undefined
+  | nf1 /= nf2 || rows2 > rows1 || cols2 > cols1 =
+    error $
+    printf
+      "insertPatch:\n(rows,cols,nf)\n(%d,%d,%d)\n(%d,%d,%d)\n"
+      rows1
+      cols1
+      nf1
+      rows2
+      cols2
+      nf2
   | otherwise =
     array2RepaArray $
     runSTUArray $ do
@@ -810,12 +823,12 @@ insertPatch arr patches
                      let x = patch R.! (Z :. k :. i :. j)
                      in unless
                           (x == 0)
-                          (-- if (i+i0) >= rows1 || (j+j0) >= cols1
+                           -- if (i+i0) >= rows1 || (j+j0) >= cols1
                            --    then error $ printf "insertPatch: out of boundary\n(i0,j0): (%d,%d)\n(i,j): (%d,%d)\n(rows1,cols1): (%d,%d)\n" i0 j0 i j rows1 cols1
                            --    else
-                             writeArray img (k, (i + i0), (j + j0)) x)
+                          (writeArray img (k, (i + i0), (j + j0)) x)
                         -- error $ printf "insertPatch: out of boundary\n(i0,j0): (%d,%d)\n(i,j): (%d,%d)\n(rows1,cols1): (%d,%d)\n(rows1,cols1): (%d,%d)\n" i0 j0 i j rows1 cols1 rows2 cols2
-                  )
+                   )
                   [0 .. nf2 - 1])
              [(i, j) | i <- [0 .. rows2 - 1], j <- [0 .. cols2 - 1]])
         patches
