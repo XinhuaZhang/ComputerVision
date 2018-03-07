@@ -9,16 +9,18 @@ import           Data.Vector.Storable           as VS
 
 filterParamsFunc :: Int
                  -> Int
+                 -> Double
                  -> PolarSeparableFilterType
                  -> PolarSeparableFilterParams
-filterParamsFunc rows cols FourierMellinFilterType =
+filterParamsFunc rows cols alpha FourierMellinFilterType =
   FourierMellinTransformParams
   { getFourierMellinTransformRows = rows
   , getFourierMellinTransformCols = cols
-  , getFourierMellinTransformRadialFreq = [0 .. 3]
-  , getFourierMellinTransformAngularFreq = [-7 .. 7]
+  , getFourierMellinTransformRadialFreq = [0 .. 2]
+  , getFourierMellinTransformAngularFreq = [-5 .. 5]
+  , getFourierMellinTransformAlpha = alpha
   }
-filterParamsFunc rows cols GaussianPinwheelFilterType =
+filterParamsFunc rows cols _ GaussianPinwheelFilterType =
   GaussianPinwheelParams
   { getGaussianPinwheelRows = rows
   , getGaussianPinwheelCols = cols
@@ -26,7 +28,7 @@ filterParamsFunc rows cols GaussianPinwheelFilterType =
   , getGaussianPinwheelRadialFreq = [0 .. 3]
   , getGaussianPinwheelAngularFreq = [-3 .. 3]
   }
-filterParamsFunc rows cols PinwheelFanFilterType =
+filterParamsFunc rows cols _ PinwheelFanFilterType =
   PinwheelFanParams
   { pinwheelFanRows = rows
   , pinwheelFanCols = cols
@@ -36,7 +38,7 @@ filterParamsFunc rows cols PinwheelFanFilterType =
   , pinwheelFanAngularFreqs = [0 .. 7]
   , pinwheelFanTheta = L.map (* (2 * pi)) [0.05,0.1 .. 1]
   }
-filterParamsFunc rows cols PinwheelRingFilterType =
+filterParamsFunc rows cols _ PinwheelRingFilterType =
   PinwheelRingParams
   { pinwheelRingRows = rows
   , pinwheelRingCols = cols
@@ -46,7 +48,7 @@ filterParamsFunc rows cols PinwheelRingFilterType =
   , pinwheelRingAngularFreqs = [-3 .. 3] --[-7, -6 ..- 4] L.++ [4 .. 7]
   , pinwheelRingRadius = [4..9]
   }
-filterParamsFunc rows cols PinwheelBlobFilterType =
+filterParamsFunc rows cols _ PinwheelBlobFilterType =
   PinwheelBlobParams
   { pinwheelBlobRows = rows
   , pinwheelBlobCols = cols
@@ -57,7 +59,7 @@ filterParamsFunc rows cols PinwheelBlobFilterType =
   , pinwheelBlobThetaShift = [0,32 .. 127 - 32] -- [0,127]
   , pinwheelBlobRadiusShift = [22, 24, 26, 28] -- [0,32]
   }
-filterParamsFunc rows cols InverseGaussianPinwheelFilterType =
+filterParamsFunc rows cols _ InverseGaussianPinwheelFilterType =
   InverseGaussianPinwheelParams
   { getInverseGaussianPinwheelRows = rows
   , getInverseGaussianPinwheelCols = cols
@@ -77,8 +79,9 @@ invariantScatteringFilterParamsFunc rows cols FourierMellinFilterType =
   FourierMellinTransformParams
   { getFourierMellinTransformRows = rows
   , getFourierMellinTransformCols = cols
-  , getFourierMellinTransformRadialFreq = [0 .. 1]
+  , getFourierMellinTransformRadialFreq = [0 .. 0]
   , getFourierMellinTransformAngularFreq = [-2 .. 2]
+  , getFourierMellinTransformAlpha = 0
   }
 invariantScatteringFilterParamsFunc rows cols GaussianPinwheelFilterType =
   GaussianPinwheelParams

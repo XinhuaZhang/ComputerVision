@@ -19,7 +19,8 @@ data PolarSeparableFilterParams
   = FourierMellinTransformParams { getFourierMellinTransformRows :: !Int
                                 ,  getFourierMellinTransformCols :: !Int
                                 ,  getFourierMellinTransformRadialFreq :: ![Double]
-                                ,  getFourierMellinTransformAngularFreq :: ![Int]}
+                                ,  getFourierMellinTransformAngularFreq :: ![Int]
+                                 , getFourierMellinTransformAlpha :: !Double}
   | GaussianPinwheelParams { getGaussianPinwheelRows        :: !Int
                           ,  getGaussianPinwheelCols        :: !Int
                           ,  getGaussianPinwheelScale       :: ![Double]

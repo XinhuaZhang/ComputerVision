@@ -98,8 +98,8 @@ predict predictModel output = do
   liftIO $ putStrLn str
   h <- liftIO $ openFile output WriteMode
   liftIO $ hPutStrLn h str
-  confusionMatrixStr <- liftIO $ printConfusionMatrix normalizedArr
-  liftIO $ hPutStrLn h confusionMatrixStr
+  -- confusionMatrixStr <- liftIO $ printConfusionMatrix normalizedArr
+  -- liftIO $ hPutStrLn h confusionMatrixStr
   liftIO $ hClose h
   return normalizedArr
   where

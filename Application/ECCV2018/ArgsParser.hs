@@ -45,6 +45,7 @@ data Flag
   | CenterLength Int
   | VariedSizeImage
   | PCAFlag
+  | Alpha Double
   deriving (Show)
 
 data Params = Params
@@ -82,6 +83,7 @@ data Params = Params
   , centerLength                  :: Int
   , variedSizeImageFlag           :: Bool
   , pcaFlag                       :: Bool
+  , alpha                         :: Double
   } deriving (Show)
 
 options :: [OptDescr Flag]
@@ -249,6 +251,11 @@ options =
       (NoArg VariedSizeImage)
       "The sizes of images vary."
   , Option ['z'] ["PCA"] (NoArg PCAFlag) "Use PCA."
+  ,  Option
+       ['z']
+       ["alpha"]
+       (ReqArg (Alpha . readDouble) "DOUBLE")
+       "Alpha of Fourier Polynomial Transform"
   ]
 
 readInt :: String -> Int
@@ -311,6 +318,7 @@ parseFlag flags = go flags defaultFlag
       , centerLength = 0
       , variedSizeImageFlag = False
       , pcaFlag = False
+      , alpha = 0
       }
     go [] params = params
     go (x:xs) params =
@@ -377,6 +385,7 @@ parseFlag flags = go flags defaultFlag
         CenterLength v -> go xs (params {centerLength = v})
         VariedSizeImage -> go xs (params {variedSizeImageFlag = True})
         PCAFlag -> go xs (params {pcaFlag = True})
+        Alpha v -> go xs (params {alpha = v})
 
 
 parseArgs :: [String] -> IO Params

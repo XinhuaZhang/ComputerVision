@@ -632,9 +632,10 @@ cartesian2logpolar2D ts rs (cRow, cCol) polarR valRange arr =
            col =
              cCol +
              (exp (deltaR * fromIntegral r)) * sin (deltaTheta * fromIntegral t)
-       in (bicubicInterpolation ds valRange (row, col)) *
-          ((1 / (fromIntegral ts) * 2 * pi * (exp  (fromIntegral r * deltaR))) ^
-           (1 :: Int))
+       in bicubicInterpolation ds valRange (row, col)
+          -- (bicubicInterpolation ds valRange (row, col)) *
+          -- ((1 / (fromIntegral ts) * 2 * pi * (exp  (fromIntegral r * deltaR))) ^
+          --  (1 :: Int))
     )
   where
     ds = computeDerivativeS . computeS . delay $ arr

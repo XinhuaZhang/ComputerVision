@@ -74,22 +74,35 @@ newtype FourierMellinTransformConvolution =
 
 {-# INLINE fourierMellinTransform #-}
 
-fourierMellinTransform :: Double -> Int -> Int -> Int -> Complex Double
-fourierMellinTransform rf af x y
-  | x == 0 && y == 0 = 1
-  | otherwise = ((r + 1) ** ((-1) :+ (-rf))) * exp (0 :+ (fromIntegral (-af) * theta))
+fourierMellinTransform :: Double
+                       -> Int
+                       -> Double
+                       -> Int
+                       -> Int
+                       -> Complex Double
+fourierMellinTransform rf af alpha x y
+  | r <= (6 / pi * (fromIntegral . abs $ af)) = 0
+  -- | x == 0 && y == 0 = 0
+  | otherwise =
+    (((r ) :+ 0) ** (alpha :+ (-rf))) * exp (0 :+ (fromIntegral (-af) * theta))
   where
-    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
+    r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int) 
     theta = angleFunctionRad (fromIntegral x) (fromIntegral y)
 
 
 {-# INLINE fourierMellinTransformPI #-}
 
-fourierMellinTransformPI ::  Double -> Int -> Int -> Int -> Complex Double
-fourierMellinTransformPI rf af x y
-  | x == 0 && y == 0 = 1
+fourierMellinTransformPI :: Double
+                         -> Int
+                         -> Double
+                         -> Int
+                         -> Int
+                         -> Complex Double
+fourierMellinTransformPI rf af alpha x y
+  | r <= (6 / pi * (fromIntegral . abs $ af)) = 0
+  -- | x == 0 && y == 0 = 0
   | otherwise =
-    ((r + 1) ** ((-1) :+ (-rf))) * exp (0 :+ (fromIntegral (-af) * theta))
+    ((r :+ 0) ** (alpha :+ (-rf))) * exp (0 :+ (fromIntegral (-af) * theta))
   where
     r = sqrt . fromIntegral $ x ^ (2 :: Int) + y ^ (2 :: Int)
     theta = angleFunctionRad (fromIntegral (-x)) (fromIntegral (-y))
@@ -100,14 +113,14 @@ makeFourierMellinTransformFilterExpansion :: PolarSeparableFilterParams
                                           -> Int
                                           -> Int
                                           -> [[VU.Vector (Complex Double)]]
-makeFourierMellinTransformFilterExpansion (FourierMellinTransformParams rows cols rfs afs) rCenter cCenter =
+makeFourierMellinTransformFilterExpansion (FourierMellinTransformParams rows cols rfs afs alpha) rCenter cCenter =
   [ [ VU.fromList $
   makeFilterExpansionList
     rows
     cols
     rCenter
     cCenter
-    (fourierMellinTransform rf af)
+    (fourierMellinTransform rf af alpha)
   | af <- afs
   ]
   | rf <- rfs
@@ -123,13 +136,13 @@ makeFourierMellinTransformFilterConvolution
   -> PolarSeparableFilterParams
   -> ConvolutionalFilterType
   -> IO (DFTPlan, [[VS.Vector (Complex Double)]])
-makeFourierMellinTransformFilterConvolution plan (FourierMellinTransformParams rows cols rfs afs) filterType = do
+makeFourierMellinTransformFilterConvolution plan (FourierMellinTransformParams rows cols rfs afs alpha) filterType = do
   let filterTemp =
         VS.fromList . conjugateFunc filterType $!
         makeFilterConvolutionList
           rows
           cols
-          (fourierMellinTransform (L.last rfs) (L.last afs))
+          (fourierMellinTransform (L.last rfs) (L.last afs) alpha)
       filterList =
         L.map
           (\rf ->
@@ -139,7 +152,7 @@ makeFourierMellinTransformFilterConvolution plan (FourierMellinTransformParams r
                   makeFilterConvolutionList
                     rows
                     cols
-                    (fourierMellinTransform rf af))
+                    (fourierMellinTransform rf af alpha))
                afs)
           rfs
   lock <- getFFTWLock
@@ -161,7 +174,7 @@ makeFourierMellinTransformFilterConvolutionPlan
   -> ConvolutionalFilterType
   -> [(Int, Int)]
   -> IO DFTPlan
-makeFourierMellinTransformFilterConvolutionPlan plan (FourierMellinTransformParams _ _ rfs afs) filterType dims = do
+makeFourierMellinTransformFilterConvolutionPlan plan (FourierMellinTransformParams _ _ rfs afs alpha) filterType dims = do
   lock <- getFFTWLock
   M.foldM
     (\p (rows, cols) -> do
@@ -170,7 +183,7 @@ makeFourierMellinTransformFilterConvolutionPlan plan (FourierMellinTransformPara
              makeFilterConvolutionList
                rows
                cols
-               (fourierMellinTransform (L.last rfs) (L.last afs))
+               (fourierMellinTransform (L.last rfs) (L.last afs) alpha)
        case F.lookup (DFTPlanID DFT2D [rows, cols] []) p of
          Nothing -> do
            (p1, vec) <- dft2dPlan lock p rows cols filterTemp
@@ -190,7 +203,7 @@ makeFourierMellinTransformFilterConvolutionFilter
   -> PolarSeparableFilterParams
   -> ConvolutionalFilterType
   -> IO [[VS.Vector (Complex Double)]]
-makeFourierMellinTransformFilterConvolutionFilter plan (FourierMellinTransformParams rows cols rfs afs) filterType = do
+makeFourierMellinTransformFilterConvolutionFilter plan (FourierMellinTransformParams rows cols rfs afs alpha) filterType = do
   let filterList =
         L.map
           (\rf ->
@@ -200,7 +213,7 @@ makeFourierMellinTransformFilterConvolutionFilter plan (FourierMellinTransformPa
                   makeFilterConvolutionList
                     rows
                     cols
-                    (fourierMellinTransform rf af))
+                    (fourierMellinTransform rf af alpha))
                afs)
           rfs
   filters <-
@@ -217,13 +230,13 @@ makeFourierMellinTransformFilterConvolutionPI
   -> PolarSeparableFilterParams
   -> ConvolutionalFilterType
   -> IO (DFTPlan, [[VS.Vector (Complex Double)]])
-makeFourierMellinTransformFilterConvolutionPI plan (FourierMellinTransformParams rows cols rfs afs) filterType = do
+makeFourierMellinTransformFilterConvolutionPI plan (FourierMellinTransformParams rows cols rfs afs alpha) filterType = do
   let filterTemp =
         VS.fromList . conjugateFunc filterType $!
         makeFilterConvolutionList
           rows
           cols
-          (fourierMellinTransformPI (L.last rfs) (L.last afs))
+          (fourierMellinTransformPI (L.last rfs) (L.last afs) alpha)
       filterList =
         L.map
           (\rf ->
@@ -233,7 +246,7 @@ makeFourierMellinTransformFilterConvolutionPI plan (FourierMellinTransformParams
                   makeFilterConvolutionList
                     rows
                     cols
-                    (fourierMellinTransformPI rf af))
+                    (fourierMellinTransformPI rf af alpha))
                afs)
           rfs
   lock <- getFFTWLock

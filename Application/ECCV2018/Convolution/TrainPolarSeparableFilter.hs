@@ -19,7 +19,7 @@ import           System.Environment
 main = do
   args <- getArgs
   params <- parseArgs args
-  print params
+  -- print params
   let parallelParams =
         ParallelParams
         { Par.numThread = AP.numThread params

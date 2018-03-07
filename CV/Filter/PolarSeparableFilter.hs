@@ -23,7 +23,7 @@ import           Data.Vector.Storable              as VS
 
 makePolarSeparableFilterExpansion :: PolarSeparableFilterParams
                                   -> PolarSeparableFilter PolarSeparableFilterExpansion
-makePolarSeparableFilterExpansion params@(FourierMellinTransformParams rows cols _ _) =
+makePolarSeparableFilterExpansion params@(FourierMellinTransformParams rows cols _ _ _) =
   PolarSeparableFilter params . FourierMellinFilterExpansion $
   makeFourierMellinTransformFilterExpansion params (div rows 2) (div cols 2)
 makePolarSeparableFilterExpansion params@(GaussianPinwheelParams rows cols _ _ _) =
@@ -48,7 +48,7 @@ makePolarSeparableFilterConvolution
   :: DFTPlan
   -> PolarSeparableFilterParams
   -> IO (DFTPlan, PolarSeparableFilter PolarSeparableFilterConvolution)
-makePolarSeparableFilterConvolution plan params@(FourierMellinTransformParams _ _ _ _) = do
+makePolarSeparableFilterConvolution plan params@(FourierMellinTransformParams _ _ _ _ _) = do
   second (PolarSeparableFilter params . FourierMellinFilterConvolution) <$>
     (makeFourierMellinTransformFilterConvolution getEmptyPlan params Normal)
 makePolarSeparableFilterConvolution plan params@(GaussianPinwheelParams _ _ _ _ _) = do
@@ -85,7 +85,7 @@ applyPolarSeparableInvariantFilterConvolution
   -> PolarSeparableFilter PolarSeparableFilterConvolution
   -> [VS.Vector (Complex Double)]
   -> IO [[VS.Vector (Complex Double)]]
-applyPolarSeparableInvariantFilterConvolution plan (PolarSeparableFilter (FourierMellinTransformParams rows cols _ _) (FourierMellinFilterConvolution filter)) =
+applyPolarSeparableInvariantFilterConvolution plan (PolarSeparableFilter (FourierMellinTransformParams rows cols _ _ _) (FourierMellinFilterConvolution filter)) =
   applyFourierMellinTransformFilterConvolution plan rows cols filter
 applyPolarSeparableInvariantFilterConvolution plan (PolarSeparableFilter (GaussianPinwheelParams rows cols _ _ _) (GaussianPinwheelFilterConvolution filter)) =
   applyGaussianPinwheelFilterConvolution plan rows cols filter
@@ -105,7 +105,7 @@ makePolarSeparableFilterConvolutionPI
   :: DFTPlan
   -> PolarSeparableFilterParams
   -> IO (DFTPlan, PolarSeparableFilter PolarSeparableFilterConvolution)
-makePolarSeparableFilterConvolutionPI plan params@(FourierMellinTransformParams _ _ _ _) = do
+makePolarSeparableFilterConvolutionPI plan params@(FourierMellinTransformParams _ _ _ _ _) = do
   second (PolarSeparableFilter params . FourierMellinFilterConvolution) <$>
     (makeFourierMellinTransformFilterConvolutionPI getEmptyPlan params Normal)
 makePolarSeparableFilterConvolutionPI plan params@(GaussianPinwheelParams _ _ _ _ _) = do
@@ -145,8 +145,8 @@ applyPolarSeparableInvariantFilterConvolutionVariedSize
   -> Int
   -> [VS.Vector (Complex Double)]
   -> IO [[VS.Vector (Complex Double)]]
-applyPolarSeparableInvariantFilterConvolutionVariedSize plan (PolarSeparableFilter (FourierMellinTransformParams _ _ rf af) _) rows cols xs = do
-  let params = FourierMellinTransformParams rows cols rf af
+applyPolarSeparableInvariantFilterConvolutionVariedSize plan (PolarSeparableFilter (FourierMellinTransformParams _ _ rf af alpha) _) rows cols xs = do
+  let params = FourierMellinTransformParams rows cols rf af alpha
   filter <- makeFourierMellinTransformFilterConvolutionFilter plan params Normal
   applyFourierMellinTransformFilterConvolution plan rows cols filter xs
 applyPolarSeparableInvariantFilterConvolutionVariedSize _ (PolarSeparableFilter params _) _ _ _ =
@@ -157,7 +157,7 @@ applyPolarSeparableInvariantFilterConvolutionVariedSize _ (PolarSeparableFilter 
 {-# INLINE getPolarSeparableConvolutionFilterDims #-}
 
 getPolarSeparableConvolutionFilterDims :: PolarSeparableFilter PolarSeparableFilterConvolution -> (Int,Int)
-getPolarSeparableConvolutionFilterDims (PolarSeparableFilter (FourierMellinTransformParams rows cols _ _) _) =
+getPolarSeparableConvolutionFilterDims (PolarSeparableFilter (FourierMellinTransformParams rows cols _ _ _) _) =
   (rows, cols)
 getPolarSeparableConvolutionFilterDims (PolarSeparableFilter params _) =
   error $
@@ -171,7 +171,7 @@ makePolarSeparableFilterConvolutionPlan :: DFTPlan
                                         -> PolarSeparableFilterParams
                                         -> [(Int, Int)]
                                         -> IO DFTPlan
-makePolarSeparableFilterConvolutionPlan plan params@(FourierMellinTransformParams _ _ _ _) dims = do
+makePolarSeparableFilterConvolutionPlan plan params@(FourierMellinTransformParams _ _ _ _ _) dims = do
   makeFourierMellinTransformFilterConvolutionPlan plan params Normal dims
 makePolarSeparableFilterConvolutionPlan _ params _ =
   error $
@@ -184,7 +184,7 @@ makePolarSeparableFilterConvolutionPlan _ params _ =
 makePolarSeparableFilterConvolutionFilter :: DFTPlan
                                         -> PolarSeparableFilterParams
                                         -> IO [[VS.Vector (Complex Double)]]
-makePolarSeparableFilterConvolutionFilter plan params@(FourierMellinTransformParams _ _ _ _) = do
+makePolarSeparableFilterConvolutionFilter plan params@(FourierMellinTransformParams _ _ _ _ _) = do
   makeFourierMellinTransformFilterConvolutionFilter plan params Normal 
 makePolarSeparableFilterConvolutionFilter _ params =
   error $

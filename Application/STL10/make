@@ -7,6 +7,9 @@ SVMPATH="../../Classifier/LibSVM/"
 LIBS="-lstdc++ -llapack -lblas  -lgomp -lfftw3 -lfftw3f -lfftw3l -lm" # -lfftw3 -lfftw3f -lfftw3l -lm
 LIBS1="$OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o"
 
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeansModel.hs -o trainKMeansModel
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeans.hs -o trainKMeans
-cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictKMeans.hs -o predictKMeans
+# cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeansModel.hs -o trainKMeansModel
+# cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainKMeans.hs -o trainKMeans
+# cabal exec -- ghc $FLAG $LIBS -i../../ $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictKMeans.hs -o predictKMeans
+
+# cabal exec -- ghc $FLAG $LIBS -i../../ TestLabel.hs -o testLabel
+cabal exec -- ghc $FLAG $LIBS -i../../ WriteSTL10Images.hs -o writeSTL10Images

@@ -2,6 +2,7 @@ module CV.Utility.Utility where
 
 import           Data.List           as L
 import           Data.Vector.Unboxed as VU
+import           Data.Vector.Storable as VS
 
 {-# INLINE rescale #-}
 
@@ -34,7 +35,21 @@ rescaleUnboxedVectorList (lb, ub) xs
     L.map (VU.map (\x -> (x - minV) / (maxV - minV) * (ub - lb) + lb)) xs
   where
     minV = L.minimum . L.map VU.minimum $ xs
-    maxV = L.maximum . L.map VU.maximum $ xs 
+    maxV = L.maximum . L.map VU.maximum $ xs
+    
+
+{-# INLINE rescaleStorableVectorList #-}
+
+rescaleStorableVectorList :: (Double, Double) -> [VS.Vector Double] -> [VS.Vector Double]
+rescaleStorableVectorList (lb, ub) xs
+  | minV == maxV = xs
+  | otherwise =
+    L.map (VS.map (\x -> (x - minV) / (maxV - minV) * (ub - lb) + lb)) xs
+  where
+    minV = L.minimum . L.map VS.minimum $ xs
+    maxV = L.maximum . L.map VS.maximum $ xs 
+    
+
 
 {-# INLINE l2norm #-}
 

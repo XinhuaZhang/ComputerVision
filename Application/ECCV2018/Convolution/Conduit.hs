@@ -145,7 +145,7 @@ polarSeparableFilterConvolutionConduit parallelParams plan filters invariantScat
                         filter
                         imgVecs)
                    filters
-               resetLayers <-
+               restLayers <-
                  polarSeparableFilterConvolutionRecursive
                    plan
                    invariantScatteringFilters
@@ -160,7 +160,7 @@ polarSeparableFilterConvolutionConduit parallelParams plan filters invariantScat
                               fromUnboxed (Z :. L.length zs :. rows :. cols) .
                               VS.convert . VS.concat $
                               zs))) $
-                   (firstLayer : resetLayers))) $
+                   (firstLayer : restLayers))) $
           xs
         sourceList ys
         polarSeparableFilterConvolutionConduit
@@ -266,7 +266,7 @@ polarSeparableFilterConvolutionConduitVariedSize parallelParams plan filters inv
                             cols
                             imgVecs)
                        filters
-                   resetLayers <-
+                   restLayers <-
                      polarSeparableFilterConvolutionRecursiveVariedSize
                        newPlan
                        invariantScatteringFilters
@@ -282,8 +282,9 @@ polarSeparableFilterConvolutionConduitVariedSize parallelParams plan filters inv
                                (\zs ->
                                   fromUnboxed (Z :. L.length zs :. rows :. cols) .
                                   VS.convert . VS.concat $
-                                  zs))) $
-                       (firstLayer : resetLayers))
+                                  zs))) -- . (\x -> [x]) . L.last
+                       $
+                       (firstLayer : restLayers))
                  else do
                    firstLayer <-
                      M.mapM
@@ -293,7 +294,7 @@ polarSeparableFilterConvolutionConduitVariedSize parallelParams plan filters inv
                             filter
                             imgVecs)
                        filters
-                   resetLayers <-
+                   restLayers <-
                      polarSeparableFilterConvolutionRecursive
                        newPlan
                        invariantScatteringFilters
@@ -307,8 +308,9 @@ polarSeparableFilterConvolutionConduitVariedSize parallelParams plan filters inv
                                (\zs ->
                                   fromUnboxed (Z :. L.length zs :. rows :. cols) .
                                   VS.convert . VS.concat $
-                                  zs))) $
-                       (firstLayer : resetLayers))
+                                  zs))) -- . (\x -> [x]) . L.last
+                       $
+                       (firstLayer : restLayers))
                -- filteredImagesList <-
                --   if (rows, cols) /=
                --      (getPolarSeparableConvolutionFilterDims . L.head $ filters)

@@ -33,7 +33,8 @@ main = do
         { Par.numThread = AP.numThread params
         , Par.batchSize = AP.batchSize params
         }
-      filterParamsList = L.map (filterParamsFunc rows cols) (filterType params)
+      filterParamsList =
+        L.map (filterParamsFunc rows cols (alpha params)) (filterType params)
       invariantScatteringFilterParamsList =
         L.map
           (invariantScatteringFilterParamsFunc rows cols)
