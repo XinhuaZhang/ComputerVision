@@ -13,18 +13,16 @@ import           Text.Printf
 
 {-# INLINE filterParamsFunc #-}
 
-filterParamsFunc :: Int
-                 -> Int
-                 -> String
-                 -> PolarSeparableFilterParams
-filterParamsFunc rows cols "FourierMellin" =
+filterParamsFunc :: Int -> Int -> Double -> String -> PolarSeparableFilterParams
+filterParamsFunc rows cols alpha "FourierMellin" =
   FourierMellinTransformParams
   { getFourierMellinTransformRows = rows
   , getFourierMellinTransformCols = cols
-  , getFourierMellinTransformRadialFreq = [0 .. 7]
-  , getFourierMellinTransformAngularFreq = [0 .. 7]
+  , getFourierMellinTransformRadialFreq = [0..2]
+  , getFourierMellinTransformAngularFreq = [-5,-3,-1,0,1,3,5]
+  , getFourierMellinTransformAlpha = alpha
   }
-filterParamsFunc rows cols "GaussianPinwheel" =
+filterParamsFunc rows cols _ "GaussianPinwheel" =
   GaussianPinwheelParams
   { getGaussianPinwheelRows = rows
   , getGaussianPinwheelCols = cols
@@ -32,7 +30,7 @@ filterParamsFunc rows cols "GaussianPinwheel" =
   , getGaussianPinwheelRadialFreq = [3]
   , getGaussianPinwheelAngularFreq = [3]
   }
-filterParamsFunc rows cols "PinwheelFan" =
+filterParamsFunc rows cols _ "PinwheelFan" =
   PinwheelFanParams
   { pinwheelFanRows = rows
   , pinwheelFanCols = cols
@@ -42,7 +40,7 @@ filterParamsFunc rows cols "PinwheelFan" =
   , pinwheelFanAngularFreqs = [0 .. 7]
   , pinwheelFanTheta = L.map (* (2 * pi)) [0.05,0.1 .. 1]
   }
-filterParamsFunc rows cols "PinwheelRing" =
+filterParamsFunc rows cols _ "PinwheelRing" =
   PinwheelRingParams
   { pinwheelRingRows = rows
   , pinwheelRingCols = cols
@@ -52,7 +50,7 @@ filterParamsFunc rows cols "PinwheelRing" =
   , pinwheelRingAngularFreqs = [5]
   , pinwheelRingRadius = [8]
   }
-filterParamsFunc rows cols "PinwheelBlob" =
+filterParamsFunc rows cols _ "PinwheelBlob" =
   PinwheelBlobParams
   { pinwheelBlobRows = rows
   , pinwheelBlobCols = cols
@@ -87,28 +85,24 @@ concatStr (x:[]) = x
 concatStr (x:xs) = x L.++ "_" L.++ (concatStr xs)
 
 main = do
-  xs <- getArgs -- name: FourierMellin, GaussianPinwheel, PinwheelFan,
-                -- PinwheelRing, PinwheeBlog
-  let rows = 96
-      cols = 96
-      filterParamsList = L.map (filterParamsFunc rows cols) xs
+  (nameStr:imageSizeStr:alphaStr:_) <- getArgs -- name: FourierMellin, GaussianPinwheel, PinwheelFan, PinwheelRing, PinwheeBlog
+  let rows = read imageSizeStr
+      cols = read imageSizeStr
+      filterParamsList =
+        L.map (filterParamsFunc rows cols (read alphaStr)) [nameStr]
       filters =
-        L.concatMap
-          (getFilterFunc . makePolarSeparableFilterExpansion)
-          filterParamsList
+        L.concatMap (getFilterFunc . makePolarSeparableFilterExpansion) filterParamsList
       imgList =
         L.map
-          (IM.arrayToImage .
-           listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)
+          (IM.arrayToImage . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)
           filters :: [IM.ComplexImage]
-      nameStr = concatStr xs
   createDirectoryIfMissing True "PolarSeparable"
   removePathForcibly ("PolarSeparable" </> nameStr)
   createDirectoryIfMissing True ("PolarSeparable" </> nameStr)
   M.zipWithM_
     (\i img ->
-       IM.writeImage
-         ("PolarSeparable" </> nameStr </> (printf "%s_%03d.pgm" nameStr i))
-         img)
+        IM.writeImage
+          ("PolarSeparable" </> nameStr </> (printf "%s_%03d.pgm" nameStr i))
+          img)
     [(1 :: Int) ..]
     imgList

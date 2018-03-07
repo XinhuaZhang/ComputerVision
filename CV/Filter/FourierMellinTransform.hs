@@ -81,7 +81,7 @@ fourierMellinTransform :: Double
                        -> Int
                        -> Complex Double
 fourierMellinTransform rf af alpha x y
-  | r <= (6 / pi * (fromIntegral . abs $ af)) = 0
+  | r <= (2 / pi * (fromIntegral . abs $ af)) = 0
   -- | x == 0 && y == 0 = 0
   | otherwise =
     (((r ) :+ 0) ** (alpha :+ (-rf))) * exp (0 :+ (fromIntegral (-af) * theta))
@@ -99,7 +99,7 @@ fourierMellinTransformPI :: Double
                          -> Int
                          -> Complex Double
 fourierMellinTransformPI rf af alpha x y
-  | r <= (6 / pi * (fromIntegral . abs $ af)) = 0
+  | r <= (2 / pi * (fromIntegral . abs $ af)) = 0
   -- | x == 0 && y == 0 = 0
   | otherwise =
     ((r :+ 0) ** (alpha :+ (-rf))) * exp (0 :+ (fromIntegral (-af) * theta))
