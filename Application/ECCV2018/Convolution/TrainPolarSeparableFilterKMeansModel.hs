@@ -64,7 +64,12 @@ main = do
               filters
               invariantScatteringFilters
               (numScatteringLayer params)) =$=
-    invariantFeatureExtractionConduit parallelParams (stride params) =$=
+    (if (extractObjectFlag params)
+       then mergeSource
+              (CB.sourceFile (inputFile params) =$=
+               readLabeledImagebinaryConduit) =$=
+            objectFeatureExtractionConduit parallelParams (stride params)
+       else invariantFeatureExtractionConduit parallelParams (stride params)) =$=
     kmeansSink
       parallelParams
       (numGMMExample params)

@@ -14,6 +14,7 @@ CabalFlag="--sandbox-config-file=../cabal.sandbox.config"
 cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterKMeansModel.hs -o trainPolarSeparableFilterKMeansModel 
 cabal $CabalFlag  exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilter.hs -o trainPolarSeparableFilter &
 cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilter.hs -o predictPolarSeparableFilter &
+cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilter1.hs -o predictPolarSeparableFilter1 &
 wait
 
 cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparablePredictor.hs -o trainPolarSeparablePredictor
@@ -21,4 +22,6 @@ cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMP
 cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterKMeansModelObjectPredictor.hs -o trainPolarSeparableFilterKMeansModelObjectPredictor &
 cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o TrainPolarSeparableFilterObjectPredictor.hs -o trainPolarSeparableFilterObjectPredictor &
 cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o PredictPolarSeparableFilterObjectPredictor.hs -o predictPolarSeparableFilterObjectPredictor &
+
+cabal $CabalFlag exec -- ghc $FLAG $LIBS $OBJPATH/linear.o $OBJPATH/tron.o $SVMPATH/svm.o Rebuttal.hs -o rebuttal &
 wait

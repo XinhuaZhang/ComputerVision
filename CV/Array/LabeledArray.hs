@@ -333,3 +333,52 @@ padTransformImageConduit parallelParams padVal imageTransformationParams = do
                 xs
         sourceList . L.concat $ ys
         padTransformImageConduit parallelParams padVal imageTransformationParams)
+
+padLabeledArrayConduit
+  :: ParallelParams
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+padLabeledArrayConduit parallelParams padLen = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label arr) ->
+                   let (Z :. nf :. rows :. cols) = extent arr
+                       paddedArr =
+                         computeS .
+                         pad [cols + 2 * padLen, rows + 2 * padLen, nf] 0 $
+                         arr
+                   in deepSeqArray paddedArr . LabeledArray label $ paddedArr)
+                xs
+        if padLen == 0
+          then sourceList xs
+          else sourceList ys
+        padLabeledArrayConduit parallelParams padLen)
+        
+
+padToLabeledArrayConduit
+  :: ParallelParams
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double) (ResourceT IO) (LabeledArray DIM3 Double)
+padToLabeledArrayConduit parallelParams size = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rseq
+                (\(LabeledArray label arr) ->
+                   let (Z :. nf :. _ :. _) = extent arr
+                       paddedArr =
+                         computeS .
+                         pad [size, size, nf] 0 $
+                         arr
+                   in deepSeqArray paddedArr . LabeledArray label $ paddedArr)
+                xs
+        sourceList ys
+        padToLabeledArrayConduit parallelParams size)

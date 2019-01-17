@@ -97,12 +97,13 @@ main = do
           (IM.arrayToImage . listArray ((0, 0), (rows - 1, cols - 1)) . VU.toList)
           filters :: [IM.ComplexImage]
   createDirectoryIfMissing True "PolarSeparable"
-  removePathForcibly ("PolarSeparable" </> nameStr)
+  -- removePathForcibly ("PolarSeparable" </> nameStr)
   createDirectoryIfMissing True ("PolarSeparable" </> nameStr)
+
   M.zipWithM_
     (\i img ->
         IM.writeImage
-          ("PolarSeparable" </> nameStr </> (printf "%s_%03d.pgm" nameStr i))
+          ("PolarSeparable" </> nameStr </> (printf "%s_%s_%s_%03d.pgm" nameStr imageSizeStr alphaStr i))
           img)
     [(1 :: Int) ..]
     imgList

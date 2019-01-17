@@ -53,7 +53,12 @@ main = do
                   filters
                   invariantScatteringFilters
                   (numScatteringLayer params)) =$=
-        invariantFeatureExtractionConduit parallelParams (stride params) =$=
+        (if (extractObjectFlag params)
+           then mergeSource
+                  (CB.sourceFile (inputFile params) =$=
+                   readLabeledImagebinaryConduit) =$=
+                objectFeatureExtractionConduit parallelParams (stride params)
+           else invariantFeatureExtractionConduit parallelParams (stride params)) =$=
         kmeansConduit parallelParams kmeansModel =$=
         pcaSink
           parallelParams
@@ -90,7 +95,12 @@ main = do
                   filters
                   invariantScatteringFilters
                   (numScatteringLayer params)) =$=
-        invariantFeatureExtractionConduit parallelParams (stride params) =$=
+        (if (extractObjectFlag params)
+           then mergeSource
+                  (CB.sourceFile (inputFile params) =$=
+                   readLabeledImagebinaryConduit) =$=
+                objectFeatureExtractionConduit parallelParams (stride params)
+           else invariantFeatureExtractionConduit parallelParams (stride params)) =$=
         kmeansConduit parallelParams kmeansModel =$=
         CL.take 1
       featurePtr <-
@@ -109,7 +119,12 @@ main = do
                   filters
                   invariantScatteringFilters
                   (numScatteringLayer params)) =$=
-        invariantFeatureExtractionConduit parallelParams (stride params) =$=
+        (if (extractObjectFlag params)
+           then mergeSource
+                  (CB.sourceFile (inputFile params) =$=
+                   readLabeledImagebinaryConduit) =$=
+                objectFeatureExtractionConduit parallelParams (stride params)
+           else invariantFeatureExtractionConduit parallelParams (stride params)) =$=
         kmeansConduit parallelParams kmeansModel =$=
         featurePtrConduit =$=
         CL.take (numGMMExample params)

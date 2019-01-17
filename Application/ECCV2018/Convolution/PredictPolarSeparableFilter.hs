@@ -53,7 +53,12 @@ main = do
                   filters
                   invariantScatteringFilters
                   (numScatteringLayer params)) =$=
-        invariantFeatureExtractionConduit parallelParams (stride params) =$=
+        (if (extractObjectFlag params)
+           then mergeSource
+                  (CB.sourceFile (inputFile params) =$=
+                   readLabeledImagebinaryConduit) =$=
+                objectFeatureExtractionConduit parallelParams (stride params)
+           else invariantFeatureExtractionConduit parallelParams (stride params)) =$=
         kmeansConduit parallelParams kmeansModel =$=
         pcaConduit parallelParams pcaModel =$=
         featureConduit =$=
@@ -73,7 +78,14 @@ main = do
                    filters
                    invariantScatteringFilters
                    (numScatteringLayer params)) =$=
-         invariantFeatureExtractionConduit parallelParams (stride params) =$=
+         (if (extractObjectFlag params)
+            then mergeSource
+                   (CB.sourceFile (inputFile params) =$=
+                    readLabeledImagebinaryConduit) =$=
+                 objectFeatureExtractionConduit parallelParams (stride params)
+            else invariantFeatureExtractionConduit
+                   parallelParams
+                   (stride params)) =$=
          kmeansConduit parallelParams kmeansModel =$=
          featureConduit =$=
          predict (modelName params) ((modelName params) L.++ ".out")

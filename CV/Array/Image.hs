@@ -88,9 +88,9 @@ normalizeImage upperBound img
 plotImage :: FilePath -> Array U DIM3 Double -> IO ()
 plotImage filePath img = do
   let Z :. nfp' :. nyp' :. nxp' = extent img
-      normalizedImg =
-        computeUnboxedS $
-        normalizeImage (P.fromIntegral (maxBound :: Pixel8)) img
+      normalizedImg = img
+        -- computeUnboxedS $
+        -- normalizeImage (P.fromIntegral (maxBound :: Pixel8)) img
       w =
         case nfp' of
           1 ->
@@ -445,10 +445,23 @@ padTransformGrayImage padVal transformationList arr =
                                   ds
                                   (minVal, maxVal)
                                   (j' * ratioR, i' * ratioC)
-       in computeS . RAU.pad [c', r'] padVal $
-          if rescaledC > c' || rescaledR > r'
-            then RAU.crop [startC, startR] [lenC, lenR] $ rescaledArr
-            else rescaledArr)
+           croppedArr =
+             RAU.pad [c', r'] padVal $
+             if rescaledC > c' || rescaledR > r'
+               then RAU.crop [startC, startR] [lenC, lenR] $ rescaledArr
+               else rescaledArr
+       in computeS $
+          if a == 1 && b == 0
+            then croppedArr
+            else R.map
+                   (\x ->
+                      let y = a * x + b
+                      in if y > maxVal
+                           then maxVal
+                           else if y < minVal
+                                  then minVal
+                                  else y)
+                   croppedArr)
     transformationList
   where
     minVal = 0
@@ -481,7 +494,9 @@ padTransformImage padVal transformationList arr =
   L.transpose .
   L.map
     (\i ->
-       padTransformGrayImage (arr R.! (Z :. i :. 0 :. 0)) transformationList .
+       padTransformGrayImage
+         padVal -- (arr R.! (Z :. i :. 0 :. 0))
+         transformationList .
        R.slice arr $
        (Z :. i :. All :. All)) $
   [0 .. nf' - 1]
@@ -517,11 +532,14 @@ transformGrayImage padVal transformationList arr =
                else (0, rescaledC)
            rescaledArr =
              if deg == 0
-               then fromFunction (Z :. rescaledR :. rescaledC) $ \(Z :. j :. i) ->
-                      bicubicInterpolation
-                        ds
-                        (minVal, maxVal)
-                        (fromIntegral j * ratioR, fromIntegral i * ratioC)
+               then if sf == 1
+                      then paddedImg
+                      else fromFunction (Z :. rescaledR :. rescaledC) $ \(Z :. j :. i) ->
+                             bicubicInterpolation
+                               ds
+                               (minVal, maxVal)
+                               ( fromIntegral j * ratioR
+                               , fromIntegral i * ratioC)
                else fromFunction (Z :. rescaledR :. rescaledC) $ \(Z :. j :. i) ->
                       let (j', i') =
                             rotatePixel

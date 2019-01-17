@@ -1,0 +1,8 @@
+#!/bin/bash
+
+export OMP_NUM_THREADS=24
+GridSize=4
+
+time ./train /home/xzhang/Workspaces/Petavision/Dataset/cifar-10-batches-mat/CIFAR/shuffle.txt /home/xzhang/Workspaces/Petavision/Dataset/cifar-10-batches-mat/CIFAR/label.txt True "(${GridSize},${GridSize})" +RTS -N12 -A2g -H4g -RTS 
+
+time ./predict /home/xzhang/Workspaces/Petavision/Dataset/cifar-10-batches-mat/CIFAR_test/shuffle.txt /home/xzhang/Workspaces/Petavision/Dataset/cifar-10-batches-mat/CIFAR_test/label.txt True "(${GridSize},${GridSize})" +RTS -N12 -A2g -H4g -RTS

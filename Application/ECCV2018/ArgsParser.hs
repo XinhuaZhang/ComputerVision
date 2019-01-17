@@ -7,6 +7,7 @@ import           Text.Read
 
 data Flag
   = InputFile String
+  | InputFile1 String
   | Thread Int
   | C Double
   | ModelName String
@@ -46,10 +47,12 @@ data Flag
   | VariedSizeImage
   | PCAFlag
   | Alpha Double
+  | ExtractObjectFlag 
   deriving (Show)
 
 data Params = Params
   { inputFile                     :: String
+  , inputFile1                     :: String
   , numThread                     :: Int
   , c                             :: Double
   , modelName                     :: String
@@ -84,11 +87,13 @@ data Params = Params
   , variedSizeImageFlag           :: Bool
   , pcaFlag                       :: Bool
   , alpha                         :: Double
+  , extractObjectFlag             :: Bool
   } deriving (Show)
 
 options :: [OptDescr Flag]
 options =
   [ Option ['i'] ["inputfile"] (ReqArg InputFile "FILE") "Image path list file."
+  , Option ['z'] ["inputfile1"] (ReqArg InputFile "FILE") "Image path list file."
   , Option
       ['c']
       ["constrainC"]
@@ -256,6 +261,11 @@ options =
        ["alpha"]
        (ReqArg (Alpha . readDouble) "DOUBLE")
        "Alpha of Fourier Polynomial Transform"
+  ,   Option
+        ['z']
+        ["ExtractObjectFlag"]
+        (NoArg ExtractObjectFlag)
+        "Extract features according to pixel value"
   ]
 
 readInt :: String -> Int
@@ -285,6 +295,7 @@ parseFlag flags = go flags defaultFlag
     defaultFlag =
       Params
       { inputFile = ""
+      , inputFile1 = ""
       , c = 1.0
       , numThread = 1
       , modelName = "model"
@@ -319,11 +330,13 @@ parseFlag flags = go flags defaultFlag
       , variedSizeImageFlag = False
       , pcaFlag = False
       , alpha = 0
+      , extractObjectFlag = False
       }
     go [] params = params
     go (x:xs) params =
       case x of
         InputFile str -> go xs (params {inputFile = str})
+        InputFile1 str -> go xs (params {inputFile1 = str})
         Thread n -> go xs (params {numThread = n})
         C v -> go xs (params {c = v})
         ModelName str -> go xs (params {modelName = str})
@@ -386,6 +399,7 @@ parseFlag flags = go flags defaultFlag
         VariedSizeImage -> go xs (params {variedSizeImageFlag = True})
         PCAFlag -> go xs (params {pcaFlag = True})
         Alpha v -> go xs (params {alpha = v})
+        ExtractObjectFlag -> go xs (params {extractObjectFlag = True})
 
 
 parseArgs :: [String] -> IO Params

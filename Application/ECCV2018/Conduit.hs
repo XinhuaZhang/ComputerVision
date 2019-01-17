@@ -45,18 +45,73 @@ invariantFeatureExtractionConduit parallelParams stride = do
                                           downsample [stride, stride, 1] arr
                                         (Z :. _ :. rows :. cols) =
                                           extent downsampledArr
-                                    in [ l2norm .
-                                       toUnboxed .
-                                       computeS . R.slice downsampledArr $
-                                       (Z :. All :. i :. j)
-                                       | i <- [0 .. rows - 1]
-                                       , j <- [0 .. cols - 1]
-                                       ])))
+                                        as =
+                                          [ l2norm .
+                                          toUnboxed .
+                                          computeS . R.slice downsampledArr $
+                                          (Z :. All :. i :. j)
+                                          | i <- [0 .. rows - 1]
+                                          , j <- [0 .. cols - 1]
+                                          ]
+                                        -- m =
+                                        --   (L.sum . L.map fst $ as) /
+                                        --   (fromIntegral . L.length $ as)
+                                       -- L.map snd . L.filter (\(a, b) -> a > m) $
+                                       -- as
+                                    in as)))
                            y
                    in (label, zs))
                 xs
         sourceList ys
         invariantFeatureExtractionConduit parallelParams stride)
+        
+
+objectFeatureExtractionConduit
+  :: ParallelParams
+  -> Int
+  -> Conduit (LabeledArray DIM3 Double, (Double, [[[R.Array U DIM3 Double]]])) (ResourceT IO) (Double, [[[VU.Vector Double]]])
+objectFeatureExtractionConduit parallelParams stride = do
+  xs <- CL.take (batchSize parallelParams)
+  unless
+    (L.null xs)
+    (do let ys =
+              parMapChunk
+                parallelParams
+                rdeepseq
+                (\(LabeledArray _ imgArr, (label, y)) ->
+                   let zs =
+                         L.map
+                           (L.map
+                              (L.concatMap
+                                 (\arr ->
+                                    let downsampledArr =
+                                          downsample [stride, stride, 1] arr
+                                        downsampledImg =
+                                          downsample [stride, stride, 1] imgArr
+                                        (Z :. _ :. rows :. cols) =
+                                          extent downsampledArr
+                                        idx =
+                                          L.map fst .
+                                          L.filter (\(_, b) -> b > 0) $
+                                          [ ( (i, j)
+                                            , L.sum .
+                                              R.toList . R.slice downsampledImg $
+                                              (Z :. All :. i :. j))
+                                          | i <- [0 .. rows - 1]
+                                          , j <- [0 .. cols - 1]
+                                          ]
+                                    in L.map
+                                         (\(i, j) ->
+                                            l2norm .
+                                            toUnboxed .
+                                            computeS . R.slice downsampledArr $
+                                            (Z :. All :. i :. j))
+                                         idx)))
+                           y
+                   in (label, zs))
+                xs
+        sourceList ys
+        objectFeatureExtractionConduit parallelParams stride)
 
 -- input list: layer, free degrees
 -- output list: layer, free degrees
@@ -133,7 +188,10 @@ kmeansSink
   -> Double
   -> Sink (Double, [[[VU.Vector Double]]]) (ResourceT IO) [[KMeansModel]]
 kmeansSink parallelParams numExample numGaussian kmeansFile threshold = do
-  xs <- CL.take numExample
+  xs <-
+    if numExample > 10000
+      then CL.take 10000
+      else CL.take numExample
   let ys =
         L.map (L.map L.concat . L.transpose) . L.transpose . snd . L.unzip $ xs
   model <-

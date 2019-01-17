@@ -1,1 +1,3 @@
-./plotPolarSeparableFilter FourierMellin 96 0 && cd PolarSeparable/FourierMellin/ ; mogrify -format png *.pgm ; cd ../.. ; ./plotImageGrid PolarSeparable/FourierMellin FourierMellin 21 7 0
+./plotPolarSeparableFilter FourierMellin 96 0 &&
+
+cd PolarSeparable/FourierMellin/ ; mogrify -format png *.pgm ; cd ../.. ; ./plotImageGrid PolarSeparable/FourierMellin FourierMellin_96_0 21 7 0

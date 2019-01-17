@@ -354,3 +354,13 @@ polarSeparableFilterConvolutionConduitVariedSize parallelParams plan filters inv
 
 -- concatInvariantConduit :: Conduit [[a]] (ResourceT IO)  [a]
 -- concatInvariantConduit = awaitForever 
+
+{-# INLINE splitSpace #-}
+
+splitSpace :: String -> [String]
+splitSpace xs =
+  case L.findIndex (== ' ') xs of
+    Nothing -> [xs]
+    Just idx ->
+      let (as, (_:bs)) = L.splitAt idx xs
+      in as : splitSpace bs
